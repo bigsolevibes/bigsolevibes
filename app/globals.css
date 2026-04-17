@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-bsv-bg text-bsv-white font-body;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: var(--font-bebas), sans-serif;
+  }
+}
