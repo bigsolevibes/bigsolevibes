@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, FormEvent } from 'react'
 
 const AMBER  = '#C17D2E'
 const CREAM  = '#F5ECD7'
@@ -56,48 +56,8 @@ const SOCIALS = [
   },
 ]
 
-const TARGET = new Date('2026-06-15T00:00:00').getTime()
-
-function useCountdown() {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-  useEffect(() => {
-    function tick() {
-      const diff = TARGET - Date.now()
-      if (diff <= 0) { setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 }); return }
-      setTimeLeft({
-        days:    Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours:   Math.floor((diff / (1000 * 60 * 60)) % 24),
-        minutes: Math.floor((diff / (1000 * 60)) % 60),
-        seconds: Math.floor((diff / 1000) % 60),
-      })
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [])
-  return timeLeft
-}
-
-function CountdownBox({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl flex items-center justify-center border"
-        style={{ backgroundColor: CARD, borderColor: AMBER + '33' }}
-      >
-        <span className="font-heading text-4xl sm:text-5xl tabular-nums leading-none" style={{ color: AMBER }}>
-          {String(value).padStart(2, '0')}
-        </span>
-      </div>
-      <span className="text-xs sm:text-sm uppercase tracking-widest font-body" style={{ color: CREAM }}>
-        {label}
-      </span>
-    </div>
-  )
-}
 
 export default function ComingSoonPage() {
-  const { days, hours, minutes, seconds } = useCountdown()
   const [firstName, setFirstName] = useState('')
   const [email, setEmail]         = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -140,12 +100,14 @@ export default function ComingSoonPage() {
           </p>
         </section>
 
-        {/* Countdown */}
-        <section className="flex gap-4 sm:gap-6 justify-center">
-          <CountdownBox value={days}    label="Days"    />
-          <CountdownBox value={hours}   label="Hours"   />
-          <CountdownBox value={minutes} label="Minutes" />
-          <CountdownBox value={seconds} label="Seconds" />
+        {/* Bold statement */}
+        <section className="flex flex-col gap-3">
+          <p className="font-body text-2xl sm:text-3xl italic font-bold" style={{ color: CREAM }}>
+            "Something is coming for your feet."
+          </p>
+          <p className="font-body text-base sm:text-lg italic" style={{ color: MUTED }}>
+            And no, that&apos;s not a threat.
+          </p>
         </section>
 
         {/* Amber divider */}
@@ -154,10 +116,10 @@ export default function ComingSoonPage() {
         {/* Email capture */}
         <section className="w-full flex flex-col gap-6">
           <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
-            Join the <span style={{ color: AMBER }}>Sole Squad</span>
+            Be the first to know <span style={{ color: AMBER }}>when we drop.</span>
           </h2>
           <p className="font-body text-sm italic" style={{ color: MUTED }}>
-            First access. No spam. Just sole.
+            Join the Sole Squad — no spam, no nonsense. Just the good stuff.
           </p>
 
           {submitted ? (
