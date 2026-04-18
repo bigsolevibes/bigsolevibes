@@ -92,11 +92,11 @@ export default function ComingSoonPage() {
         {/* Hero */}
         <section className="flex flex-col gap-5">
           <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
-            Enter the<br />
-            <span style={{ color: AMBER }}>Lounge</span>
+            We&apos;ve Been<br />
+            <span style={{ color: AMBER }}>Expecting You.</span>
           </h1>
           <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
-            We aren&apos;t here to talk about hygiene. We&apos;re here to talk about the ritual. The moment the boots come off and the man remains.
+            The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve audited the pretenders so you don&apos;t have to.
           </p>
         </section>
 
@@ -106,7 +106,7 @@ export default function ComingSoonPage() {
             "Something is coming for your feet."
           </p>
           <p className="font-body text-base sm:text-lg italic" style={{ color: MUTED }}>
-            And no, that&apos;s not a threat. It&apos;s an invitation.
+            Relax. Your secret—and your socks—are safe with us.
           </p>
         </section>
 
@@ -116,7 +116,7 @@ export default function ComingSoonPage() {
         {/* Email capture */}
         <section className="w-full flex flex-col gap-6">
           <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
-            Reserve Your <span style={{ color: AMBER }}>Seat.</span>
+            Reserve Your Seat <span style={{ color: AMBER }}>in the Lounge.</span>
           </h2>
           <p className="font-body text-sm italic" style={{ color: MUTED }}>
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
@@ -153,7 +153,7 @@ export default function ComingSoonPage() {
                 className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading"
                 style={{ backgroundColor: AMBER, color: NAVY }}
               >
-                I&apos;m In
+                Step Inside
               </button>
             </form>
           )}
