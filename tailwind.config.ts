@@ -8,16 +8,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        'bsv-bg':      '#1a1a1a',
-        'bsv-card':    '#242424',
-        'bsv-surface': '#2e2e2e',
-        'bsv-orange':  '#E8621A',
-        'bsv-white':   '#ffffff',
-        'bsv-muted':   '#999999',
+        'bsv-bg':      '#0D1B2A',
+        'bsv-card':    '#162233',
+        'bsv-surface': '#1C2E42',
+        'bsv-amber':   '#C17D2E',
+        'bsv-cream':   '#F5ECD7',
+        'bsv-muted':   '#4A6380',
+        // legacy aliases kept for components not yet updated
+        'bsv-orange':  '#C17D2E',
+        'bsv-white':   '#F5ECD7',
       },
       fontFamily: {
         heading: ['var(--font-bebas)', 'sans-serif'],
-        body:    ['var(--font-inter)', 'sans-serif'],
+        body:    ['var(--font-playfair)', 'Georgia', 'serif'],
       },
     },
   },

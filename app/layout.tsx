@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter, Bebas_Neue } from 'next/font/google'
+import { Playfair_Display, Bebas_Neue } from 'next/font/google'
 import './globals.css'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
 import AffiliateBanner from '@/components/AffiliateBanner'
 
-const inter = Inter({
+const playfair = Playfair_Display({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-playfair',
   display: 'swap',
 })
 
@@ -51,7 +51,7 @@ export default function RootLayout({
   const gaId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? ''
 
   return (
-    <html lang="en" className={`${inter.variable} ${bebasNeue.variable}`}>
+    <html lang="en" className={`${playfair.variable} ${bebasNeue.variable}`}>
       <body className="bg-bsv-bg text-bsv-white font-body antialiased">
         {gaId && <GoogleAnalytics gaId={gaId} />}
         <AffiliateBanner />

@@ -2,7 +2,12 @@
 
 import { useState, useEffect, FormEvent } from 'react'
 
-// ── Social links ──────────────────────────────────────────────────────────────
+const AMBER  = '#C17D2E'
+const CREAM  = '#F5ECD7'
+const CARD   = '#162233'
+const MUTED  = '#4A6380'
+const NAVY   = '#0D1B2A'
+
 const SOCIALS = [
   {
     label: 'Instagram',
@@ -51,19 +56,14 @@ const SOCIALS = [
   },
 ]
 
-// ── Countdown target: 60 days from April 16, 2026 ────────────────────────────
 const TARGET = new Date('2026-06-15T00:00:00').getTime()
 
 function useCountdown() {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-
   useEffect(() => {
     function tick() {
       const diff = TARGET - Date.now()
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
-        return
-      }
+      if (diff <= 0) { setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 }); return }
       setTimeLeft({
         days:    Math.floor(diff / (1000 * 60 * 60 * 24)),
         hours:   Math.floor((diff / (1000 * 60 * 60)) % 24),
@@ -75,7 +75,6 @@ function useCountdown() {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [])
-
   return timeLeft
 }
 
@@ -83,17 +82,14 @@ function CountdownBox({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl flex items-center justify-center"
-        style={{ backgroundColor: '#242424' }}
+        className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl flex items-center justify-center border"
+        style={{ backgroundColor: CARD, borderColor: AMBER + '33' }}
       >
-        <span
-          className="font-heading text-4xl sm:text-5xl tabular-nums leading-none"
-          style={{ color: '#E8621A' }}
-        >
+        <span className="font-heading text-4xl sm:text-5xl tabular-nums leading-none" style={{ color: AMBER }}>
           {String(value).padStart(2, '0')}
         </span>
       </div>
-      <span className="text-xs sm:text-sm uppercase tracking-widest" style={{ color: '#999999' }}>
+      <span className="text-xs sm:text-sm uppercase tracking-widest font-body" style={{ color: CREAM }}>
         {label}
       </span>
     </div>
@@ -118,30 +114,29 @@ export default function ComingSoonPage() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-between px-4 py-12"
-      style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
+      style={{ backgroundColor: NAVY, color: CREAM }}
     >
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="w-full text-center">
-        <span
-          className="font-heading text-5xl sm:text-6xl tracking-wider"
-          style={{ color: '#E8621A' }}
-        >
+        <span className="font-heading text-5xl sm:text-6xl tracking-wider" style={{ color: AMBER }}>
           BSV
         </span>
+        {/* Amber rule under logo */}
+        <div className="mx-auto mt-3 w-16 h-px" style={{ backgroundColor: AMBER }} />
       </header>
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
       <main className="flex flex-col items-center gap-14 w-full max-w-2xl text-center mt-10">
 
         {/* Hero */}
-        <section className="flex flex-col gap-4">
-          <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide">
+        <section className="flex flex-col gap-5">
+          <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
             Something Big<br />
-            <span style={{ color: '#E8621A' }}>Is Coming</span>
+            <span style={{ color: AMBER }}>Is Coming</span>
           </h1>
-          <p className="text-base sm:text-lg leading-relaxed max-w-lg mx-auto" style={{ color: '#999999' }}>
-            Premium foot care built for men who take care of their kicks — and themselves.
+          <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
+            Your feet work hard. Start acting like it.
           </p>
         </section>
 
@@ -153,29 +148,34 @@ export default function ComingSoonPage() {
           <CountdownBox value={seconds} label="Seconds" />
         </section>
 
+        {/* Amber divider */}
+        <div className="w-24 h-px" style={{ backgroundColor: AMBER }} />
+
         {/* Email capture */}
         <section className="w-full flex flex-col gap-6">
-          <h2 className="font-heading text-3xl sm:text-4xl tracking-wide">
-            Join the <span style={{ color: '#E8621A' }}>Sole Squad</span>
+          <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
+            Join the <span style={{ color: AMBER }}>Sole Squad</span>
           </h2>
+          <p className="font-body text-sm italic" style={{ color: MUTED }}>
+            First access. No spam. Just sole.
+          </p>
 
           {submitted ? (
-            <p className="text-lg" style={{ color: '#E8621A' }}>
-              You&apos;re in. We&apos;ll hit you when it&apos;s time. 🔥
+            <p className="font-body text-lg italic" style={{ color: AMBER }}>
+              You&apos;re in. We&apos;ll hit you when it&apos;s time.
             </p>
           ) : (
-            <form
-              onSubmit={handleSubmit}
-              className="flex flex-col sm:flex-row gap-3 w-full"
-            >
+            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
               <input
                 type="text"
                 placeholder="First name"
                 value={firstName}
                 onChange={e => setFirstName(e.target.value)}
                 required
-                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border border-transparent focus:border-orange-500 transition-colors"
-                style={{ backgroundColor: '#242424', color: '#ffffff' }}
+                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body"
+                style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55',
+                  // @ts-ignore
+                  '--tw-ring-color': AMBER }}
               />
               <input
                 type="email"
@@ -183,13 +183,13 @@ export default function ComingSoonPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
-                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border border-transparent focus:border-orange-500 transition-colors"
-                style={{ backgroundColor: '#242424', color: '#ffffff' }}
+                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body"
+                style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
               />
               <button
                 type="submit"
-                className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-90 whitespace-nowrap"
-                style={{ backgroundColor: '#E8621A', color: '#ffffff' }}
+                className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading"
+                style={{ backgroundColor: AMBER, color: NAVY }}
               >
                 Notify Me
               </button>
@@ -206,8 +206,8 @@ export default function ComingSoonPage() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label={s.label}
-              className="transition-colors hover:text-orange-500"
-              style={{ color: '#999999' }}
+              className="transition-opacity hover:opacity-70"
+              style={{ color: AMBER }}
             >
               {s.icon}
             </a>
@@ -217,7 +217,7 @@ export default function ComingSoonPage() {
       </main>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <footer className="mt-10 text-xs" style={{ color: '#999999' }}>
+      <footer className="mt-10 font-body text-xs" style={{ color: MUTED }}>
         © 2025 Big Sole Vibes. All rights reserved.
       </footer>
 
