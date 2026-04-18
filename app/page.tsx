@@ -92,11 +92,11 @@ export default function ComingSoonPage() {
         {/* Hero */}
         <section className="flex flex-col gap-5">
           <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
-            Something Big<br />
-            <span style={{ color: AMBER }}>Is Coming</span>
+            Enter the<br />
+            <span style={{ color: AMBER }}>Lounge</span>
           </h1>
           <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
-            Your feet work hard. Start acting like it.
+            We aren&apos;t here to talk about hygiene. We&apos;re here to talk about the ritual. The moment the boots come off and the man remains.
           </p>
         </section>
 
@@ -106,7 +106,7 @@ export default function ComingSoonPage() {
             "Something is coming for your feet."
           </p>
           <p className="font-body text-base sm:text-lg italic" style={{ color: MUTED }}>
-            And no, that&apos;s not a threat.
+            And no, that&apos;s not a threat. It&apos;s an invitation.
           </p>
         </section>
 
@@ -116,7 +116,7 @@ export default function ComingSoonPage() {
         {/* Email capture */}
         <section className="w-full flex flex-col gap-6">
           <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
-            Be the first to know <span style={{ color: AMBER }}>when we drop.</span>
+            Reserve Your <span style={{ color: AMBER }}>Seat.</span>
           </h2>
           <p className="font-body text-sm italic" style={{ color: MUTED }}>
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
@@ -153,7 +153,7 @@ export default function ComingSoonPage() {
                 className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading"
                 style={{ backgroundColor: AMBER, color: NAVY }}
               >
-                Notify Me
+                I&apos;m In
               </button>
             </form>
           )}
