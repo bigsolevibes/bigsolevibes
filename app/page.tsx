@@ -103,7 +103,7 @@ export default function ComingSoonPage() {
             <span style={{ color: AMBER }}>Expecting You.</span>
           </h1>
           <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
-            The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve audited the pretenders so you don&apos;t have to.
+            The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
           </p>
         </section>
 
@@ -123,7 +123,7 @@ export default function ComingSoonPage() {
         {/* Email capture */}
         <section className="w-full flex flex-col gap-6">
           <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
-            Reserve Your Seat <span style={{ color: AMBER }}>in the Lounge.</span>
+            Reserve Your Seat for <span style={{ color: AMBER }}>the First Audit.</span>
           </h2>
           <p className="font-body text-sm italic" style={{ color: MUTED }}>
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
