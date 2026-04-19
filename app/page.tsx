@@ -60,15 +60,22 @@ const SOCIALS = [
 export default function ComingSoonPage() {
   const [firstName, setFirstName] = useState('')
   const [email, setEmail]         = useState('')
-  const [submitted, setSubmitted] = useState(false)
+  const [status, setStatus]       = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    // TODO: Connect to Klaviyo — replace this block with Klaviyo list subscribe API call
-    // POST to https://a.klaviyo.com/api/v2/list/{LIST_ID}/members
-    // with { api_key, profiles: [{ email, first_name: firstName }] }
-    console.log('Sole Squad signup:', { firstName, email })
-    setSubmitted(true)
+    setStatus('loading')
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, email }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setStatus('success')
+    } catch {
+      setStatus('error')
+    }
   }
 
   return (
@@ -122,40 +129,48 @@ export default function ComingSoonPage() {
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
           </p>
 
-          {submitted ? (
+          {status === 'success' ? (
             <p className="font-body text-lg italic" style={{ color: AMBER }}>
-              You&apos;re in. We&apos;ll hit you when it&apos;s time.
+              Welcome to the Lounge.
             </p>
           ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
-              <input
-                type="text"
-                placeholder="First name"
-                value={firstName}
-                onChange={e => setFirstName(e.target.value)}
-                required
-                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body"
-                style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55',
-                  // @ts-ignore
-                  '--tw-ring-color': AMBER }}
-              />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body"
-                style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
-              />
-              <button
-                type="submit"
-                className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading"
-                style={{ backgroundColor: AMBER, color: NAVY }}
-              >
-                Step Inside
-              </button>
-            </form>
+            <>
+              <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
+                <input
+                  type="text"
+                  placeholder="First name"
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  required
+                  disabled={status === 'loading'}
+                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body disabled:opacity-50"
+                  style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
+                />
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  disabled={status === 'loading'}
+                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body disabled:opacity-50"
+                  style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
+                />
+                <button
+                  type="submit"
+                  disabled={status === 'loading'}
+                  className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: AMBER, color: NAVY }}
+                >
+                  {status === 'loading' ? 'One moment…' : 'Step Inside'}
+                </button>
+              </form>
+              {status === 'error' && (
+                <p className="font-body text-sm" style={{ color: '#C0392B' }}>
+                  Something went wrong. Try again.
+                </p>
+              )}
+            </>
           )}
         </section>
 
