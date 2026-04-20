@@ -96,40 +96,34 @@ export default function ComingSoonPage() {
       </header>
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
-      <main className="flex flex-col items-center gap-14 w-full max-w-2xl text-center mt-10">
+      <main className="flex flex-col items-center gap-14 w-full text-center mt-10">
 
-        {/* Hero */}
-        <section className="relative w-screen flex flex-col gap-5 py-24 px-4" style={{ marginLeft: 'calc(-50vw + 50%)' }}>
-          {/* Background image */}
+        {/* Hero — full width with background image */}
+        <section className="relative w-screen flex flex-col items-center justify-center gap-5 py-24 px-4" style={{ marginLeft: 'calc(-50vw + 50%)' }}>
           <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: "url('/foundation_blurred_hero.png')" }}
             aria-hidden="true"
           />
-          {/* Navy overlay at 60% opacity */}
           <div
             className="absolute inset-0"
             style={{ backgroundColor: NAVY, opacity: 0.6 }}
             aria-hidden="true"
           />
-          {/* Content */}
-          <div className="relative z-10 flex flex-col gap-5 max-w-2xl mx-auto text-center">
-            <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
+          <div className="relative z-10 flex flex-col items-center gap-5 w-full max-w-2xl mx-auto text-center px-4">
+            <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide text-center" style={{ color: CREAM }}>
               We&apos;ve Been<br />
               <span style={{ color: AMBER }}>Expecting You.</span>
             </h1>
-            <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
+            <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg text-center italic" style={{ color: MUTED }}>
               The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
             </p>
           </div>
         </section>
 
-        {/* Bold statement */}
-        <section className="flex flex-col gap-3">
-          <p className="font-body text-2xl sm:text-3xl italic font-bold" style={{ color: CREAM }}>
-            "Something is coming for your feet."
-          </p>
-          <p className="font-body text-base sm:text-lg italic" style={{ color: MUTED }}>
+        {/* Cheeky line */}
+        <section className="flex flex-col items-center gap-3 px-4">
+          <p className="font-body text-base sm:text-lg italic text-center" style={{ color: MUTED }}>
             Relax. Your secret—and your socks—are safe with us.
           </p>
         </section>
@@ -138,20 +132,20 @@ export default function ComingSoonPage() {
         <div className="w-24 h-px" style={{ backgroundColor: AMBER }} />
 
         {/* Email capture */}
-        <section className="w-full flex flex-col gap-6">
-          <h2 className="font-heading text-3xl sm:text-4xl tracking-wide" style={{ color: CREAM }}>
+        <section className="flex flex-col items-center gap-6 w-full px-4">
+          <h2 className="font-heading text-3xl sm:text-4xl tracking-wide text-center" style={{ color: CREAM }}>
             Reserve Your Seat for <span style={{ color: AMBER }}>the First Audit.</span>
           </h2>
-          <p className="font-body text-sm italic" style={{ color: MUTED }}>
+          <p className="font-body text-sm italic text-center" style={{ color: MUTED }}>
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
           </p>
 
           {status === 'success' ? (
-            <p className="font-body text-lg italic" style={{ color: AMBER }}>
+            <p className="font-body text-lg italic text-center" style={{ color: AMBER }}>
               Welcome to the Lounge.
             </p>
           ) : (
-            <>
+            <div className="flex flex-col items-center gap-3 w-full" style={{ maxWidth: 500 }}>
               <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
                 <input
                   type="text"
@@ -183,16 +177,16 @@ export default function ComingSoonPage() {
                 </button>
               </form>
               {status === 'error' && (
-                <p className="font-body text-sm" style={{ color: '#C0392B' }}>
+                <p className="font-body text-sm text-center" style={{ color: '#C0392B' }}>
                   Something went wrong. Try again.
                 </p>
               )}
-            </>
+            </div>
           )}
         </section>
 
         {/* Socials */}
-        <section className="flex gap-6 justify-center">
+        <section className="flex gap-6 justify-center items-center">
           {SOCIALS.map(s => (
             <a
               key={s.label}
@@ -211,7 +205,7 @@ export default function ComingSoonPage() {
       </main>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <footer className="mt-10 font-body text-xs" style={{ color: MUTED }}>
+      <footer className="mt-10 font-body text-xs text-center" style={{ color: MUTED }}>
         © 2025 Big Sole Vibes. All rights reserved.
       </footer>
 
