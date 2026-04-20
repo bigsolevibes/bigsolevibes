@@ -64,16 +64,24 @@ export default function ComingSoonPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    console.log('[BSV] handleSubmit fired', { firstName, email })
     setStatus('loading')
     try {
+      console.log('[BSV] fetching /api/subscribe')
       const res = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName, email }),
       })
-      if (!res.ok) throw new Error('failed')
+      console.log('[BSV] response status', res.status)
+      if (!res.ok) {
+        const body = await res.text()
+        console.error('[BSV] API error', res.status, body)
+        throw new Error(`API returned ${res.status}`)
+      }
       setStatus('success')
-    } catch {
+    } catch (err) {
+      console.error('[BSV] caught error', err)
       setStatus('error')
     }
   }
