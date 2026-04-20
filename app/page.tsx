@@ -97,14 +97,29 @@ export default function ComingSoonPage() {
       <main className="flex flex-col items-center gap-14 w-full max-w-2xl text-center mt-10">
 
         {/* Hero */}
-        <section className="flex flex-col gap-5">
-          <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
-            We&apos;ve Been<br />
-            <span style={{ color: AMBER }}>Expecting You.</span>
-          </h1>
-          <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
-            The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
-          </p>
+        <section className="relative w-screen flex flex-col gap-5 py-24 px-4" style={{ marginLeft: 'calc(-50vw + 50%)' }}>
+          {/* Background image */}
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: "url('/foundation_blurred_hero.png')" }}
+            aria-hidden="true"
+          />
+          {/* Navy overlay at 60% opacity */}
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: NAVY, opacity: 0.6 }}
+            aria-hidden="true"
+          />
+          {/* Content */}
+          <div className="relative z-10 flex flex-col gap-5 max-w-2xl mx-auto text-center">
+            <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide" style={{ color: CREAM }}>
+              We&apos;ve Been<br />
+              <span style={{ color: AMBER }}>Expecting You.</span>
+            </h1>
+            <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: MUTED }}>
+              The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
+            </p>
+          </div>
         </section>
 
         {/* Bold statement */}
