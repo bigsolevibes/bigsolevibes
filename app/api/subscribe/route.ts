@@ -15,7 +15,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Server misconfiguration.' }, { status: 500 })
   }
 
-  const payload = {
+  const headers = {
+    'Content-Type':  'application/json',
+    'Authorization': `Klaviyo-API-Key ${apiKey}`,
+    'revision':      '2023-12-15',
+  }
+
+  // Step 1: Subscribe email to list — no first_name in this payload
+  const subPayload = {
     data: {
       type: 'profile-subscription-bulk-create-job',
       attributes: {
@@ -25,7 +32,6 @@ export async function POST(req: NextRequest) {
               type: 'profile',
               attributes: {
                 email,
-                first_name: firstName,
                 subscriptions: {
                   email: {
                     marketing: { consent: 'SUBSCRIBED' },
@@ -44,33 +50,71 @@ export async function POST(req: NextRequest) {
     },
   }
 
-  console.log('[BSV] Posting to Klaviyo, listId:', listId, 'email:', email)
+  console.log('[BSV] Step 1 — subscribing to list, listId:', listId, 'email:', email)
 
   try {
-    const res = await fetch('https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/', {
+    const subRes = await fetch('https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/', {
       method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Klaviyo-API-Key ${apiKey}`,
-        'revision':      '2023-12-15',
-      },
-      body: JSON.stringify(payload),
+      headers,
+      body: JSON.stringify(subPayload),
     })
 
-    const responseText = await res.text()
-    console.log('[BSV] Klaviyo response status:', res.status)
-    console.log('[BSV] Klaviyo response body:', responseText)
+    const subBody = await subRes.text()
+    console.log('[BSV] Klaviyo subscribe status:', subRes.status)
+    console.log('[BSV] Klaviyo subscribe body:', subBody)
 
-    if (!res.ok) {
+    if (!subRes.ok) {
       return NextResponse.json(
-        { error: 'Klaviyo request failed.', status: res.status, detail: responseText },
+        { error: 'Klaviyo subscription failed.', status: subRes.status, detail: subBody },
         { status: 400 }
       )
     }
-
-    return NextResponse.json({ ok: true }, { status: 200 })
   } catch (err) {
-    console.error('[BSV] Klaviyo fetch threw:', err)
+    console.error('[BSV] Klaviyo subscribe fetch threw:', err)
     return NextResponse.json({ error: 'Network error reaching Klaviyo.' }, { status: 502 })
   }
+
+  // Step 2: Find the profile by email then PATCH first_name onto it
+  // Search for the profile ID first
+  console.log('[BSV] Step 2 — fetching profile by email to patch first_name')
+
+  try {
+    const searchRes = await fetch(
+      `https://a.klaviyo.com/api/profiles/?filter=equals(email,"${encodeURIComponent(email)}")`,
+      { method: 'GET', headers }
+    )
+
+    const searchBody = await searchRes.text()
+    console.log('[BSV] Klaviyo profile search status:', searchRes.status)
+    console.log('[BSV] Klaviyo profile search body:', searchBody)
+
+    if (searchRes.ok) {
+      const searchJson = JSON.parse(searchBody)
+      const profileId  = searchJson?.data?.[0]?.id
+
+      if (profileId) {
+        const patchRes = await fetch(`https://a.klaviyo.com/api/profiles/${profileId}/`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            data: {
+              type: 'profile',
+              id:   profileId,
+              attributes: { first_name: firstName },
+            },
+          }),
+        })
+        const patchBody = await patchRes.text()
+        console.log('[BSV] Klaviyo PATCH status:', patchRes.status)
+        console.log('[BSV] Klaviyo PATCH body:', patchBody)
+      } else {
+        console.warn('[BSV] Profile not found in search — first_name not patched')
+      }
+    }
+  } catch (err) {
+    // Non-fatal — subscription succeeded, first_name patch is best-effort
+    console.error('[BSV] Profile patch threw (non-fatal):', err)
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 })
 }
