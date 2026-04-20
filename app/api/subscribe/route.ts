@@ -21,100 +21,85 @@ export async function POST(req: NextRequest) {
     'revision':      '2023-12-15',
   }
 
-  // Step 1: Subscribe email to list — no first_name in this payload
-  const subPayload = {
-    data: {
-      type: 'profile-subscription-bulk-create-job',
-      attributes: {
-        profiles: {
-          data: [
-            {
-              type: 'profile',
-              attributes: {
-                email,
-                subscriptions: {
-                  email: {
-                    marketing: { consent: 'SUBSCRIBED' },
-                  },
-                },
-              },
-            },
-          ],
-        },
-      },
-      relationships: {
-        list: {
-          data: { type: 'list', id: listId },
-        },
-      },
-    },
-  }
+  // Step 1: Create or update the profile
+  console.log('[BSV] Step 1 — creating profile for:', email)
 
-  console.log('[BSV] Step 1 — subscribing to list, listId:', listId, 'email:', email)
+  let profileId: string | null = null
 
   try {
-    const subRes = await fetch('https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/', {
+    const profileRes = await fetch('https://a.klaviyo.com/api/profiles/', {
       method: 'POST',
       headers,
-      body: JSON.stringify(subPayload),
+      body: JSON.stringify({
+        data: {
+          type: 'profile',
+          attributes: { email, first_name: firstName },
+        },
+      }),
     })
 
-    const subBody = await subRes.text()
-    console.log('[BSV] Klaviyo subscribe status:', subRes.status)
-    console.log('[BSV] Klaviyo subscribe body:', subBody)
+    const profileBody = await profileRes.text()
+    console.log('[BSV] Profile create status:', profileRes.status)
+    console.log('[BSV] Profile create body:', profileBody)
 
-    if (!subRes.ok) {
+    if (profileRes.status === 201 || profileRes.status === 200) {
+      // Created — extract ID from response
+      const json = JSON.parse(profileBody)
+      profileId = json?.data?.id ?? null
+    } else if (profileRes.status === 409) {
+      // Already exists — extract ID from the conflict response
+      const json = JSON.parse(profileBody)
+      profileId = json?.errors?.[0]?.meta?.duplicate_profile_id ?? null
+      console.log('[BSV] Profile already exists, id:', profileId)
+    } else {
+      const detail = profileBody
+      console.error('[BSV] Profile create failed:', profileRes.status, detail)
       return NextResponse.json(
-        { error: 'Klaviyo subscription failed.', status: subRes.status, detail: subBody },
+        { error: 'Failed to create profile.', status: profileRes.status, detail },
         { status: 400 }
       )
     }
   } catch (err) {
-    console.error('[BSV] Klaviyo subscribe fetch threw:', err)
+    console.error('[BSV] Profile create threw:', err)
     return NextResponse.json({ error: 'Network error reaching Klaviyo.' }, { status: 502 })
   }
 
-  // Step 2: Find the profile by email then PATCH first_name onto it
-  // Search for the profile ID first
-  console.log('[BSV] Step 2 — fetching profile by email to patch first_name')
-
-  try {
-    const searchRes = await fetch(
-      `https://a.klaviyo.com/api/profiles/?filter=equals(email,"${encodeURIComponent(email)}")`,
-      { method: 'GET', headers }
-    )
-
-    const searchBody = await searchRes.text()
-    console.log('[BSV] Klaviyo profile search status:', searchRes.status)
-    console.log('[BSV] Klaviyo profile search body:', searchBody)
-
-    if (searchRes.ok) {
-      const searchJson = JSON.parse(searchBody)
-      const profileId  = searchJson?.data?.[0]?.id
-
-      if (profileId) {
-        const patchRes = await fetch(`https://a.klaviyo.com/api/profiles/${profileId}/`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            data: {
-              type: 'profile',
-              id:   profileId,
-              attributes: { first_name: firstName },
-            },
-          }),
-        })
-        const patchBody = await patchRes.text()
-        console.log('[BSV] Klaviyo PATCH status:', patchRes.status)
-        console.log('[BSV] Klaviyo PATCH body:', patchBody)
-      } else {
-        console.warn('[BSV] Profile not found in search — first_name not patched')
-      }
-    }
-  } catch (err) {
-    // Non-fatal — subscription succeeded, first_name patch is best-effort
-    console.error('[BSV] Profile patch threw (non-fatal):', err)
+  if (!profileId) {
+    console.error('[BSV] Could not determine profile ID')
+    return NextResponse.json({ error: 'Could not resolve profile ID.' }, { status: 500 })
   }
 
+  // Step 2: Add profile to list
+  console.log('[BSV] Step 2 — adding profile', profileId, 'to list', listId)
+
+  try {
+    const listRes = await fetch(
+      `https://a.klaviyo.com/api/lists/${listId}/relationships/profiles/`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          data: [{ type: 'profile', id: profileId }],
+        }),
+      }
+    )
+
+    const listBody = await listRes.text()
+    console.log('[BSV] List add status:', listRes.status)
+    console.log('[BSV] List add body:', listBody)
+
+    // 204 = added, 200 = ok, profile may already be in list — both are success
+    if (!listRes.ok && listRes.status !== 204) {
+      return NextResponse.json(
+        { error: 'Failed to add profile to list.', status: listRes.status, detail: listBody },
+        { status: 400 }
+      )
+    }
+  } catch (err) {
+    console.error('[BSV] List add threw:', err)
+    return NextResponse.json({ error: 'Network error reaching Klaviyo.' }, { status: 502 })
+  }
+
+  console.log('[BSV] Success — profile', profileId, 'added to list', listId)
   return NextResponse.json({ ok: true }, { status: 200 })
 }
