@@ -85,12 +85,14 @@ export default function ComingSoonPage() {
     >
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="w-full text-center">
-        <span className="font-heading text-5xl sm:text-6xl tracking-wider" style={{ color: AMBER }}>
-          BSV
+      <header className="w-full text-center flex flex-col items-center gap-1">
+        <span className="font-heading text-4xl sm:text-5xl tracking-widest" style={{ color: CREAM }}>
+          BIG SOLE VIBES
         </span>
-        {/* Amber rule under logo */}
-        <div className="mx-auto mt-3 w-16 h-px" style={{ backgroundColor: AMBER }} />
+        <span className="font-body text-sm sm:text-base italic" style={{ color: AMBER }}>
+          Men&apos;s Foot Care &amp; Accessories
+        </span>
+        <div className="mt-2 w-16 h-px" style={{ backgroundColor: AMBER }} />
       </header>
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
