@@ -140,12 +140,29 @@ export default function ComingSoonPage() {
             Join the Sole Squad — no spam, no nonsense. Just the good stuff.
           </p>
 
-          {status === 'success' ? (
-            <p className="font-body text-lg italic text-center" style={{ color: AMBER }}>
+          <div className="relative w-full flex flex-col items-center" style={{ maxWidth: 500 }}>
+
+            {/* Success message — fades in, sits behind form until needed */}
+            <p
+              className="font-body text-lg italic text-center absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{
+                color: AMBER,
+                opacity: status === 'success' ? 1 : 0,
+                transition: 'opacity 250ms ease',
+              }}
+            >
               Welcome to the Lounge.
             </p>
-          ) : (
-            <div className="flex flex-col items-center gap-3 w-full" style={{ maxWidth: 500 }}>
+
+            {/* Form — fades out on success, no transition on the button itself */}
+            <div
+              className="flex flex-col items-center gap-3 w-full"
+              style={{
+                opacity: status === 'success' ? 0 : 1,
+                transition: 'opacity 200ms ease',
+                pointerEvents: status === 'success' ? 'none' : 'auto',
+              }}
+            >
               <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
                 <input
                   type="text"
@@ -154,7 +171,7 @@ export default function ComingSoonPage() {
                   onChange={e => setFirstName(e.target.value)}
                   required
                   disabled={status === 'loading'}
-                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body disabled:opacity-50"
+                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border font-body disabled:opacity-50"
                   style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
                 />
                 <input
@@ -164,13 +181,13 @@ export default function ComingSoonPage() {
                   onChange={e => setEmail(e.target.value)}
                   required
                   disabled={status === 'loading'}
-                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border transition-colors font-body disabled:opacity-50"
+                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border font-body disabled:opacity-50"
                   style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
                 />
                 <button
                   type="submit"
                   disabled={status === 'loading'}
-                  className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest transition-opacity hover:opacity-85 whitespace-nowrap font-heading disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest whitespace-nowrap font-heading disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: AMBER, color: NAVY }}
                 >
                   {status === 'loading' ? 'One moment…' : 'Step Inside'}
@@ -182,7 +199,8 @@ export default function ComingSoonPage() {
                 </p>
               )}
             </div>
-          )}
+
+          </div>
         </section>
 
         {/* Socials */}
