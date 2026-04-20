@@ -204,7 +204,7 @@ export default function ComingSoonPage() {
 
       </main>
 
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
+      {/* ── Footer ──────────────────────────────────────────────────────────── */}
       <footer className="mt-10 font-body text-xs text-center" style={{ color: MUTED }}>
         © 2025 Big Sole Vibes. All rights reserved.
       </footer>
