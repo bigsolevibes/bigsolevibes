@@ -4,165 +4,124 @@ import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 
 export const metadata: Metadata = {
-  title: 'Foot Audits',
-  description: 'Find out exactly what your feet need. Free foot health audit from Big Sole Vibes.',
+  title: 'The Sole Audits | Big Sole Vibes',
+  description:
+    "We audit the industry's best and worst so you don't have to. Each Sole Audit is a verdict, not a review.",
 }
 
-const auditCards = [
-  {
-    step: '01',
-    title: 'Skin Condition',
-    questions: [
-      'Do you have dry, cracked heels?',
-      'Is the skin on your soles rough or calloused?',
-      'Do you experience persistent itching or peeling?',
-    ],
-    result: 'Dry to severe — needs moisture and exfoliation protocol.',
-    tag: 'HYDRATION',
-  },
-  {
-    step: '02',
-    title: 'Nail Health',
-    questions: [
-      'Are your nails thick, discolored, or brittle?',
-      'Do ingrown nails recur on any toe?',
-      'When did you last trim and file your nails properly?',
-    ],
-    result: 'Maintenance overdue — weekly trim and cuticle care required.',
-    tag: 'NAILS',
-  },
-  {
-    step: '03',
-    title: 'Odor & Hygiene',
-    questions: [
-      'Do your feet odor persists after washing?',
-      'Do you rotate footwear and use moisture-wicking socks?',
-      'Are you using an antifungal or deodorizing product?',
-    ],
-    result: 'Bacteria imbalance likely — hygiene and product routine needed.',
-    tag: 'HYGIENE',
-  },
-  {
-    step: '04',
-    title: 'Comfort & Pain',
-    questions: [
-      'Do you experience heel or arch pain after standing?',
-      'Do your feet swell noticeably by end of day?',
-      'Are your current shoes providing adequate support?',
-    ],
-    result: 'Structural support gap — insoles and footwear assessment recommended.',
-    tag: 'COMFORT',
-  },
-]
+interface Audit {
+  number: string
+  title: string
+  teaser: string
+  status: 'Dropping Soon' | 'In Queue'
+}
 
-const recommendations = [
-  { score: '0–1 flags', label: 'SOLID', note: 'You\'re already ahead. Maintain with a simple weekly routine.' },
-  { score: '2–4 flags', label: 'NEEDS WORK', note: 'Targeted products and a consistent routine will fix this fast.' },
-  { score: '5–8 flags', label: 'CRITICAL', note: 'Full reset required. Start with our recommended starter kit.' },
-  { score: '9+ flags', label: 'SEE A PRO', note: 'Some conditions need a podiatrist. Don\'t ignore it.' },
+const AUDITS: Audit[] = [
+  {
+    number: '01',
+    title: 'The Mojito Mistake',
+    teaser: 'A story as old as summer. The sandals. The occasion. The aftermath.',
+    status: 'Dropping Soon',
+  },
+  {
+    number: '02',
+    title: 'The German Question',
+    teaser: 'Is Gehwol actually worth the tin? We put a century of credibility to the test.',
+    status: 'In Queue',
+  },
+  {
+    number: '03',
+    title: 'The Spa Day Confession',
+    teaser: 'Men who get pedicures and men who lie about getting pedicures. There are only two kinds.',
+    status: 'In Queue',
+  },
+  {
+    number: '04',
+    title: 'The Locker Room Report',
+    teaser: "What's actually living in your gym shoes. Not for the faint of heart.",
+    status: 'In Queue',
+  },
 ]
 
 export default function AuditsPage() {
   return (
     <>
       <SiteNav />
-      <main className="pt-16">
+      <main className="pt-16 bg-bsv-bg min-h-screen">
 
-        {/* Hero */}
+        {/* ── Page header ──────────────────────────────────────────────────── */}
         <section className="py-20 bg-bsv-card border-b border-white/5">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p className="text-bsv-amber font-heading tracking-widest text-sm mb-4">FREE TOOL</p>
-            <h1 className="font-heading text-6xl sm:text-7xl text-bsv-cream tracking-wide mb-4 leading-none">
-              THE FOOT <span className="text-bsv-amber">AUDIT</span>
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">
+              THE SOLE AUDITS
+            </p>
+            <h1 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide leading-none mb-6">
+              We Audit. You Decide.
             </h1>
-            <p className="text-bsv-muted text-lg max-w-xl mx-auto">
-              Four categories. Sixteen questions. A clear picture of exactly where you stand
-              — and what to do about it.
+            <p className="font-body text-base sm:text-lg italic text-bsv-muted max-w-2xl mx-auto">
+              We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
+              Each Sole Audit is a verdict, not a review.
             </p>
           </div>
         </section>
 
-        {/* Audit cards */}
-        <section className="py-24 bg-bsv-bg">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-8">
-              {auditCards.map((card) => (
+        {/* ── Featured coming-soon band ─────────────────────────────────────── */}
+        <section className="py-16 bg-bsv-surface border-b border-white/5">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="border border-bsv-amber/30 p-10 sm:p-14 flex flex-col items-center text-center gap-6">
+              <span className="font-heading text-xs tracking-widest text-bsv-amber">
+                FIRST AUDIT — DROPPING SOON
+              </span>
+              <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide leading-none">
+                The Mojito Mistake
+              </h2>
+              <p className="font-body text-base sm:text-lg text-bsv-muted max-w-xl leading-relaxed">
+                You know what you did. We&apos;re going to talk about it. The first Sole Audit drops
+                soon — join The Lounge to get notified first.
+              </p>
+              <Link
+                href="/"
+                className="font-heading text-xs tracking-widest bg-bsv-amber text-bsv-navy px-8 py-4 hover:opacity-85 transition-opacity whitespace-nowrap"
+              >
+                JOIN THE LOUNGE
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Audit cards 2×2 ──────────────────────────────────────────────── */}
+        <section className="py-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-10 text-center">
+              UP NEXT
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {AUDITS.map((audit) => (
                 <div
-                  key={card.step}
-                  className="bg-bsv-card border border-white/5 p-8 sm:p-10"
+                  key={audit.number}
+                  className="bg-bsv-card border border-white/5 p-8 flex flex-col gap-4"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-6">
-                    <div className="flex-shrink-0">
-                      <span className="font-heading text-5xl text-bsv-amber/30 leading-none">
-                        {card.step}
-                      </span>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-4">
-                        <h2 className="font-heading text-3xl text-bsv-cream tracking-wide">
-                          {card.title}
-                        </h2>
-                        <span className="text-bsv-amber font-heading tracking-widest text-xs border border-bsv-amber/30 px-2 py-0.5">
-                          {card.tag}
-                        </span>
-                      </div>
-                      <ul className="flex flex-col gap-3 mb-6">
-                        {card.questions.map((q) => (
-                          <li key={q} className="flex items-start gap-3 text-bsv-muted text-sm leading-relaxed">
-                            <span className="text-bsv-amber mt-0.5 flex-shrink-0">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-                              </svg>
-                            </span>
-                            {q}
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="border-l-2 border-bsv-amber/40 pl-4">
-                        <p className="text-bsv-cream text-sm font-medium">
-                          <span className="text-bsv-amber font-heading tracking-widest text-xs mr-2">BENCHMARK</span>
-                          {card.result}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <span className="font-heading text-5xl text-bsv-amber/20 leading-none select-none">
+                    {audit.number}
+                  </span>
+                  <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight">
+                    {audit.title}
+                  </h3>
+                  <p className="font-body text-sm text-bsv-muted leading-relaxed flex-1">
+                    {audit.teaser}
+                  </p>
+                  <span
+                    className={`font-heading text-xs tracking-widest self-start px-3 py-1 ${
+                      audit.status === 'Dropping Soon'
+                        ? 'bg-bsv-amber text-bsv-navy'
+                        : 'border border-white/10 text-bsv-muted'
+                    }`}
+                  >
+                    {audit.status.toUpperCase()}
+                  </span>
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* Score key */}
-        <section className="py-20 bg-bsv-card border-t border-white/5">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="font-heading text-4xl text-bsv-cream tracking-wide mb-12 text-center">
-              READ YOUR <span className="text-bsv-amber">RESULTS</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {recommendations.map((rec) => (
-                <div key={rec.label} className="bg-bsv-bg border border-white/5 p-6 text-center">
-                  <p className="text-bsv-muted font-heading tracking-widest text-xs mb-2">{rec.score}</p>
-                  <p className="font-heading text-2xl text-bsv-amber tracking-wide mb-3">{rec.label}</p>
-                  <p className="text-bsv-muted text-sm leading-relaxed">{rec.note}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section className="py-16 bg-bsv-bg border-t border-white/5">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div>
-              <p className="font-heading text-2xl text-bsv-cream tracking-wide">Ready to fix what's flagged?</p>
-              <p className="text-bsv-muted text-sm mt-1">Browse the full collection — every product is chosen for a reason.</p>
-            </div>
-            <Link
-              href="/products"
-              className="bg-bsv-amber hover:bg-amber-600 text-bsv-navy font-heading tracking-widest text-sm px-8 py-4 transition-colors whitespace-nowrap"
-            >
-              SHOP THE FIX
-            </Link>
           </div>
         </section>
 
