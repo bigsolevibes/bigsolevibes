@@ -5,12 +5,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const navLinks = [
-  { label: 'Home',     href: '/' },
-  { label: 'Products', href: '/products' },
-  { label: 'Blog',     href: '/blog' },
-  { label: 'Lounge',   href: '/lounge' },
-  { label: 'Audits',   href: '/audits' },
-  { label: 'Brief',    href: '/brief' },
+  { label: 'Home',   href: '/' },
+  { label: 'Lounge', href: '/lounge' },
+  { label: 'Audits', href: '/audits' },
+  { label: 'Brief',  href: '/brief' },
 ]
 
 export default function SiteNav() {

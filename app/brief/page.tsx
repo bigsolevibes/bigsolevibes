@@ -4,7 +4,7 @@ import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 
 export const metadata: Metadata = {
-  title: 'The Brief | Big Sole Vibes',
+  title: 'The Brief',
   description:
     "The Proprietor's take on foot care, grooming, ritual, and the quiet dignity of looking after yourself.",
 }
@@ -36,7 +36,7 @@ export default function BriefPage() {
             <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">
               THE BRIEF
             </p>
-            <h1 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide leading-none mb-6">
+            <h1 className="font-body text-5xl sm:text-6xl text-bsv-cream leading-none mb-6">
               Dispatches from The Lounge.
             </h1>
             <p className="font-body text-base sm:text-lg italic text-bsv-muted max-w-2xl mx-auto">
@@ -50,7 +50,7 @@ export default function BriefPage() {
         <section className="py-20 border-b border-white/5">
           <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col items-center gap-6">
             <div className="w-12 h-px bg-bsv-amber" />
-            <h2 className="font-heading text-3xl sm:text-4xl text-bsv-cream tracking-wide">
+            <h2 className="font-body text-3xl sm:text-4xl text-bsv-cream">
               Join The Lounge.
             </h2>
             <p className="font-body text-base text-bsv-muted leading-relaxed max-w-md">

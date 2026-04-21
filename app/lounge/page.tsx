@@ -4,7 +4,7 @@ import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 
 export const metadata: Metadata = {
-  title: "The Lounge Collection | Big Sole Vibes",
+  title: 'The Lounge Collection',
   description:
     "Hand-selected foot care products. Proprietor-approved. Nothing goes on this shelf that hasn't earned its place.",
 }
@@ -123,7 +123,7 @@ export default function LoungePage() {
             <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">
               THE PROPRIETOR&apos;S KIT
             </p>
-            <h1 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide leading-none mb-6">
+            <h1 className="font-body text-5xl sm:text-6xl text-bsv-cream leading-none mb-6">
               The Lounge Collection
             </h1>
             <p className="font-body text-base sm:text-lg italic text-bsv-muted max-w-xl mx-auto">
@@ -166,7 +166,7 @@ export default function LoungePage() {
                   <p className="font-heading text-xs tracking-widest text-bsv-muted mb-1">
                     {featured.brand}
                   </p>
-                  <h2 className="font-heading text-3xl sm:text-4xl tracking-wide text-bsv-cream group-hover:text-bsv-amber transition-colors leading-tight mb-4">
+                  <h2 className="font-body text-3xl sm:text-4xl text-bsv-cream group-hover:text-bsv-amber transition-colors leading-tight mb-4">
                     {featured.name}
                   </h2>
                   <p className="font-body text-base text-bsv-muted leading-relaxed max-w-xl">

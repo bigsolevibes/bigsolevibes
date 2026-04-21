@@ -4,7 +4,7 @@ import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 
 export const metadata: Metadata = {
-  title: 'The Sole Audits | Big Sole Vibes',
+  title: 'The Sole Audits',
   description:
     "We audit the industry's best and worst so you don't have to. Each Sole Audit is a verdict, not a review.",
 }
@@ -55,7 +55,7 @@ export default function AuditsPage() {
             <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">
               THE SOLE AUDITS
             </p>
-            <h1 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide leading-none mb-6">
+            <h1 className="font-body text-5xl sm:text-6xl text-bsv-cream leading-none mb-6">
               We Audit. You Decide.
             </h1>
             <p className="font-body text-base sm:text-lg italic text-bsv-muted max-w-2xl mx-auto">
@@ -72,7 +72,7 @@ export default function AuditsPage() {
               <span className="font-heading text-xs tracking-widest text-bsv-amber">
                 FIRST AUDIT — DROPPING SOON
               </span>
-              <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide leading-none">
+              <h2 className="font-body text-4xl sm:text-5xl text-bsv-cream leading-none">
                 The Mojito Mistake
               </h2>
               <p className="font-body text-base sm:text-lg text-bsv-muted max-w-xl leading-relaxed">

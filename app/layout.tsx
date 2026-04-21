@@ -20,11 +20,10 @@ const bebasNeue = Bebas_Neue({
 export const metadata: Metadata = {
   metadataBase: new URL('https://bigsolevibes.com'),
   title: {
-    default: 'Big Sole Vibes — Premium Men\'s Foot Care',
     template: '%s | Big Sole Vibes',
+    default: 'Big Sole Vibes — Premium Men\'s Foot Care',
   },
-  description:
-    'Premium foot care and accessories built for men who take care of their kicks — and themselves.',
+  description: 'Your feet work hard. Start acting like it.',
   openGraph: {
     title: 'Big Sole Vibes',
     description:
