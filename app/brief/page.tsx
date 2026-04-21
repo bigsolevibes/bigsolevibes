@@ -83,7 +83,7 @@ export default function BriefPage() {
                     <span className="font-heading text-xs tracking-widest text-bsv-amber whitespace-nowrap">
                       {item.vol}
                     </span>
-                    <h3 className="font-heading text-xl sm:text-2xl text-bsv-cream tracking-wide leading-snug">
+                    <h3 className="font-body text-xl sm:text-2xl text-bsv-cream leading-snug">
                       {item.title}
                     </h3>
                   </div>

@@ -104,7 +104,7 @@ export default function AuditsPage() {
                   <span className="font-heading text-5xl text-bsv-amber/20 leading-none select-none">
                     {audit.number}
                   </span>
-                  <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight">
+                  <h3 className="font-body text-2xl text-bsv-cream leading-tight">
                     {audit.title}
                   </h3>
                   <p className="font-body text-sm text-bsv-muted leading-relaxed flex-1">
