@@ -1,6 +1,7 @@
 'use client' // redeploy
 
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
+import Link from 'next/link'
 
 const AMBER  = '#C17D2E'
 const CREAM  = '#F5ECD7'
@@ -58,9 +59,15 @@ const SOCIALS = [
 
 
 export default function ComingSoonPage() {
+  const [isPreview, setIsPreview] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [email, setEmail]         = useState('')
   const [status, setStatus]       = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+
+  useEffect(() => {
+    const isPreview = !window.location.hostname.includes('bigsolevibes.com')
+    setIsPreview(isPreview)
+  }, [])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -87,6 +94,18 @@ export default function ComingSoonPage() {
   }
 
   return (
+    <>
+      {isPreview && (
+        <div
+          className="w-full flex items-center justify-center gap-6 px-4 py-2 text-xs font-heading tracking-widest"
+          style={{ backgroundColor: NAVY, borderBottom: `1px solid ${AMBER}33` }}
+        >
+          <span style={{ color: MUTED }}>PREVIEW</span>
+          <Link href="/lounge" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">LOUNGE</Link>
+          <Link href="/audits" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">AUDITS</Link>
+          <Link href="/brief"  style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">BRIEF</Link>
+        </div>
+      )}
     <div
       className="min-h-screen flex flex-col items-center justify-between px-4 py-12"
       style={{ backgroundColor: NAVY, color: CREAM }}
@@ -236,5 +255,6 @@ export default function ComingSoonPage() {
       </footer>
 
     </div>
+    </>
   )
 }
