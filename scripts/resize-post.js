@@ -6,9 +6,11 @@ const platforms = [
   { name: 'instagram', width: 1080, height: 1080 },
   { name: 'facebook', width: 1080, height: 1080 },
   { name: 'twitter', width: 1600, height: 900 },
-  { name: 'youtube', width: 1280, height: 720, format: 'jpeg', quality: 90 },
+  { name: 'youtube', width: 1600, height: 900, format: 'jpeg', quality: 95 },
   { name: 'tiktok', width: 1080, height: 1920 },
 ]
+
+const desktopDir = '/Users/davidgeer/Desktop/bsv-posts'
 
 const args = process.argv.slice(2)
 const inputPath = args[0]
@@ -30,6 +32,7 @@ const targets = platformFilter ? platforms.filter(p => p.name === platformFilter
 
 const outputDir = path.join(__dirname, '..', 'posts', 'output')
 fs.mkdirSync(outputDir, { recursive: true })
+fs.mkdirSync(desktopDir, { recursive: true })
 
 const baseName = path.basename(inputPath, path.extname(inputPath))
 const ext = path.extname(inputPath) || '.png'
@@ -37,11 +40,17 @@ const ext = path.extname(inputPath) || '.png'
 ;(async () => {
   for (const platform of targets) {
     const outExt = platform.format === 'jpeg' ? '.jpg' : ext
-    const outputPath = path.join(outputDir, `${baseName}-${platform.name}${outExt}`)
+    const fileName = `${baseName}-${platform.name}${outExt}`
+    const outputPath = path.join(outputDir, fileName)
+    const desktopPath = path.join(desktopDir, fileName)
+
     let pipeline = sharp(inputPath)
       .resize(platform.width, platform.height, { fit: 'cover', position: 'centre' })
     if (platform.format === 'jpeg') pipeline = pipeline.jpeg({ quality: platform.quality })
     await pipeline.toFile(outputPath)
+
+    fs.copyFileSync(outputPath, desktopPath)
     console.log(`${platform.name}: ${outputPath}`)
+    console.log(`  → copied to ${desktopPath}`)
   }
 })()
