@@ -6,7 +6,7 @@ const platforms = [
   { name: 'instagram', width: 1080, height: 1080 },
   { name: 'facebook', width: 1080, height: 1080 },
   { name: 'twitter', width: 1600, height: 900 },
-  { name: 'youtube', width: 1920, height: 1080 },
+  { name: 'youtube', width: 1280, height: 720, format: 'jpeg', quality: 90 },
   { name: 'tiktok', width: 1080, height: 1920 },
 ]
 
@@ -36,10 +36,12 @@ const ext = path.extname(inputPath) || '.png'
 
 ;(async () => {
   for (const platform of targets) {
-    const outputPath = path.join(outputDir, `${baseName}-${platform.name}${ext}`)
-    await sharp(inputPath)
+    const outExt = platform.format === 'jpeg' ? '.jpg' : ext
+    const outputPath = path.join(outputDir, `${baseName}-${platform.name}${outExt}`)
+    let pipeline = sharp(inputPath)
       .resize(platform.width, platform.height, { fit: 'cover', position: 'centre' })
-      .toFile(outputPath)
+    if (platform.format === 'jpeg') pipeline = pipeline.jpeg({ quality: platform.quality })
+    await pipeline.toFile(outputPath)
     console.log(`${platform.name}: ${outputPath}`)
   }
 })()
