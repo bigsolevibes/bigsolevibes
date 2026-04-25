@@ -15,9 +15,11 @@ function getArg(flag) {
 const imageDir = getArg('--image-dir') || 'posts/output'
 const caption = getArg('--caption')
 const baseUrl = getArg('--base-url') || process.env.BASE_URL || null
+const isSetup = args.includes('--setup')
 
-if (!caption) {
+if (!isSetup && !caption) {
   console.error('Usage: node scripts/distribute.js --caption "text" [--image-dir posts/output/] [--base-url https://example.com/posts/output]')
+  console.error('       node scripts/distribute.js --setup')
   process.exit(1)
 }
 
@@ -162,9 +164,88 @@ async function postToInstagram() {
   }
 }
 
+// ─── Setup ───────────────────────────────────────────────────────────────────
+
+async function runSetup() {
+  const token = process.env.META_ACCESS_TOKEN
+  if (!token) {
+    console.error('✗ META_ACCESS_TOKEN not set in .env — cannot run setup.')
+    process.exit(1)
+  }
+
+  console.log('\nFetching your Meta accounts...\n')
+
+  // 1. Get all Facebook Pages this token has access to
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v19.0/me/accounts?access_token=${token}`
+  )
+  const pagesData = await pagesRes.json()
+
+  if (!pagesRes.ok || pagesData.error) {
+    console.error(`✗ Failed to fetch pages: ${pagesData.error?.message || `HTTP ${pagesRes.status}`}`)
+    console.error('  Make sure META_ACCESS_TOKEN is a valid User access token with pages_show_list permission.')
+    process.exit(1)
+  }
+
+  const pages = pagesData.data || []
+  if (pages.length === 0) {
+    console.log('No Facebook Pages found for this token.')
+    return
+  }
+
+  console.log(`Found ${pages.length} Facebook Page(s):\n`)
+
+  for (const page of pages) {
+    console.log(`  Page name:  ${page.name}`)
+    console.log(`  META_PAGE_ID=${page.id}`)
+
+    // 2. For each page, check for a linked Instagram Business Account
+    const igRes = await fetch(
+      `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${token}`
+    )
+    const igData = await igRes.json()
+
+    if (igData.instagram_business_account?.id) {
+      const igId = igData.instagram_business_account.id
+
+      // Fetch IG username for clarity
+      const igDetailRes = await fetch(
+        `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${token}`
+      )
+      const igDetail = await igDetailRes.json()
+      const username = igDetail.username ? `@${igDetail.username}` : ''
+
+      console.log(`  Instagram:  ${username}`)
+      console.log(`  META_IG_ACCOUNT_ID=${igId}`)
+    } else {
+      console.log('  Instagram:  No Instagram Business Account linked to this page')
+    }
+
+    console.log()
+  }
+
+  console.log('─── Add these to your .env ────────────────')
+  for (const page of pages) {
+    console.log(`META_PAGE_ID=${page.id}`)
+    const igRes = await fetch(
+      `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${token}`
+    )
+    const igData = await igRes.json()
+    if (igData.instagram_business_account?.id) {
+      console.log(`META_IG_ACCOUNT_ID=${igData.instagram_business_account.id}`)
+    }
+  }
+  console.log()
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
 ;(async () => {
+  if (isSetup) {
+    await runSetup()
+    return
+  }
+
   console.log(`\nDistributing — caption: "${caption}"\n`)
   console.log('Images found:')
   for (const [platform, file] of Object.entries(images)) {
