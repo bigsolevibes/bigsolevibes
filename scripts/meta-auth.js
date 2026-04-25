@@ -126,7 +126,7 @@ function startServer() {
     })
 
     server.listen(PORT, () => {
-      const authUrl = new URL('https://api.instagram.com/oauth/authorize')
+      const authUrl = new URL('https://www.instagram.com/oauth/authorize')
       authUrl.searchParams.set('client_id',     APP_ID)
       authUrl.searchParams.set('redirect_uri',  REDIRECT)
       authUrl.searchParams.set('scope',         SCOPES)
