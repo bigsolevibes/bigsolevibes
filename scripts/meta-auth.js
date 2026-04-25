@@ -7,15 +7,7 @@ const APP_ID     = process.env.META_APP_ID
 const APP_SECRET = process.env.META_APP_SECRET
 const PORT       = 3333
 const REDIRECT   = `http://localhost:${PORT}/callback`
-
-const SCOPES = [
-  'pages_show_list',
-  'pages_read_engagement',
-  'pages_manage_posts',
-  'pages_manage_metadata',
-  'instagram_basic',
-  'instagram_content_publish',
-].join(',')
+const SCOPES     = 'instagram_business_basic,instagram_business_content_publish'
 
 if (!APP_ID || !APP_SECRET) {
   console.error('✗ META_APP_ID and META_APP_SECRET must be set in .env')
@@ -29,73 +21,43 @@ async function exchangeCodeForToken(code) {
   const params = new URLSearchParams({
     client_id:     APP_ID,
     client_secret: APP_SECRET,
+    grant_type:    'authorization_code',
     redirect_uri:  REDIRECT,
     code,
   })
-  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params}`)
+  const res = await fetch('https://api.instagram.com/oauth/access_token', {
+    method: 'POST',
+    body:   params,
+  })
   const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.access_token
+  if (data.error_message) throw new Error(data.error_message)
+  if (data.error)         throw new Error(data.error.message || JSON.stringify(data.error))
+  return { token: data.access_token, userId: data.user_id }
 }
 
-// ─── Step 2: exchange short-lived token for long-lived (60 days) ─────────────
+// ─── Step 2: exchange for long-lived token (60 days) ─────────────────────────
 
 async function getLongLivedToken(shortToken) {
   const params = new URLSearchParams({
-    grant_type:        'fb_exchange_token',
-    client_id:         APP_ID,
-    client_secret:     APP_SECRET,
-    fb_exchange_token: shortToken,
+    grant_type:    'ig_exchange_token',
+    client_secret: APP_SECRET,
+    access_token:  shortToken,
   })
-  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params}`)
+  const res = await fetch(`https://graph.instagram.com/access_token?${params}`)
   const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error))
   return data.access_token
 }
 
-// ─── Step 3: fetch pages + Instagram accounts ─────────────────────────────────
+// ─── Step 3: fetch Instagram account info ────────────────────────────────────
 
-async function fetchAccounts(token) {
-  const res = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${token}`)
-  const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-
-  const pages = data.data || []
-  const results = []
-
-  for (const page of pages) {
-    const igRes = await fetch(
-      `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${token}`
-    )
-    const igData = await igRes.json()
-
-    let igId = null
-    let igUsername = null
-
-    if (igData.instagram_business_account?.id) {
-      igId = igData.instagram_business_account.id
-      const detailRes = await fetch(
-        `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${token}`
-      )
-      const detail = await detailRes.json()
-      igUsername = detail.username || null
-    }
-
-    results.push({ page, igId, igUsername })
-  }
-
-  return results
-}
-
-// ─── Step 4: get a Page access token (long-lived, for posting) ────────────────
-
-async function getPageToken(pageId, userToken) {
+async function fetchIgAccount(token) {
   const res = await fetch(
-    `https://graph.facebook.com/v19.0/${pageId}?fields=access_token&access_token=${userToken}`
+    `https://graph.instagram.com/me?fields=id,username,name&access_token=${token}`
   )
   const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.access_token || null
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error))
+  return data
 }
 
 // ─── OAuth callback server ────────────────────────────────────────────────────
@@ -104,6 +66,7 @@ function startServer() {
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, `http://localhost:${PORT}`)
+
       if (url.pathname !== '/callback') {
         res.writeHead(404)
         res.end()
@@ -114,7 +77,7 @@ function startServer() {
       if (error) {
         const desc = url.searchParams.get('error_description') || error
         res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end(`<h2 style="font-family:sans-serif;color:red">Auth failed: ${desc}</h2><p>You can close this tab.</p>`)
+        res.end(`<html><body style="font-family:sans-serif;padding:2rem;color:red"><h2>Auth failed: ${desc}</h2><p>Close this tab and check the terminal.</p></body></html>`)
         server.close()
         reject(new Error(`OAuth error: ${desc}`))
         return
@@ -138,57 +101,38 @@ function startServer() {
 
       try {
         console.log('\n✓ Callback received — exchanging tokens...')
-        const shortToken = await exchangeCodeForToken(code)
-        const longToken  = await getLongLivedToken(shortToken)
-        console.log('✓ Long-lived user token obtained (valid ~60 days)\n')
 
-        const accounts = await fetchAccounts(longToken)
+        const { token: shortToken } = await exchangeCodeForToken(code)
+        const longToken = await getLongLivedToken(shortToken)
+        console.log('✓ Long-lived token obtained (valid ~60 days)\n')
 
-        if (accounts.length === 0) {
-          console.log('No Facebook Pages found for this account.')
-          resolve()
-          return
-        }
+        const account = await fetchIgAccount(longToken)
 
-        console.log('─── Results ───────────────────────────────────────────────')
+        console.log('─── Add these to your .env ────────────────────────────────')
         console.log()
-
-        for (const { page, igId, igUsername } of accounts) {
-          const pageToken = await getPageToken(page.id, longToken)
-
-          console.log(`Facebook Page:  ${page.name}`)
-          console.log(`META_PAGE_ID=${page.id}`)
-          if (pageToken) console.log(`META_PAGE_ACCESS_TOKEN=${pageToken}`)
-
-          if (igId) {
-            console.log(`Instagram:      ${igUsername ? '@' + igUsername : igId}`)
-            console.log(`META_IG_ACCOUNT_ID=${igId}`)
-          } else {
-            console.log('Instagram:      No Business Account linked to this page')
-          }
-          console.log()
-        }
-
-        console.log('─── User token (for META_ACCESS_TOKEN in .env) ────────────')
+        if (account.username) console.log(`# Instagram: @${account.username}`)
+        if (account.name)     console.log(`# Name:      ${account.name}`)
+        console.log()
+        console.log(`META_IG_ACCOUNT_ID=${account.id}`)
         console.log(`META_ACCESS_TOKEN=${longToken}`)
         console.log()
-        console.log('Add the lines above to your .env file.')
+        console.log('───────────────────────────────────────────────────────────')
 
         resolve()
       } catch (err) {
-        console.error('✗', err.message)
+        console.error('\n✗', err.message)
         reject(err)
       }
     })
 
     server.listen(PORT, () => {
-      const authUrl = new URL('https://www.facebook.com/dialog/oauth')
-      authUrl.searchParams.set('client_id',    APP_ID)
-      authUrl.searchParams.set('redirect_uri', REDIRECT)
-      authUrl.searchParams.set('scope',        SCOPES)
-      authUrl.searchParams.set('response_type','code')
+      const authUrl = new URL('https://api.instagram.com/oauth/authorize')
+      authUrl.searchParams.set('client_id',     APP_ID)
+      authUrl.searchParams.set('redirect_uri',  REDIRECT)
+      authUrl.searchParams.set('scope',         SCOPES)
+      authUrl.searchParams.set('response_type', 'code')
 
-      console.log('\nOpening browser for Meta login...')
+      console.log('\nOpening browser for Instagram login...')
       console.log(`\nIf it does not open automatically, visit:\n${authUrl.toString()}\n`)
 
       exec(`open "${authUrl.toString()}"`)
