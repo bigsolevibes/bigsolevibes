@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.0",
     "anthropic": "^0.0.0",
     "dotenv": "^17.4.2",
     "gray-matter": "^4.0.3",
@@ -16,7 +17,8 @@
     "next-mdx-remote": "^6.0.0",
     "react": "^18",
     "react-dom": "^18",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "twitter-api-v2": "^1.29.0"
   },
   "devDependencies": {
     "@types/node": "^20",
