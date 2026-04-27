@@ -43,43 +43,52 @@ export async function onRequestGet(context: any) {
   }
 
   try {
-    // Step 1: exchange code for short-lived token
+    // Step 1: exchange code for short-lived User Access Token
     const tokenParams = new URLSearchParams({
       client_id:     appId,
       client_secret: appSecret,
-      grant_type:    'authorization_code',
       redirect_uri:  REDIRECT,
       code,
     })
-    const tokenRes  = await fetch('https://api.instagram.com/oauth/access_token', { method: 'POST', body: tokenParams })
+    const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${tokenParams}`)
     const tokenData = await tokenRes.json() as any
-    if (tokenData.error_message) throw new Error(tokenData.error_message)
-    if (tokenData.error)         throw new Error(tokenData.error.message || JSON.stringify(tokenData.error))
+    if (tokenData.error) throw new Error(tokenData.error.message || JSON.stringify(tokenData.error))
     const shortToken = tokenData.access_token
 
-    // Step 2: exchange for long-lived token (~60 days)
+    // Step 2: exchange for long-lived User Access Token (~60 days)
     const longParams = new URLSearchParams({
-      grant_type:    'ig_exchange_token',
-      client_secret: appSecret,
-      access_token:  shortToken,
+      grant_type:        'fb_exchange_token',
+      client_id:         appId,
+      client_secret:     appSecret,
+      fb_exchange_token: shortToken,
     })
-    const longRes  = await fetch(`https://graph.instagram.com/access_token?${longParams}`)
+    const longRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${longParams}`)
     const longData = await longRes.json() as any
     if (longData.error) throw new Error(longData.error.message || JSON.stringify(longData.error))
     const longToken = longData.access_token
 
-    // Step 3: fetch account info
-    const meRes  = await fetch(`https://graph.instagram.com/me?fields=id,username,name&access_token=${longToken}`)
-    const me     = await meRes.json() as any
-    if (me.error) throw new Error(me.error.message || JSON.stringify(me.error))
+    // Step 3: fetch Pages this token can manage
+    const pagesRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${longToken}`)
+    const pagesData = await pagesRes.json() as any
+    if (pagesData.error) throw new Error(pagesData.error.message || JSON.stringify(pagesData.error))
+    const pages = (pagesData.data || []) as any[]
+
+    const pageRows = pages.map((p: any) =>
+      `<tr><td>${p.name}</td><td><code>META_PAGE_ID=${p.id}</code></td></tr>`
+    ).join('')
 
     return html(`
       <h2>✓ Authentication successful</h2>
-      ${me.username ? `<p>Instagram: <strong>@${me.username}</strong>${me.name ? ` &mdash; ${me.name}` : ''}</p>` : ''}
       <p class="lbl">Add these to your .env and Cloudflare Pages environment variables:</p>
-      <pre>META_IG_ACCOUNT_ID=${me.id}
-META_ACCESS_TOKEN=${longToken}</pre>
-      <p style="color:#888;font-size:0.85rem">This token is valid for ~60 days. Re-run <code>node scripts/meta-auth.js</code> to refresh it.</p>
+      <pre>META_ACCESS_TOKEN=${longToken}</pre>
+      ${pages.length > 0 ? `
+        <p class="lbl">Facebook Pages found:</p>
+        <table style="border-collapse:collapse;width:100%">
+          <tr style="color:#888"><th style="text-align:left;padding:4px 8px">Page</th><th style="text-align:left;padding:4px 8px">Env var</th></tr>
+          ${pageRows}
+        </table>
+      ` : '<p style="color:#888">No Pages found for this token.</p>'}
+      <p style="color:#888;font-size:0.85rem;margin-top:1.5rem">This token is valid for ~60 days. Re-run <code>node scripts/meta-auth.js</code> to refresh it.</p>
     `)
   } catch (err: any) {
     return html(`<h2 class="err">Error</h2><pre>${err.message}</pre>`)

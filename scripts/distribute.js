@@ -113,52 +113,37 @@ async function postToFacebook() {
 }
 
 // ─── Instagram ───────────────────────────────────────────────────────────────
-// Instagram Graph API requires a publicly accessible image URL.
-// Pass --base-url or set BASE_URL in .env pointing to where posts/output/ is served.
-// Example: --base-url https://bigsolevibes.com/posts/output
+// Posts via the Facebook Graph API using the Page Access Token.
+// Uses /PAGE_ID/photos — no Instagram Login or public image URL required.
 
 async function postToInstagram() {
-  const { META_ACCESS_TOKEN, META_IG_ACCOUNT_ID } = process.env
-  if (!META_ACCESS_TOKEN || !META_IG_ACCOUNT_ID) {
-    log('Instagram', 'fail', 'Missing META_ACCESS_TOKEN / META_IG_ACCOUNT_ID')
+  const { META_ACCESS_TOKEN, META_PAGE_ID } = process.env
+  if (!META_ACCESS_TOKEN || !META_PAGE_ID) {
+    log('Instagram', 'fail', 'Missing META_ACCESS_TOKEN / META_PAGE_ID')
     return
   }
   if (!images.instagram) {
     log('Instagram', 'fail', `No instagram image found in ${imageDir}`)
     return
   }
-  if (!baseUrl) {
-    log('Instagram', 'fail', 'Requires a public image URL — pass --base-url https://your-domain.com/posts/output or set BASE_URL in .env')
-    return
-  }
-
-  const imageUrl = `${baseUrl.replace(/\/$/, '')}/${path.basename(images.instagram)}`
 
   try {
-    // Step 1: create media container
-    const containerRes = await fetch(
-      `https://graph.facebook.com/v19.0/${META_IG_ACCOUNT_ID}/media`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_url: imageUrl, caption, access_token: META_ACCESS_TOKEN }),
-      }
+    const form = new FormData()
+    form.append('caption', caption)
+    form.append('access_token', META_ACCESS_TOKEN)
+    form.append(
+      'source',
+      new Blob([fs.readFileSync(images.instagram)]),
+      path.basename(images.instagram)
     )
-    const container = await containerRes.json()
-    if (!containerRes.ok || container.error) throw new Error(container.error?.message || `HTTP ${containerRes.status}`)
 
-    // Step 2: publish
-    const publishRes = await fetch(
-      `https://graph.facebook.com/v19.0/${META_IG_ACCOUNT_ID}/media_publish`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: container.id, access_token: META_ACCESS_TOKEN }),
-      }
-    )
-    const publish = await publishRes.json()
-    if (!publishRes.ok || publish.error) throw new Error(publish.error?.message || `HTTP ${publishRes.status}`)
-    log('Instagram', 'ok', `Posted — media ID ${publish.id}`)
+    const res = await fetch(`https://graph.facebook.com/v19.0/${META_PAGE_ID}/photos`, {
+      method: 'POST',
+      body: form,
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) throw new Error(data.error?.message || `HTTP ${res.status}`)
+    log('Instagram', 'ok', `Posted — photo ID ${data.id}`)
   } catch (err) {
     log('Instagram', 'fail', err.message)
   }
