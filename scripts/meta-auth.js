@@ -3,7 +3,7 @@ const { exec } = require('child_process')
 const { URL } = require('url')
 
 const APP_ID   = process.env.META_APP_ID
-const REDIRECT = 'https://bigsolevibes.com/auth/callback'
+const REDIRECT = 'https://bigsolevibes.com/'
 const SCOPES   = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish'
 
 if (!APP_ID) {
