@@ -49,7 +49,7 @@ export async function onRequestGet(context: any) {
       client_id:     appId,
       client_secret: appSecret,
       redirect_uri:  REDIRECT,
-      code,
+      code:          code as string,
     })
     const tokenRes  = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${tokenParams}`)
     const tokenData = await tokenRes.json() as any
