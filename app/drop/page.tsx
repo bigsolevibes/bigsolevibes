@@ -9,7 +9,7 @@ const CARD  = '#162233'
 const MUTED = '#4A6380'
 const NAVY  = '#0D1B2A'
 
-export default function LoungePage() {
+export default function DropPage() {
   const [firstName, setFirstName] = useState('')
   const [email, setEmail]         = useState('')
   const [status, setStatus]       = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -18,7 +18,7 @@ export default function LoungePage() {
     e.preventDefault()
     setStatus('loading')
     try {
-      const res = await fetch('/api/subscribe-lounge', {
+      const res = await fetch('/api/subscribe-drop', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ firstName, email }),
@@ -48,11 +48,11 @@ export default function LoungePage() {
           BIG SOLE VIBES
         </Link>
         <Link
-          href="/drop"
+          href="/lounge"
           className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
           style={{ color: MUTED }}
         >
-          THE DROP →
+          THE LOUNGE →
         </Link>
       </nav>
 
@@ -65,24 +65,25 @@ export default function LoungePage() {
           className="font-heading text-xs tracking-widest"
           style={{ color: AMBER }}
         >
-          THE LOUNGE
+          THE DROP
         </p>
 
         <h1
           className="font-body text-5xl sm:text-7xl leading-none max-w-2xl"
           style={{ color: CREAM }}
         >
-          The Good Life Starts at the{' '}
-          <span style={{ color: AMBER }}>Foundation.</span>
+          The kicks come off soon. What&apos;s underneath better{' '}
+          <span style={{ color: AMBER }}>be right.</span>
         </h1>
 
         <p
           className="font-body text-base sm:text-lg italic max-w-lg leading-relaxed"
           style={{ color: MUTED }}
         >
-          The boots are off. The day is done. The man who takes care of every
-          detail knows the ritual doesn&apos;t start at the collar — it starts
-          at the sole. Pull up a chair.
+          The fit is dialed. The laces are clean. But the day ends, the shoes
+          come off, and the real check happens. Big Sole Vibes does the research
+          so your foundation is as locked as everything above it.
+          You already know.
         </p>
 
         <div className="w-16 h-px" style={{ backgroundColor: AMBER }} />
@@ -91,7 +92,7 @@ export default function LoungePage() {
           className="font-heading text-xs tracking-widest"
           style={{ color: MUTED }}
         >
-          YOUR FEET WORK HARD. START ACTING LIKE IT.
+          THE FOUNDATION DOESN&apos;T DISCRIMINATE.
         </p>
       </section>
 
@@ -102,22 +103,22 @@ export default function LoungePage() {
             className="font-heading text-2xl sm:text-3xl tracking-wide text-center"
             style={{ color: CREAM }}
           >
-            What The Lounge Delivers
+            What The Drop Delivers
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               {
-                label: 'The Weekly Audit',
-                body:  "We test so you don't have to. Curated reviews of the best foot care products — ranked, scored, and proprietor-approved.",
+                label: 'The Audit',
+                body:  "We put in the reps so you don't have to. Every product tested, graded, and ranked. No hype, no filler — just what actually holds up.",
               },
               {
                 label: 'The Standard',
-                body:  'Ritual guides. Recovery protocols. The difference between a man who gets by and a man who commands a room.',
+                body:  "Game-day prep starts at the ground level. Recovery protocols, pre-fit rituals, and the habits that separate the guys who finish strong from the ones who tap out.",
               },
               {
                 label: 'First Access',
-                body:  "Early access to the Proprietor's Foot Balm launch. Founding member pricing. The shelf doesn't open to everyone.",
+                body:  "First look at the Proprietor's Foot Balm drop. Founding member pricing. The shelf opens to the list first — everyone else waits.",
               },
             ].map(item => (
               <div
@@ -155,13 +156,13 @@ export default function LoungePage() {
               className="font-heading text-3xl sm:text-4xl tracking-wide"
               style={{ color: CREAM }}
             >
-              Reserve Your Seat
+              Get On the List
             </h2>
             <p
               className="font-body text-sm italic"
               style={{ color: MUTED }}
             >
-              No spam. No noise. Just the good stuff, when it&apos;s ready.
+              No spam. No noise. Just the drop, when it hits.
             </p>
           </div>
 
@@ -175,7 +176,7 @@ export default function LoungePage() {
                 transition: 'opacity 250ms ease',
               }}
             >
-              Welcome to the Lounge.
+              You&apos;re in. Stay fresh.
             </p>
 
             {/* Form */}
@@ -213,7 +214,7 @@ export default function LoungePage() {
                   className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest font-heading disabled:opacity-60 disabled:cursor-not-allowed w-full"
                   style={{ backgroundColor: AMBER, color: NAVY }}
                 >
-                  {status === 'loading' ? 'One moment…' : 'Step Inside'}
+                  {status === 'loading' ? 'One moment…' : 'Lock It In'}
                 </button>
               </form>
               {status === 'error' && (
@@ -234,13 +235,13 @@ export default function LoungePage() {
             className="font-body text-xl sm:text-2xl italic leading-relaxed"
             style={{ color: CREAM }}
           >
-            &ldquo;Nothing goes on this shelf that hasn&apos;t earned its place.&rdquo;
+            &ldquo;20 or 80. Boots or Jordans. The standard is the same.&rdquo;
           </blockquote>
           <cite
             className="font-heading text-xs tracking-widest not-italic"
             style={{ color: AMBER }}
           >
-            — THE PROPRIETOR
+            — BIG SOLE VIBES
           </cite>
           <div className="w-12 h-px" style={{ backgroundColor: AMBER }} />
         </div>
@@ -253,8 +254,8 @@ export default function LoungePage() {
       >
         © 2025 Big Sole Vibes. All rights reserved.
         <span className="mx-3" style={{ color: AMBER + '44' }}>|</span>
-        <Link href="/drop" className="hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-          The Drop →
+        <Link href="/lounge" className="hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
+          The Lounge →
         </Link>
       </footer>
     </div>
