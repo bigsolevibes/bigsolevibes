@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 const AMBER  = '#C17D2E'
@@ -51,38 +51,12 @@ const SOCIALS = [
 
 export default function ComingSoonPage() {
   const [isPreview, setIsPreview] = useState(false)
-  const [firstName, setFirstName] = useState('')
-  const [email, setEmail]         = useState('')
-  const [status, setStatus]       = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
 
   useEffect(() => {
     const isPreview = !window.location.hostname.includes('bigsolevibes.com')
     setIsPreview(isPreview)
   }, [])
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    console.log('[BSV] handleSubmit fired', { firstName, email })
-    setStatus('loading')
-    try {
-      console.log('[BSV] fetching /api/subscribe')
-      const res = await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, email }),
-      })
-      console.log('[BSV] response status', res.status)
-      if (!res.ok) {
-        const body = await res.text()
-        console.error('[BSV] API error', res.status, body)
-        throw new Error(`API returned ${res.status}`)
-      }
-      setStatus('success')
-    } catch (err) {
-      console.error('[BSV] caught error', err)
-      setStatus('error')
-    }
-  }
 
   return (
     <>
@@ -93,6 +67,7 @@ export default function ComingSoonPage() {
         >
           <span style={{ color: MUTED }}>PREVIEW</span>
           <Link href="/lounge" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">LOUNGE</Link>
+          <Link href="/kickoff" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">KICK OFF</Link>
           <Link href="/audits" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">AUDITS</Link>
           <Link href="/brief"  style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">BRIEF</Link>
         </div>
@@ -149,76 +124,24 @@ export default function ComingSoonPage() {
         {/* Amber divider */}
         <div className="w-24 h-px" style={{ backgroundColor: AMBER }} />
 
-        {/* Email capture */}
-        <section className="flex flex-col items-center gap-6 w-full px-4">
-          <h2 className="font-heading text-3xl sm:text-4xl tracking-wide text-center" style={{ color: CREAM }}>
-            Reserve Your Seat for <span style={{ color: AMBER }}>the First Audit.</span>
-          </h2>
-          <p className="font-body text-sm italic text-center" style={{ color: MUTED }}>
-            Join the Sole Squad — no spam, no nonsense. Just the good stuff.
-          </p>
-
-          <div className="relative w-full flex flex-col items-center" style={{ maxWidth: 500 }}>
-
-            {/* Success message — fades in, sits behind form until needed */}
-            <p
-              className="font-body text-lg italic text-center absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{
-                color: AMBER,
-                opacity: status === 'success' ? 1 : 0,
-                transition: 'opacity 250ms ease',
-              }}
-            >
-              Welcome to the Lounge.
-            </p>
-
-            {/* Form — fades out on success, no transition on the button itself */}
-            <div
-              className="flex flex-col items-center gap-3 w-full"
-              style={{
-                opacity: status === 'success' ? 0 : 1,
-                transition: 'opacity 200ms ease',
-                pointerEvents: status === 'success' ? 'none' : 'auto',
-              }}
-            >
-              <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full">
-                <input
-                  type="text"
-                  placeholder="First name"
-                  value={firstName}
-                  onChange={e => setFirstName(e.target.value)}
-                  required
-                  disabled={status === 'loading'}
-                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border font-body disabled:opacity-50"
-                  style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
-                />
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  disabled={status === 'loading'}
-                  className="flex-1 rounded-lg px-4 py-3 text-sm outline-none border font-body disabled:opacity-50"
-                  style={{ backgroundColor: CARD, color: CREAM, borderColor: MUTED + '55' }}
-                />
-                <button
-                  type="submit"
-                  disabled={status === 'loading'}
-                  className="rounded-lg px-6 py-3 text-sm font-semibold uppercase tracking-widest whitespace-nowrap font-heading disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: AMBER, color: NAVY }}
-                >
-                  {status === 'loading' ? 'One moment…' : 'Step Inside'}
-                </button>
-              </form>
-              {status === 'error' && (
-                <p className="font-body text-sm text-center" style={{ color: '#C0392B' }}>
-                  Something went wrong. Try again.
-                </p>
-              )}
-            </div>
-
-          </div>
+        {/* Entry buttons */}
+        <section className="flex flex-col items-center gap-4 w-full px-4" style={{ maxWidth: 560 }}>
+          <Link
+            href="/lounge"
+            className="w-full flex flex-col items-start gap-1 px-6 py-5 border font-body transition-opacity hover:opacity-80"
+            style={{ backgroundColor: CARD, borderColor: AMBER + '44', color: CREAM }}
+          >
+            <span className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>THE LOUNGE</span>
+            <span className="text-base sm:text-lg italic leading-snug">Shoes off. The standard never clocked out.</span>
+          </Link>
+          <Link
+            href="/kickoff"
+            className="w-full flex flex-col items-start gap-1 px-6 py-5 border font-body transition-opacity hover:opacity-80"
+            style={{ backgroundColor: CARD, borderColor: AMBER + '44', color: CREAM }}
+          >
+            <span className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>THE KICK OFF</span>
+            <span className="text-base sm:text-lg italic leading-snug">Kicks off. Your foundation doesn&apos;t bench itself.</span>
+          </Link>
         </section>
 
         {/* Socials */}
