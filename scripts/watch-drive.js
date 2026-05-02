@@ -264,21 +264,30 @@ function distribute(caption, platformsList) {
       const caption_str = captions.instagram || captions.twitter || captions.facebook || ''
 
       if (!caption_str) {
-        log(`${base}: WARNING — caption file is empty, skipping distribute`)
-      } else {
-        try {
-          distribute(caption_str, retryPlatforms)
-        } catch (err) {
-          log(`${base}: ERROR during distribute: ${err.message}`)
-          continue
-        }
+        log(`${base}: WARNING — caption file is empty, skipping`)
+        continue
       }
 
-      // Read per-platform results written by distribute.js
-      // 'pause' = skipped intentionally, never blocks archiving
-      // 'fail'  = active platform errored, blocks archiving until resolved
-      let distResults = {}
+      try {
+        distribute(caption_str, retryPlatforms)
+      } catch (err) {
+        log(`${base}: ERROR during distribute: ${err.message}`)
+        continue
+      }
+
+      // Read per-platform results written by distribute.js.
+      // 'pause' = intentionally skipped, never blocks archiving.
+      // 'fail'  = active platform errored, blocks archiving until resolved.
+      // If RESULTS_FILE is missing or empty, treat as failure (fail-safe).
+      let distResults = null
       try { distResults = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8')) } catch {}
+
+      if (!distResults || Object.keys(distResults).length === 0) {
+        log(`${base}: WARNING — no distribute results found, not archiving`)
+        saveFailed(base, ['unknown'])
+        continue
+      }
+
       const failedPlatforms = Object.entries(distResults)
         .filter(([, status]) => status === 'fail')
         .map(([platform]) => platform)
@@ -286,11 +295,10 @@ function distribute(caption, platformsList) {
       if (failedPlatforms.length > 0) {
         log(`${base}: ${failedPlatforms.length} platform(s) failed — keeping in Ready to Post/ for retry: ${failedPlatforms.join(', ')}`)
         saveFailed(base, failedPlatforms)
-        // Do NOT archive or mark distributed — next poll will retry only the failed platforms
+        // Do NOT archive or mark distributed — next poll retries only failed platforms
       } else {
         clearFailed(base)
-        // Move files to Posted/YYYY-MM-DD/
-        log(`${base}: all platforms succeeded — moving to Posted/${today}/`)
+        log(`${base}: all active platforms succeeded — moving to Posted/${today}/`)
         moveToPosted(media.name,   today)
         moveToPosted(caption.name, today)
         state.distributed.push(base)
