@@ -275,6 +275,8 @@ function distribute(caption, platformsList) {
       }
 
       // Read per-platform results written by distribute.js
+      // 'pause' = skipped intentionally, never blocks archiving
+      // 'fail'  = active platform errored, blocks archiving until resolved
       let distResults = {}
       try { distResults = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8')) } catch {}
       const failedPlatforms = Object.entries(distResults)

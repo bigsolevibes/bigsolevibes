@@ -1,5 +1,4 @@
 require('dotenv').config()
-console.log('PAGE_ID value:', process.env.META_PAGE_ID)
 const fs = require('fs')
 const path = require('path')
 const { execSync } = require('child_process')
@@ -8,6 +7,9 @@ const { AtpAgent, RichText } = require('@atproto/api')
 const FormData = require('form-data')
 
 const RESULTS_FILE = path.join(__dirname, '..', 'logs', 'distribute-results.json')
+
+// Platforms temporarily paused (code stays intact; remove from array to re-enable)
+const PAUSED_PLATFORMS = ['twitter', 'facebook']
 
 // ─── CLI args ────────────────────────────────────────────────────────────────
 
@@ -69,16 +71,21 @@ const results = []
 const platformResults = {}
 
 function log(platform, status, detail) {
-  const icon = status === 'ok' ? '✓' : '✗'
+  const icon = status === 'ok' ? '✓' : status === 'pause' ? '⏸' : '✗'
   const msg = `${icon} ${platform}: ${detail}`
   results.push(msg)
   console.log(msg)
   platformResults[platform.toLowerCase()] = status
 }
 
+function isPaused(platform) {
+  return PAUSED_PLATFORMS.includes(platform.toLowerCase())
+}
+
 // ─── X (Twitter) ─────────────────────────────────────────────────────────────
 
 async function postToX() {
+  if (isPaused('twitter')) { log('X', 'pause', 'paused — skipping'); return }
   const { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET } = process.env
   if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_TOKEN_SECRET) {
     log('X', 'fail', 'Missing X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET')
@@ -108,6 +115,7 @@ async function postToX() {
 // ─── Bluesky ─────────────────────────────────────────────────────────────────
 
 async function postToBluesky() {
+  if (isPaused('bluesky')) { log('Bluesky', 'pause', 'paused — skipping'); return }
   const { BLUESKY_HANDLE, BLUESKY_APP_PASSWORD } = process.env
   if (!BLUESKY_HANDLE || !BLUESKY_APP_PASSWORD) {
     log('Bluesky', 'fail', 'Missing BLUESKY_HANDLE / BLUESKY_APP_PASSWORD')
@@ -155,6 +163,7 @@ async function postToBluesky() {
 // ─── Facebook ────────────────────────────────────────────────────────────────
 
 async function postToFacebook() {
+  if (isPaused('facebook')) { log('Facebook', 'pause', 'paused — skipping'); return }
   const { META_ACCESS_TOKEN, META_PAGE_ID: META_PAGE_ID_RAW } = process.env
   const META_PAGE_ID = (META_PAGE_ID_RAW || '').trim()
   console.log(`  [debug] META_PAGE_ID raw = "${META_PAGE_ID_RAW}" trimmed = "${META_PAGE_ID}" (len: ${META_PAGE_ID.length})`)
@@ -211,6 +220,7 @@ async function postToFacebook() {
 // Images must be in public/posts/output/ so Cloudflare Pages serves them at /posts/output/.
 
 async function postToInstagram() {
+  if (isPaused('instagram')) { log('Instagram', 'pause', 'paused — skipping'); return }
   const { META_ACCESS_TOKEN, META_IG_ACCOUNT_ID } = process.env
   if (!META_ACCESS_TOKEN || !META_IG_ACCOUNT_ID) {
     log('Instagram', 'fail', 'Missing META_ACCESS_TOKEN / META_IG_ACCOUNT_ID')
@@ -302,6 +312,7 @@ async function postToInstagram() {
 // ─── YouTube Video Upload ─────────────────────────────────────────────────────
 
 async function postToYouTube() {
+  if (isPaused('youtube')) { log('YouTube', 'pause', 'paused — skipping'); return }
   const { YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN } = process.env
   if (!YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET || !YOUTUBE_REFRESH_TOKEN) {
     log('YouTube', 'fail', 'Missing YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN')
