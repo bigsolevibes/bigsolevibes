@@ -90,6 +90,20 @@ function moveToPosted(filename, today) {
   }
 }
 
+// ─── Scheduled post time ─────────────────────────────────────────────────────
+// Reads optional "post_time: HH:MM" from the first line of a caption file.
+// Returns true if current local time is at or past that time (or if no time set).
+
+function parsePostTime(content) {
+  const m = content.match(/^post_time:\s*(\d{1,2}):(\d{2})/m)
+  if (!m) return { postTime: null, ready: true }
+  const postTime = `${m[1].padStart(2, '0')}:${m[2]}`
+  const now = new Date()
+  const nowMins = now.getHours() * 60 + now.getMinutes()
+  const scheduledMins = parseInt(m[1]) * 60 + parseInt(m[2])
+  return { postTime, ready: nowMins >= scheduledMins }
+}
+
 // ─── Caption parsing ──────────────────────────────────────────────────────────
 // Supports platform sections (## instagram / ## twitter / ## facebook)
 // or plain text applied to all platforms.
@@ -260,6 +274,16 @@ function distribute(caption, platformsList) {
       }
 
       const captionText = fs.readFileSync(localCaption, 'utf8')
+
+      // Scheduling gate — only distribute at or after post_time
+      const { postTime, ready } = parsePostTime(captionText)
+      if (!ready) {
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
+        continue
+      }
+
       const captions    = parseCaptions(captionText)
       const caption_str = captions.instagram || captions.twitter || captions.facebook || ''
 
