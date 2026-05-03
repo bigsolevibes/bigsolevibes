@@ -20,18 +20,77 @@ function getArg(flag) {
   return i !== -1 ? args[i + 1] : null
 }
 
-const imageDir = getArg('--image-dir') || 'posts/output'
-const caption = getArg('--caption')
-const baseUrl = getArg('--base-url') || process.env.BASE_URL || null
-const isSetup = args.includes('--setup')
+const imageDir     = getArg('--image-dir') || 'posts/output'
+const baseUrl      = getArg('--base-url') || process.env.BASE_URL || null
+const isSetup      = args.includes('--setup')
+const captionFile  = getArg('--caption-file')
 
+// ─── Caption file parsing ─────────────────────────────────────────────────────
+// When --caption-file is given, read the .md file and extract header fields
+// (platform:, post_time:) plus the caption body. Header lines are stripped
+// before the body is used as the caption text.
+
+function parseCaptionFile(filePath) {
+  const raw = fs.readFileSync(filePath, 'utf8')
+  let platform = null
+  let postTime = null
+
+  // Strip recognised header lines from the top of the file
+  const bodyLines = []
+  let pastHeaders = false
+  for (const line of raw.split('\n')) {
+    if (!pastHeaders) {
+      const pm = line.match(/^platform:\s*(\S+)/i)
+      if (pm) { platform = pm[1].trim().toLowerCase(); continue }
+      const tm = line.match(/^post_time:\s*(\d{1,2}:\d{2})/i)
+      if (tm) { postTime = tm[1].trim(); continue }
+      // First non-header line ends the header block
+      pastHeaders = true
+    }
+    bodyLines.push(line)
+  }
+
+  return { platform, postTime, body: bodyLines.join('\n').trim() }
+}
+
+// Resolve caption and platform from either --caption-file or --caption / --platforms
+let caption
+let filePlatform = null
+
+if (captionFile) {
+  const parsed = parseCaptionFile(captionFile)
+  caption      = parsed.body
+  filePlatform = parsed.platform
+
+  if (parsed.postTime) {
+    const [h, m]   = parsed.postTime.split(':').map(Number)
+    const now      = new Date()
+    const nowMins  = now.getHours() * 60 + now.getMinutes()
+    if (nowMins < h * 60 + m) {
+      const cur = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+      console.log(`⏰ ${path.basename(captionFile)}: scheduled for ${parsed.postTime} — current time ${cur}, exiting`)
+      process.exit(0)
+    }
+  }
+} else {
+  caption = getArg('--caption')
+}
+
+// Platform resolution: file-level platform: field > --platforms flag > all active
 const platformsArg = getArg('--platforms')
-const activePlatforms = platformsArg
-  ? new Set(platformsArg.split(',').map(s => s.trim().toLowerCase()))
-  : new Set(['x', 'bluesky', 'facebook', 'instagram', 'youtube'])
+const activePlatforms = filePlatform
+  ? new Set([filePlatform])
+  : platformsArg
+    ? new Set(platformsArg.split(',').map(s => s.trim().toLowerCase()))
+    : new Set(['x', 'bluesky', 'facebook', 'instagram', 'youtube'])
+
+if (filePlatform) {
+  console.log(`platform lock (from file): ${filePlatform}`)
+}
 
 if (!isSetup && !caption) {
-  console.error('Usage: node scripts/distribute.js --caption "text" [--image-dir posts/output/] [--base-url https://example.com/posts/output]')
+  console.error('Usage: node scripts/distribute.js --caption-file path/to/day3b.md [--image-dir posts/output/]')
+  console.error('       node scripts/distribute.js --caption "text" [--platforms x,bluesky] [--image-dir posts/output/]')
   console.error('       node scripts/distribute.js --setup')
   process.exit(1)
 }
