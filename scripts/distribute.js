@@ -54,7 +54,6 @@ const images = {
   bluesky:   findImage(imageDir, 'bluesky') || findImage(imageDir, 'twitter'), // 1600x900 fallback
 }
 
-// Find TikTok-sized MP4 for YouTube video upload
 function findVideo(dir, platform) {
   try {
     const files = fs.readdirSync(dir)
@@ -63,7 +62,7 @@ function findVideo(dir, platform) {
   } catch { return null }
 }
 
-const youtubeVideo = findVideo(imageDir, 'tiktok')
+const youtubeVideo = findVideo(imageDir, 'youtube')
 
 // ─── Results log ─────────────────────────────────────────────────────────────
 
@@ -319,7 +318,7 @@ async function postToYouTube() {
     return
   }
   if (!youtubeVideo) {
-    log('YouTube', 'skip', `No tiktok .mp4 found in ${imageDir} — skipping video upload`)
+    log('YouTube', 'skip', `No youtube .mp4 found in ${imageDir} — skipping video upload`)
     return
   }
 

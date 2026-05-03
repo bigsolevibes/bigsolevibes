@@ -1,6 +1,19 @@
 const sharp = require('sharp')
 const path = require('path')
 const fs = require('fs')
+const { execSync } = require('child_process')
+
+const GDRIVE_REMOTE  = 'big sole vibes'
+const GDRIVE_OUTPUTS = `${GDRIVE_REMOTE}:Big Sole Vibes/Posts/Output`
+
+function copyToGDrive(localPath) {
+  try {
+    execSync(`rclone copy "${localPath}" "${GDRIVE_OUTPUTS}"`, { stdio: 'pipe' })
+    console.log(`  → synced to Google Drive: ${GDRIVE_OUTPUTS}`)
+  } catch (err) {
+    console.warn(`  ⚠ Google Drive upload failed: ${err.stderr?.toString().trim() || err.message}`)
+  }
+}
 
 const platforms = [
   { name: 'instagram', width: 1080, height: 1080 },
@@ -30,27 +43,67 @@ if (platformFilter && !platforms.find(p => p.name === platformFilter)) {
 
 const targets = platformFilter ? platforms.filter(p => p.name === platformFilter) : platforms
 
-const outputDir = path.join(__dirname, '..', 'posts', 'output')
-fs.mkdirSync(outputDir, { recursive: true })
+const outputDir  = path.join(__dirname, '..', 'posts', 'output')
+const publicDir  = path.join(__dirname, '..', 'public', 'posts', 'output')
+fs.mkdirSync(outputDir,  { recursive: true })
+fs.mkdirSync(publicDir,  { recursive: true })
 fs.mkdirSync(desktopDir, { recursive: true })
 
 const baseName = path.basename(inputPath, path.extname(inputPath))
-const ext = path.extname(inputPath) || '.png'
+  .replace(/[‘’’]/g, ‘’)   // strip apostrophes (breaks Cloudflare CDN URL matching)
+  .replace(/\s+/g, ‘_’)              // spaces → underscores
+  .replace(/[^a-zA-Z0-9_\-]/g, ‘_’) // any remaining non-URL-safe chars → underscore
+const ext = path.extname(inputPath).toLowerCase()
 
 ;(async () => {
+  // MP4 input — skip image resizing, copy directly to youtube and tiktok slots
+  if (ext === ‘.mp4’) {
+    for (const slot of [‘youtube’, ‘tiktok’]) {
+      const fileName    = `${baseName}-${slot}.mp4`
+      const outputPath  = path.join(outputDir,  fileName)
+      const desktopPath = path.join(desktopDir, fileName)
+      const publicPath  = path.join(publicDir,  fileName)
+      fs.copyFileSync(inputPath, outputPath)
+      fs.copyFileSync(inputPath, desktopPath)
+      fs.copyFileSync(inputPath, publicPath)
+      console.log(`${slot}: ${outputPath}`)
+      copyToGDrive(outputPath)
+    }
+  } else {
   for (const platform of targets) {
-    const outExt = platform.format === 'jpeg' ? '.jpg' : ext
+    const outExt = platform.format === ‘jpeg’ ? ‘.jpg’ : ext
     const fileName = `${baseName}-${platform.name}${outExt}`
     const outputPath = path.join(outputDir, fileName)
     const desktopPath = path.join(desktopDir, fileName)
 
     let pipeline = sharp(inputPath)
-      .resize(platform.width, platform.height, { fit: 'cover', position: 'centre' })
-    if (platform.format === 'jpeg') pipeline = pipeline.jpeg({ quality: platform.quality })
+      .resize(platform.width, platform.height, { fit: ‘cover’, position: ‘centre’ })
+    if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
     await pipeline.toFile(outputPath)
 
+    const publicPath = path.join(publicDir, fileName)
     fs.copyFileSync(outputPath, desktopPath)
+    fs.copyFileSync(outputPath, publicPath)
     console.log(`${platform.name}: ${outputPath}`)
     console.log(`  → copied to ${desktopPath}`)
+    console.log(`  → copied to ${publicPath}`)
+    copyToGDrive(outputPath)
+  }
+  }
+
+  // Deploy to Cloudflare Pages — public/posts/output/ is served at /posts/output/
+  const root = path.join(__dirname, '..')
+  try {
+    execSync('git add posts/output/ public/posts/output/', { cwd: root, stdio: 'pipe' })
+    const status = execSync('git status --porcelain posts/output/ public/posts/output/', { cwd: root, encoding: 'utf8' }).trim()
+    if (!status) {
+      console.log('\ngit: nothing new to commit')
+    } else {
+      execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'inherit' })
+      execSync('git push origin HEAD:main', { cwd: root, stdio: 'inherit' })
+      console.log('→ deployed to Cloudflare Pages')
+    }
+  } catch (err) {
+    console.warn(`⚠ git deploy failed: ${err.message}`)
   }
 })()
