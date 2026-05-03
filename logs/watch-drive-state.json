@@ -1,5 +1,10 @@
 {
-  "distributed": [
-    "day1"
-  ]
+  "day1": {
+    "_migrated": "success"
+  },
+  "day2": {
+    "bluesky": "success",
+    "instagram": "success",
+    "youtube": "pending"
+  }
 }
