@@ -102,10 +102,12 @@ function moveToPosted(filename, today) {
   }
 }
 
-// ─── Scheduled post time ─────────────────────────────────────────────────────
-// Reads optional "post_time: HH:MM" from the first line of a caption file.
-// Returns true if current local time is at or past that time (or if no time set).
+// ─── Caption header fields ────────────────────────────────────────────────────
+// Both fields live in the top of each .md file, one per line, before the # title.
+// They work per-slug — each caption file is read independently, so day2a and day2b
+// can have different post_time and platform values with no interference.
 
+// "post_time: HH:MM" — hold distribution until local time reaches this value.
 function parsePostTime(content) {
   const m = content.match(/^post_time:\s*(\d{1,2}):(\d{2})/m)
   if (!m) return { postTime: null, ready: true }
@@ -114,6 +116,13 @@ function parsePostTime(content) {
   const nowMins = now.getHours() * 60 + now.getMinutes()
   const scheduledMins = parseInt(m[1]) * 60 + parseInt(m[2])
   return { postTime, ready: nowMins >= scheduledMins }
+}
+
+// "platform: <name>" — restrict this slug to a single platform.
+// Returns ['<name>'] when present, null when absent (post to all active platforms).
+function parsePlatformField(content) {
+  const m = content.match(/^platform:\s*(\S+)/m)
+  return m ? [m[1].trim().toLowerCase()] : null
 }
 
 // ─── Caption parsing ──────────────────────────────────────────────────────────
@@ -261,15 +270,6 @@ function distribute(caption, platformsList) {
 
     // Both media + caption — full pipeline
     if (media && caption) {
-      // Derive pending platforms from state; null means first run (all platforms)
-      const pending = pendingPlatforms(state[base])
-      const retryPlatforms = pending.length > 0 ? pending : null
-      if (retryPlatforms) {
-        log(`${base}: retrying pending platforms: ${retryPlatforms.join(', ')}`)
-      } else {
-        log(`${base}: full pipeline starting`)
-      }
-
       const ok1 = downloadFile(`${REMOTE_READY}/${media.name}`,   TEMP_DIR)
       const ok2 = downloadFile(`${REMOTE_READY}/${caption.name}`, TEMP_DIR)
       if (!ok1 || !ok2) { log(`${base}: download failed, skipping`); continue }
@@ -303,8 +303,25 @@ function distribute(caption, platformsList) {
         continue
       }
 
+      // Determine which platforms to attempt:
+      //   caption-level "platform:" field locks this slug to one platform forever.
+      //   Retry state (pending platforms) takes over on subsequent polls.
+      //   null → all active platforms (first run, no platform field).
+      const captionPlatforms = parsePlatformField(captionText)
+      const pending          = pendingPlatforms(state[base])
+      const retryPlatforms   = pending.length > 0 ? pending : null
+      const effectivePlatforms = captionPlatforms || retryPlatforms
+
+      if (captionPlatforms) {
+        log(`${base}: platform lock — ${captionPlatforms[0]} only`)
+      } else if (retryPlatforms) {
+        log(`${base}: retrying pending platforms: ${retryPlatforms.join(', ')}`)
+      } else {
+        log(`${base}: full pipeline starting`)
+      }
+
       try {
-        distribute(caption_str, retryPlatforms)
+        distribute(caption_str, effectivePlatforms)
       } catch (err) {
         log(`${base}: ERROR during distribute: ${err.message}`)
         continue
