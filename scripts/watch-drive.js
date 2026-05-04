@@ -1,5 +1,5 @@
 require('dotenv').config()
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -185,18 +185,24 @@ function clearOutputDir() {
   log(`  cleared ${OUTPUT_DIR}`)
 }
 
+function runCaptured(label, cmd) {
+  // Run a child process and pipe both stdout and stderr through log() so all
+  // output lands in watch-drive.log where eng-bot can see it.
+  const result = spawnSync('/bin/sh', ['-c', cmd], { encoding: 'utf8' })
+  for (const line of (result.stdout || '').split('\n').filter(Boolean)) log(`  [${label}] ${line}`)
+  for (const line of (result.stderr || '').split('\n').filter(Boolean)) log(`  [${label}:err] ${line}`)
+  if (result.status !== 0) throw new Error(`${label} exited ${result.status}`)
+}
+
 function processMedia(base, mediaFile, localPath) {
   if (mediaFile.type === 'image') {
     clearOutputDir()
     log(`  running resize-post.js`)
-    execSync(`node "${path.join(__dirname, 'resize-post.js')}" "${localPath}"`, { stdio: 'inherit' })
+    runCaptured('resize', `node "${path.join(__dirname, 'resize-post.js')}" "${localPath}"`)
   } else {
     const outFile = path.join(OUTPUT_DIR, `${base}-branded.mp4`)
     log(`  running brand-video.js → ${path.basename(outFile)}`)
-    execSync(
-      `node "${path.join(__dirname, 'brand-video.js')}" --video "${localPath}" --output "${outFile}"`,
-      { stdio: 'inherit' }
-    )
+    runCaptured('brand-video', `node "${path.join(__dirname, 'brand-video.js')}" --video "${localPath}" --output "${outFile}"`)
   }
 }
 
@@ -360,4 +366,12 @@ function distribute(caption, platformsList) {
   }
 
   log('━━━ poll end ━━━\n')
+
+  // Run eng-bot after every poll so it catches errors while the log is fresh.
+  // Inherits env so ANTHROPIC_API_KEY and ZOHO_SMTP_* are available.
+  spawnSync(process.execPath, [path.join(__dirname, 'eng-bot.js')], {
+    cwd:   ROOT,
+    env:   process.env,
+    stdio: 'inherit',
+  })
 })()
