@@ -87,6 +87,7 @@ const ext = path.extname(inputPath).toLowerCase()
 
       try {
         let pipeline = sharp(inputPath)
+          .toColorspace(‘srgb’)
           .resize(platform.width, platform.height, { fit: ‘cover’, position: ‘centre’ })
         if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
         await pipeline.toFile(outputPath)
