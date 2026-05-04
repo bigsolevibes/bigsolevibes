@@ -3,13 +3,17 @@ const Anthropic  = require('@anthropic-ai/sdk').default
 const nodemailer = require('nodemailer')
 const fs         = require('fs')
 const path       = require('path')
+const os         = require('os')
+const { execSync } = require('child_process')
 
-const ROOT          = path.join(__dirname, '..')
-const LOG_FILE      = path.join(ROOT, 'logs', 'eng-bot.log')
-const WATCH_LOG     = path.join(ROOT, 'logs', 'watch-drive.log')
-const WATCH_ERR_LOG = path.join(ROOT, 'logs', 'watch-drive-error.log')
-const SENT_FILE     = path.join(ROOT, 'logs', 'eng-bot-sent.json')
-const ADMIN_EMAIL   = 'admin@bigsolevibes.com'
+const ROOT                  = path.join(__dirname, '..')
+const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
+const WATCH_LOG             = path.join(ROOT, 'logs', 'watch-drive.log')
+const WATCH_ERR_LOG         = path.join(ROOT, 'logs', 'watch-drive-error.log')
+const SENT_FILE             = path.join(ROOT, 'logs', 'eng-bot-sent.json')
+const ADMIN_EMAIL           = 'admin@bigsolevibes.com'
+const GDRIVE_REMOTE         = 'big sole vibes'
+const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +87,73 @@ function alreadySent(sentList, failure) {
     s.platform === failure.platform &&
     normalizeMessage(s.message) === normalizeMessage(failure.message)
   )
+}
+
+// ─── Google Drive report ──────────────────────────────────────────────────────
+
+function extractSlug(context) {
+  // Matches lines like "[timestamp] day2a: ERROR ..." or "[timestamp] day2a: WARNING ..."
+  const m = context.match(/\]\s+(\S+?):\s+(?:ERROR|WARNING)/)
+  return m ? m[1] : null
+}
+
+function writeReport(date, failures, diagnosis) {
+  const timestamp = new Date().toISOString()
+
+  const slugs = [...new Set(failures.map(f => extractSlug(f.context)).filter(Boolean))]
+  const slugLine = slugs.length ? slugs.join(', ') : 'unknown'
+
+  const failureSections = failures.map((f, i) => [
+    `## Failure ${i + 1}: ${f.platform}`,
+    '',
+    `**Slug(s):** ${extractSlug(f.context) || 'unknown'}`,
+    `**Timestamp:** ${f.timestamp}`,
+    '',
+    '**Error:**',
+    '```',
+    f.message,
+    '```',
+    '',
+    '**Full context from log:**',
+    '```',
+    f.context,
+    '```',
+  ].join('\n')).join('\n\n---\n\n')
+
+  const content = [
+    `# BSV Eng Report — ${date}`,
+    '',
+    `**Generated:** ${timestamp}`,
+    `**Failures:** ${failures.length}`,
+    `**Affected slugs:** ${slugLine}`,
+    '',
+    '---',
+    '',
+    failureSections,
+    '',
+    '---',
+    '',
+    '## Diagnosis & Suggested Fixes',
+    '',
+    diagnosis || '_No diagnosis available — check ANTHROPIC_API_KEY._',
+    '',
+  ].join('\n')
+
+  const fileName = `eng-report-${date}.md`
+  const tmpFile  = path.join(os.tmpdir(), fileName)
+  fs.writeFileSync(tmpFile, content)
+
+  try {
+    execSync(
+      `rclone copyto "${tmpFile}" "${GDRIVE_REMOTE}:${fileName}" --drive-root-folder-id ${GDRIVE_REPORTS_FOLDER}`,
+      { stdio: 'pipe' }
+    )
+    log(`Report written to Google Drive: ${fileName}`)
+  } catch (err) {
+    log(`ERROR: Google Drive report upload failed: ${err.stderr?.toString().trim() || err.message}`)
+  }
+
+  try { fs.unlinkSync(tmpFile) } catch {}
 }
 
 // ─── Claude diagnosis ─────────────────────────────────────────────────────────
@@ -197,6 +268,8 @@ Log: logs/eng-bot.log`
 ;(async function run() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
 
+  const today = new Date().toISOString().slice(0, 10)
+
   log('━━━ eng-bot start ━━━')
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -245,8 +318,13 @@ Log: logs/eng-bot.log`
     log(`Diagnosis complete (${diagnosis.length} chars)`)
   } catch (err) {
     log(`ERROR: Claude diagnosis failed: ${err.message}`)
-    process.exit(1)
+    diagnosis = null
   }
+
+  // Write report to Google Drive (independent of email)
+  writeReport(today, newFailures, diagnosis)
+
+  if (!diagnosis) process.exit(1)
 
   // Send email
   log(`Sending email to ${ADMIN_EMAIL}...`)
