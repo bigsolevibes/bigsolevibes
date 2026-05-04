@@ -9,6 +9,7 @@ const navLinks = [
   { label: 'Lounge', href: '/lounge' },
   { label: 'Audits', href: '/audits' },
   { label: 'Brief',  href: '/brief' },
+  { label: 'Shop',   href: '/shop' },
 ]
 
 export default function SiteNav() {
