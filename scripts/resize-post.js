@@ -70,25 +70,39 @@ const ext = path.extname(inputPath).toLowerCase()
       copyToGDrive(outputPath)
     }
   } else {
-  for (const platform of targets) {
-    const outExt = platform.format === ‘jpeg’ ? ‘.jpg’ : ext
-    const fileName = `${baseName}-${platform.name}${outExt}`
-    const outputPath = path.join(outputDir, fileName)
-    const desktopPath = path.join(desktopDir, fileName)
+    // Log input metadata so colorspace / bit-depth / channel issues are visible
+    try {
+      const meta = await sharp(inputPath).metadata()
+      console.log(`input: ${meta.width}×${meta.height} ${meta.format} space=${meta.space} channels=${meta.channels} depth=${meta.depth} hasAlpha=${meta.hasAlpha}`)
+    } catch (err) {
+      console.error(`ERROR: could not read input metadata — ${err.message}`)
+      process.exit(1)
+    }
 
-    let pipeline = sharp(inputPath)
-      .resize(platform.width, platform.height, { fit: ‘cover’, position: ‘centre’ })
-    if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
-    await pipeline.toFile(outputPath)
+    for (const platform of targets) {
+      const outExt = platform.format === ‘jpeg’ ? ‘.jpg’ : ext
+      const fileName = `${baseName}-${platform.name}${outExt}`
+      const outputPath = path.join(outputDir, fileName)
+      const desktopPath = path.join(desktopDir, fileName)
 
-    const publicPath = path.join(publicDir, fileName)
-    fs.copyFileSync(outputPath, desktopPath)
-    fs.copyFileSync(outputPath, publicPath)
-    console.log(`${platform.name}: ${outputPath}`)
-    console.log(`  → copied to ${desktopPath}`)
-    console.log(`  → copied to ${publicPath}`)
-    copyToGDrive(outputPath)
-  }
+      try {
+        let pipeline = sharp(inputPath)
+          .resize(platform.width, platform.height, { fit: ‘cover’, position: ‘centre’ })
+        if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
+        await pipeline.toFile(outputPath)
+      } catch (err) {
+        console.error(`ERROR [${platform.name}]: sharp failed — ${err.message}`)
+        process.exit(1)
+      }
+
+      const publicPath = path.join(publicDir, fileName)
+      fs.copyFileSync(outputPath, desktopPath)
+      fs.copyFileSync(outputPath, publicPath)
+      console.log(`${platform.name}: ${outputPath}`)
+      console.log(`  → copied to ${desktopPath}`)
+      console.log(`  → copied to ${publicPath}`)
+      copyToGDrive(outputPath)
+    }
   }
 
   // Deploy to Cloudflare Pages — public/posts/output/ is served at /posts/output/

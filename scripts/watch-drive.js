@@ -72,7 +72,9 @@ function mergeResults(state, base, distResults) {
 
 function listDrive(remotePath) {
   try {
-    const out = execSync(`rclone ls "${remotePath}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    // --max-depth 1 prevents rclone from recursing into subdirectories,
+    // which would cause files to appear twice if Posted/ date folders exist.
+    const out = execSync(`rclone ls --max-depth 1 "${remotePath}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
     return out.trim().split('\n').filter(Boolean).map(line => {
       const match = line.trim().match(/^(\d+)\s+(.+)$/)
       return match ? { size: parseInt(match[1]), name: match[2] } : null
