@@ -50,7 +50,7 @@ fs.mkdirSync(publicDir,  { recursive: true })
 fs.mkdirSync(desktopDir, { recursive: true })
 
 const baseName = path.basename(inputPath, path.extname(inputPath))
-  .replace(/[‘’’]/g, ‘’)   // strip apostrophes (breaks Cloudflare CDN URL matching)
+  .replace(/['\u2018\u2019]/g, '')   // strip apostrophes (breaks Cloudflare CDN URL matching)
   .replace(/\s+/g, ‘_’)              // spaces → underscores
   .replace(/[^a-zA-Z0-9_\-]/g, ‘_’) // any remaining non-URL-safe chars → underscore
 const ext = path.extname(inputPath).toLowerCase()
@@ -92,7 +92,12 @@ const ext = path.extname(inputPath).toLowerCase()
         if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
         await pipeline.toFile(outputPath)
       } catch (err) {
-        console.error(`ERROR [${platform.name}]: sharp failed — ${err.message}`)
+        const msg = err.message || ''
+        if (/corrupt|bogus huffman|invalid image|unexpected end of data/i.test(msg)) {
+          console.error(`[resize:err] CORRUPT FILE — ${path.basename(inputPath)} — re-download from Gemini`)
+        } else {
+          console.error(`ERROR [${platform.name}]: sharp failed — ${msg}`)
+        }
         process.exit(1)
       }
 
