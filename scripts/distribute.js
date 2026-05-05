@@ -195,10 +195,8 @@ async function postToBluesky() {
     }
     const { data: blobData } = await agent.uploadBlob(bytes, { encoding: 'image/jpeg' })
 
-    const BSKY_LIMIT = 300
-    const BSKY_SUFFIX = '... #BigSoleVibes'
-    const bskyText = caption.length > BSKY_LIMIT
-      ? caption.slice(0, BSKY_LIMIT - BSKY_SUFFIX.length) + BSKY_SUFFIX
+    const bskyText = [...caption].length > 300
+      ? [...caption].slice(0, 297).join('') + '...'
       : caption
 
     const rt = new RichText({ text: bskyText })
