@@ -112,6 +112,14 @@ function moveToPosted(filename, today) {
 // They work per-slug — each caption file is read independently, so day2a and day2b
 // can have different post_time and platform values with no interference.
 
+// Returns today's date as a local YYYY-MM-DD string (not UTC).
+// Using toISOString() would return the UTC date, which flips 5–7 hours before
+// local midnight in US timezones and causes _hold_since comparisons to misfire.
+function localDateString() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 // "post_time: HH:MM" — hold distribution until local time reaches this value.
 function parsePostTime(content) {
   const m = content.match(/^post_time:\s*(\d{1,2}):(\d{2})/m)
@@ -134,19 +142,29 @@ function parsePlatformField(content) {
 // Supports platform sections (## instagram / ## twitter / ## facebook)
 // or plain text applied to all platforms.
 
+// Removes leading key: value metadata lines (post_time, platform, etc.)
+// and any blank lines before the caption body begins.
+function stripHeader(content) {
+  return content
+    .replace(/^(?:[\w][\w-]*:[^\n]*\n)+/, '')  // strip leading key:value lines
+    .replace(/^---[ \t]*\n/, '')                // strip optional --- separator
+    .replace(/^\n+/, '')                        // strip leading blank lines
+}
+
 function parseCaptions(content) {
+  const body = stripHeader(content)
   const platforms = ['instagram', 'twitter', 'facebook']
   const result = {}
 
   for (const p of platforms) {
     const re = new RegExp(`##\\s*${p}\\s*\\n([\\s\\S]*?)(?=\\n##|$)`, 'i')
-    const m = content.match(re)
+    const m = body.match(re)
     if (m) result[p] = m[1].trim()
   }
 
   if (Object.keys(result).length === 0) {
     // Strip optional leading # title line, use remainder as universal caption
-    const text = content.replace(/^#[^\n]*\n/, '').trim()
+    const text = body.replace(/^#[^\n]*\n/, '').trim()
     for (const p of platforms) result[p] = text
   }
 
@@ -242,7 +260,7 @@ function run() {
   log('━━━ poll start ━━━')
 
   const state = loadState()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateString()
 
   // Filter out supporting files that are not post assets
   const IGNORE = /(-(prompt|flow-prompt)\.txt|gemini-(weekly-brief|brief-week-\d{4}-\d{2})\.md)$/i
