@@ -220,19 +220,25 @@ function distribute(caption, platformsList) {
   )
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Timing ───────────────────────────────────────────────────────────────────
 
-;(function run() {
-  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true })
-  fs.mkdirSync(TEMP_DIR,   { recursive: true })
+const POLL_INTERVAL_MS = 15 * 60 * 1000  // 15 minutes between polls
+const CRASH_RESTART_MS = 30 * 1000       // 30-second delay after a crash
 
-  // --reset: wipe all slug state for a clean run
-  if (process.argv.includes('--reset')) {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({}, null, 2))
-    log('State reset — all slug state cleared')
-  }
+// ─── Startup (runs once at process launch) ────────────────────────────────────
 
+fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+fs.mkdirSync(OUTPUT_DIR, { recursive: true })
+fs.mkdirSync(TEMP_DIR,   { recursive: true })
+
+if (process.argv.includes('--reset')) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify({}, null, 2))
+  log('State reset — all slug state cleared')
+}
+
+// ─── Poll ─────────────────────────────────────────────────────────────────────
+
+function run() {
   log('━━━ poll start ━━━')
 
   const state = loadState()
@@ -393,4 +399,25 @@ function distribute(caption, platformsList) {
     env:   process.env,
     stdio: 'inherit',
   })
-})()
+}
+
+// ─── Loop (crash guard + interval) ───────────────────────────────────────────
+// launchd KeepAlive restarts the whole process if Node exits.
+// This inner loop catches poll-level errors and retries after 30s without
+// taking down the process, so transient failures don't interrupt the schedule.
+
+function schedulePoll(delayMs) {
+  setTimeout(function () {
+    try {
+      run()
+    } catch (err) {
+      log(`CRASH: unhandled error in poll — ${err.stack || err.message}`)
+      log(`CRASH: restarting poll in ${CRASH_RESTART_MS / 1000}s`)
+      schedulePoll(CRASH_RESTART_MS)
+      return
+    }
+    schedulePoll(POLL_INTERVAL_MS)
+  }, delayMs)
+}
+
+schedulePoll(0)  // first poll fires immediately on process start
