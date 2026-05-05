@@ -4,6 +4,7 @@ const nodemailer = require('nodemailer')
 const fs         = require('fs')
 const path       = require('path')
 const os         = require('os')
+const crypto     = require('crypto')
 const { execSync } = require('child_process')
 
 const ROOT                  = path.join(__dirname, '..')
@@ -11,6 +12,7 @@ const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
 const WATCH_LOG             = path.join(ROOT, 'logs', 'watch-drive.log')
 const WATCH_ERR_LOG         = path.join(ROOT, 'logs', 'watch-drive-error.log')
 const SENT_FILE             = path.join(ROOT, 'logs', 'eng-bot-sent.json')
+const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
 const ADMIN_EMAIL           = 'admin@bigsolevibes.com'
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
@@ -71,7 +73,22 @@ function extractFailures(logContent) {
   })
 }
 
-// ─── Already-sent tracking ────────────────────────────────────────────────────
+// ─── Seen-failure deduplication (hash-based, persists across restarts) ───────
+
+function failureHash(failure) {
+  const key = `${failure.platform}::${normalizeMessage(failure.message)}`
+  return crypto.createHash('md5').update(key).digest('hex')
+}
+
+function loadSeen() {
+  try { return new Set(JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8'))) } catch { return new Set() }
+}
+
+function saveSeen(seen) {
+  fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 2))
+}
+
+// ─── Already-sent tracking (human-readable record, secondary) ─────────────────
 
 function loadSent() {
   try { return JSON.parse(fs.readFileSync(SENT_FILE, 'utf8')) } catch { return [] }
@@ -79,14 +96,6 @@ function loadSent() {
 
 function saveSent(sent) {
   fs.writeFileSync(SENT_FILE, JSON.stringify(sent, null, 2))
-}
-
-function alreadySent(sentList, failure) {
-  // Compare normalized messages so the same error at a new timestamp is not re-sent
-  return sentList.some(s =>
-    s.platform === failure.platform &&
-    normalizeMessage(s.message) === normalizeMessage(failure.message)
-  )
 }
 
 // ─── Google Drive report ──────────────────────────────────────────────────────
@@ -163,16 +172,7 @@ async function diagnose(client, failures) {
     `## Failure ${i + 1}\nPlatform: ${f.platform}\nError: ${f.message}\nTimestamp: ${f.timestamp}\n\nContext from log:\n\`\`\`\n${f.context}\n\`\`\``
   ).join('\n\n')
 
-  const stream = await client.messages.stream({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 2048,
-    thinking:   { type: 'adaptive' },
-    system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive.
-
-Your job is to diagnose posting failures extracted from watch-drive.log and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding.`,
-    messages: [{
-      role: 'user',
-      content: `The following failures were detected in watch-drive.log. For each one:
+  const userContent = `The following failures were detected in watch-drive.log. For each one:
 1. Explain in plain English what broke and why (2-3 sentences max)
 2. Propose one specific fix — exact code change, config step, or API action required
 
@@ -185,16 +185,37 @@ Format each diagnosis as:
 
 Here are the failures:
 
-${failureText}`,
-    }],
+${failureText}`
+
+  log(`Sending diagnosis request — ${failures.length} failure(s), ${userContent.length} chars`)
+
+  const response = await client.messages.create({
+    model:      'claude-sonnet-4-6',
+    max_tokens: 2048,
+    thinking:   { type: 'adaptive' },
+    system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive.
+
+Your job is to diagnose posting failures extracted from watch-drive.log and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding.`,
+    messages: [{ role: 'user', content: userContent }],
   })
 
-  let text = ''
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-      text += event.delta.text
+  log(`API response: id=${response.id} stop_reason=${response.stop_reason} blocks=${response.content.length}`)
+  response.content.forEach((block, i) => {
+    if (block.type === 'text') {
+      log(`  content[${i}]: text len=${block.text.length}`)
+    } else if (block.type === 'thinking') {
+      log(`  content[${i}]: thinking len=${(block.thinking || '').length}`)
+    } else {
+      log(`  content[${i}]: type=${block.type}`)
     }
-  }
+  })
+
+  const text = response.content
+    .filter(b => b.type === 'text')
+    .map(b => b.text)
+    .join('')
+
+  if (!text) log('WARNING: no text blocks in API response — diagnosis will be empty')
   return text.trim()
 }
 
@@ -295,14 +316,14 @@ Log: logs/eng-bot.log`
   }
 
   log(`Found ${failures.length} unique failure(s):`)
-  failures.forEach(f => log(`  ✗ ${f.platform}: ${f.message}`))
+  failures.forEach(f => log(`  ✗ ${f.platform}: ${f.message} [hash=${failureHash(f)}]`))
 
-  // Skip failures already emailed
-  const sent        = loadSent()
-  const newFailures = failures.filter(f => !alreadySent(sent, f))
+  // Skip failures already seen (hash-based, persists across restarts)
+  const seen        = loadSeen()
+  const newFailures = failures.filter(f => !seen.has(failureHash(f)))
 
   if (!newFailures.length) {
-    log('All failures already reported — no new email needed')
+    log('All failures already in eng-seen.json — nothing new to report')
     log('━━━ eng-bot complete (no new failures) ━━━\n')
     return
   }
@@ -330,19 +351,25 @@ Log: logs/eng-bot.log`
   log(`Sending email to ${ADMIN_EMAIL}...`)
   const emailSent = await sendEmail(newFailures, diagnosis)
 
+  // Mark failures as seen regardless of email outcome — Drive report was already written
+  newFailures.forEach(f => seen.add(failureHash(f)))
+  saveSeen(seen)
+  log(`Saved ${newFailures.length} new hash(es) to eng-seen.json`)
+
   if (emailSent) {
-    // Record as sent so we don't re-report the same failures
+    // Also write human-readable record to eng-bot-sent.json
+    const sent      = loadSent()
     const updatedSent = [
       ...sent,
       ...newFailures.map(f => ({
-        platform:  f.platform,
-        message:   f.message,
-        timestamp: f.timestamp,
+        platform:   f.platform,
+        message:    f.message,
+        timestamp:  f.timestamp,
+        hash:       failureHash(f),
         reportedAt: new Date().toISOString(),
       })),
     ]
     saveSent(updatedSent)
-    log(`Recorded ${newFailures.length} failure(s) as reported`)
   }
 
   log('Bot has taken no further action. Waiting for admin reply.')
