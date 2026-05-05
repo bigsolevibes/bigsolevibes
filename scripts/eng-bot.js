@@ -1,4 +1,7 @@
+// dotenv must load before any other require that reads process.env
 require('dotenv').config()
+console.log(`[eng-bot] SMTP: ${process.env.ZOHO_SMTP_HOST ? 'loaded' : 'MISSING'}`)
+
 const Anthropic  = require('@anthropic-ai/sdk').default
 const nodemailer = require('nodemailer')
 const fs         = require('fs')
@@ -256,10 +259,15 @@ async function sendEmail(failures, diagnosis) {
     return false
   }
 
+  log(`SMTP config: host=${ZOHO_SMTP_HOST} user=${ZOHO_SMTP_USER} pass=${ZOHO_SMTP_PASSWORD ? '***set***' : 'MISSING'}`)
+
   const transporter = nodemailer.createTransport({
-    host:   ZOHO_SMTP_HOST,
-    port:   465,
-    secure: true,
+    host:              ZOHO_SMTP_HOST,
+    port:              465,
+    secure:            true,
+    connectionTimeout: 15000,
+    greetingTimeout:   10000,
+    socketTimeout:     15000,
     auth: {
       user: ZOHO_SMTP_USER,
       pass: ZOHO_SMTP_PASSWORD,
@@ -300,15 +308,19 @@ If no reply is received, no action will be taken.
 This email was generated automatically by scripts/eng-bot.js
 Log: logs/eng-bot.log`
 
-  const info = await transporter.sendMail({
-    from:    `"BSV Eng Bot" <${ZOHO_SMTP_USER}>`,
-    to:      ADMIN_EMAIL,
-    subject,
-    text:    body,
-  })
-
-  log(`Email sent — messageId: ${info.messageId}`)
-  return true
+  try {
+    const info = await transporter.sendMail({
+      from:    `"BSV Eng Bot" <${ZOHO_SMTP_USER}>`,
+      to:      ADMIN_EMAIL,
+      subject,
+      text:    body,
+    })
+    log(`Email sent — messageId: ${info.messageId}`)
+    return true
+  } catch (err) {
+    log(`ERROR: sendMail failed — ${err.message}`)
+    return false
+  }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
