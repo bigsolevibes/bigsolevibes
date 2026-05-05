@@ -11,7 +11,7 @@ const REMOTE                 = 'big sole vibes:Big Sole Vibes'
 const GDRIVE_REMOTE          = 'big sole vibes'
 const READY_TO_POST_FOLDER   = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
-const IMAGE_MODEL = 'gemini-2.5-flash-image'
+const IMAGE_MODEL = 'imagen-3.0-generate-002'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
@@ -104,10 +104,10 @@ function parseDayPrompts(planContent) {
 // ─── Gemini image generation ──────────────────────────────────────────────────
 
 async function generateImage(apiKey, prompt) {
-  const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`
+  const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:predict?key=${apiKey}`
   const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { responseModalities: ['IMAGE'] },
+    instances:  [{ prompt }],
+    parameters: { sampleCount: 1 },
   }
   const res  = await fetch(url, {
     method:  'POST',
@@ -116,14 +116,13 @@ async function generateImage(apiKey, prompt) {
   })
   const data = await res.json()
   if (!res.ok) {
-    throw new Error(`Gemini API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
+    throw new Error(`Imagen API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
   }
-  const parts     = data?.candidates?.[0]?.content?.parts || []
-  const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'))
-  if (!imagePart) {
-    throw new Error(`No image in response — parts: ${JSON.stringify(parts.map(p => Object.keys(p)))}`)
+  const prediction = data?.predictions?.[0]
+  if (!prediction?.bytesBase64Encoded) {
+    throw new Error(`No image in response — keys: ${JSON.stringify(Object.keys(prediction || data))}`)
   }
-  return Buffer.from(imagePart.inlineData.data, 'base64')
+  return Buffer.from(prediction.bytesBase64Encoded, 'base64')
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

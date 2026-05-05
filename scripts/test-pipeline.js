@@ -10,7 +10,7 @@ const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-test-pipeline')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
 const TEST_DIR = `${REMOTE}/Test`
 
-const IMAGE_MODEL = 'gemini-2.5-flash-image'
+const IMAGE_MODEL = 'imagen-3.0-generate-002'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
 
 // ─── Minimal test plan fixture ────────────────────────────────────────────────
@@ -271,18 +271,17 @@ async function step3_imageGen(geminiKey, planText) {
 
   let buf
   try {
-    const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:generateContent?key=${geminiKey}`
+    const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:predict?key=${geminiKey}`
     const body = {
-      contents:        [{ parts: [{ text: visualPrompt }] }],
-      generationConfig: { responseModalities: ['IMAGE'] },
+      instances:  [{ prompt: visualPrompt }],
+      parameters: { sampleCount: 1 },
     }
     const res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json()
-    if (!res.ok) throw new Error(`Gemini API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
-    const parts     = data?.candidates?.[0]?.content?.parts || []
-    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'))
-    if (!imagePart) throw new Error(`no image part in response — keys: ${JSON.stringify(parts.map(p => Object.keys(p)))}`)
-    buf = Buffer.from(imagePart.inlineData.data, 'base64')
+    if (!res.ok) throw new Error(`Imagen API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
+    const prediction = data?.predictions?.[0]
+    if (!prediction?.bytesBase64Encoded) throw new Error(`no image in response — keys: ${JSON.stringify(Object.keys(prediction || data))}`)
+    buf = Buffer.from(prediction.bytesBase64Encoded, 'base64')
     pass('3b Gemini API', `image received (${Math.round(buf.length / 1024)}KB)`)
   } catch (err) {
     fail('3b Gemini API', err.message)
