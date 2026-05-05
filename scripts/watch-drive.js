@@ -47,15 +47,18 @@ function saveState(state) {
 }
 
 // True when every recorded platform for this slug is 'success'.
+// Keys starting with _ are internal sentinels and are ignored.
 function isComplete(slugState) {
-  if (!slugState || Object.keys(slugState).length === 0) return false
-  return Object.values(slugState).every(v => v === 'success')
+  if (!slugState) return false
+  const platformEntries = Object.entries(slugState).filter(([k]) => !k.startsWith('_'))
+  if (platformEntries.length === 0) return false
+  return platformEntries.every(([, v]) => v === 'success')
 }
 
 // Platform names recorded as 'pending' for this slug.
 function pendingPlatforms(slugState) {
   if (!slugState) return []
-  return Object.entries(slugState).filter(([, v]) => v === 'pending').map(([k]) => k)
+  return Object.entries(slugState).filter(([k, v]) => !k.startsWith('_') && v === 'pending').map(([k]) => k)
 }
 
 // Merge distribute-results.json into state for this slug.
