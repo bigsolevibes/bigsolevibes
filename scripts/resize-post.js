@@ -51,14 +51,14 @@ fs.mkdirSync(desktopDir, { recursive: true })
 
 const baseName = path.basename(inputPath, path.extname(inputPath))
   .replace(/['\u2018\u2019]/g, '')   // strip apostrophes (breaks Cloudflare CDN URL matching)
-  .replace(/\s+/g, ‘_’)              // spaces → underscores
-  .replace(/[^a-zA-Z0-9_\-]/g, ‘_’) // any remaining non-URL-safe chars → underscore
+  .replace(/\s+/g, '_')              // spaces → underscores
+  .replace(/[^a-zA-Z0-9_\-]/g, '_') // any remaining non-URL-safe chars → underscore
 const ext = path.extname(inputPath).toLowerCase()
 
 ;(async () => {
   // MP4 input — skip image resizing, copy directly to youtube and tiktok slots
-  if (ext === ‘.mp4’) {
-    for (const slot of [‘youtube’, ‘tiktok’]) {
+  if (ext === '.mp4') {
+    for (const slot of ['youtube', 'tiktok']) {
       const fileName    = `${baseName}-${slot}.mp4`
       const outputPath  = path.join(outputDir,  fileName)
       const desktopPath = path.join(desktopDir, fileName)
@@ -80,16 +80,16 @@ const ext = path.extname(inputPath).toLowerCase()
     }
 
     for (const platform of targets) {
-      const outExt = platform.format === ‘jpeg’ ? ‘.jpg’ : ext
+      const outExt = platform.format === 'jpeg' ? '.jpg' : ext
       const fileName = `${baseName}-${platform.name}${outExt}`
       const outputPath = path.join(outputDir, fileName)
       const desktopPath = path.join(desktopDir, fileName)
 
       try {
         let pipeline = sharp(inputPath)
-          .toColorspace(‘srgb’)
-          .resize(platform.width, platform.height, { fit: ‘cover’, position: ‘centre’ })
-        if (platform.format === ‘jpeg’) pipeline = pipeline.jpeg({ quality: platform.quality })
+          .toColorspace('srgb')
+          .resize(platform.width, platform.height, { fit: 'cover', position: 'centre' })
+        if (platform.format === 'jpeg') pipeline = pipeline.jpeg({ quality: platform.quality })
         await pipeline.toFile(outputPath)
       } catch (err) {
         const msg = err.message || ''
