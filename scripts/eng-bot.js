@@ -27,9 +27,16 @@ function log(msg) {
 
 // ─── Failure extraction ───────────────────────────────────────────────────────
 
-// Strip leading ISO timestamp so "same error, different time" dedups correctly.
+// Strip all variable data so the same error always produces the same hash.
 function normalizeMessage(msg) {
-  return msg.replace(/^\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]\s*/, '').trim()
+  return msg
+    .replace(/^\[\d{4}-\d{2}-\d{2}T[\d:.]+Z\]\s*/, '')   // leading [timestamp]
+    .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, '<ts>')       // embedded ISO timestamps
+    .replace(/\[hash=[a-f0-9]+\]/g, '')                    // [hash=...] annotations
+    .replace(/\/(?:Users|home|tmp|opt|var|usr)\/[^\s"'`\],]*/g, '<path>') // absolute paths
+    .replace(/^[a-z][a-z0-9-]*:\s+/, '')                   // leading slug prefix (e.g. "mon-am: ")
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function extractFailures(logContent) {
@@ -167,8 +174,29 @@ function writeReport(date, failures, diagnosis) {
 
 // ─── Claude diagnosis ─────────────────────────────────────────────────────────
 
+// Collapse failures that normalize to the same message, then cap at max.
+// This prevents sending 6 identical "resize exited 1" entries to the API.
+function dedupForDiagnosis(failures, max = 10) {
+  const seen = new Set()
+  const result = []
+  for (const f of failures) {
+    const key = `${f.platform}::${normalizeMessage(f.message)}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push(f)
+      if (result.length >= max) break
+    }
+  }
+  return result
+}
+
 async function diagnose(client, failures) {
-  const failureText = failures.map((f, i) =>
+  const dedupedFailures = dedupForDiagnosis(failures, 10)
+  if (dedupedFailures.length < failures.length) {
+    log(`Diagnosis: collapsed ${failures.length} failures → ${dedupedFailures.length} unique for API call`)
+  }
+
+  const failureText = dedupedFailures.map((f, i) =>
     `## Failure ${i + 1}\nPlatform: ${f.platform}\nError: ${f.message}\nTimestamp: ${f.timestamp}\n\nContext from log:\n\`\`\`\n${f.context}\n\`\`\``
   ).join('\n\n')
 
@@ -187,12 +215,11 @@ Here are the failures:
 
 ${failureText}`
 
-  log(`Sending diagnosis request — ${failures.length} failure(s), ${userContent.length} chars`)
+  log(`Sending diagnosis request — ${dedupedFailures.length} failure(s), ${userContent.length} chars`)
 
   const response = await client.messages.create({
     model:      'claude-sonnet-4-6',
-    max_tokens: 2048,
-    thinking:   { type: 'adaptive' },
+    max_tokens: 1000,
     system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive.
 
 Your job is to diagnose posting failures extracted from watch-drive.log and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding.`,
@@ -316,7 +343,7 @@ Log: logs/eng-bot.log`
   }
 
   log(`Found ${failures.length} unique failure(s):`)
-  failures.forEach(f => log(`  ✗ ${f.platform}: ${f.message} [hash=${failureHash(f)}]`))
+  failures.forEach(f => log(`  ✗ ${f.platform}: ${f.message}`))
 
   // Skip failures already seen (hash-based, persists across restarts)
   const seen        = loadSeen()
