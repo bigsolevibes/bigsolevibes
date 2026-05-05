@@ -1,22 +1,17 @@
-// dotenv must load before any other require that reads process.env
 require('dotenv').config()
-console.log(`[eng-bot] SMTP: ${process.env.ZOHO_SMTP_HOST ? 'loaded' : 'MISSING'}`)
 
-const Anthropic  = require('@anthropic-ai/sdk').default
-const nodemailer = require('nodemailer')
-const fs         = require('fs')
-const path       = require('path')
-const os         = require('os')
-const crypto     = require('crypto')
+const Anthropic    = require('@anthropic-ai/sdk').default
+const fs           = require('fs')
+const path         = require('path')
+const os           = require('os')
+const crypto       = require('crypto')
 const { execSync } = require('child_process')
 
 const ROOT                  = path.join(__dirname, '..')
 const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
 const WATCH_LOG             = path.join(ROOT, 'logs', 'watch-drive.log')
 const WATCH_ERR_LOG         = path.join(ROOT, 'logs', 'watch-drive-error.log')
-const SENT_FILE             = path.join(ROOT, 'logs', 'eng-bot-sent.json')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
-const ADMIN_EMAIL           = 'admin@bigsolevibes.com'
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 
@@ -98,20 +93,9 @@ function saveSeen(seen) {
   fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen], null, 2))
 }
 
-// ─── Already-sent tracking (human-readable record, secondary) ─────────────────
-
-function loadSent() {
-  try { return JSON.parse(fs.readFileSync(SENT_FILE, 'utf8')) } catch { return [] }
-}
-
-function saveSent(sent) {
-  fs.writeFileSync(SENT_FILE, JSON.stringify(sent, null, 2))
-}
-
 // ─── Google Drive report ──────────────────────────────────────────────────────
 
 function extractSlug(context) {
-  // Matches lines like "[timestamp] day2a: ERROR ..." or "[timestamp] day2a: WARNING ..."
   const m = context.match(/\]\s+(\S+?):\s+(?:ERROR|WARNING)/)
   return m ? m[1] : null
 }
@@ -178,7 +162,6 @@ function writeReport(date, failures, diagnosis) {
 // ─── Claude diagnosis ─────────────────────────────────────────────────────────
 
 // Collapse failures that normalize to the same message, then cap at max.
-// This prevents sending 6 identical "resize exited 1" entries to the API.
 function dedupForDiagnosis(failures, max = 10) {
   const seen = new Set()
   const result = []
@@ -249,80 +232,6 @@ Your job is to diagnose posting failures extracted from watch-drive.log and prop
   return text.trim()
 }
 
-// ─── Email ────────────────────────────────────────────────────────────────────
-
-async function sendEmail(failures, diagnosis) {
-  const { ZOHO_SMTP_HOST, ZOHO_SMTP_USER, ZOHO_SMTP_PASSWORD } = process.env
-
-  if (!ZOHO_SMTP_HOST || !ZOHO_SMTP_USER || !ZOHO_SMTP_PASSWORD) {
-    log('ERROR: Missing ZOHO_SMTP_HOST, ZOHO_SMTP_USER, or ZOHO_SMTP_PASSWORD — cannot send email')
-    return false
-  }
-
-  log(`SMTP config: host=${ZOHO_SMTP_HOST} user=${ZOHO_SMTP_USER} pass=${ZOHO_SMTP_PASSWORD ? '***set***' : 'MISSING'}`)
-
-  const transporter = nodemailer.createTransport({
-    host:              ZOHO_SMTP_HOST,
-    port:              465,
-    secure:            true,
-    connectionTimeout: 15000,
-    greetingTimeout:   10000,
-    socketTimeout:     15000,
-    auth: {
-      user: ZOHO_SMTP_USER,
-      pass: ZOHO_SMTP_PASSWORD,
-    },
-  })
-
-  const failureSummary = failures.map(f =>
-    `• ${f.platform}: ${f.message} (${f.timestamp})`
-  ).join('\n')
-
-  const subject = `[BSV Eng Bot] ${failures.length} posting failure${failures.length > 1 ? 's' : ''} detected — approval required`
-
-  const body = `BSV Engineering Bot detected ${failures.length} posting failure${failures.length > 1 ? 's' : ''} in watch-drive.log.
-
-━━━ FAILURES DETECTED ━━━
-
-${failureSummary}
-
-━━━ DIAGNOSIS & PROPOSED FIXES ━━━
-
-${diagnosis}
-
-━━━ APPROVAL REQUIRED ━━━
-
-The bot has taken NO action. It will not retry, modify code, or touch any other agent without your explicit approval.
-
-To approve the proposed fix(es), reply to this email with:
-  APPROVE
-
-To deny and take no action, reply with:
-  DENY
-
-The bot will check for your reply every 15 minutes for up to 24 hours.
-If no reply is received, no action will be taken.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-This email was generated automatically by scripts/eng-bot.js
-Log: logs/eng-bot.log`
-
-  try {
-    const info = await transporter.sendMail({
-      from:    `"BSV Eng Bot" <${ZOHO_SMTP_USER}>`,
-      to:      ADMIN_EMAIL,
-      subject,
-      text:    body,
-    })
-    log(`Email sent — messageId: ${info.messageId}`)
-    return true
-  } catch (err) {
-    log(`ERROR: sendMail failed — ${err.message}`)
-    return false
-  }
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -337,7 +246,7 @@ Log: logs/eng-bot.log`
 
   // Read watch-drive.log + watch-drive-error.log (stderr from child processes)
   if (!fs.existsSync(WATCH_LOG) && !fs.existsSync(WATCH_ERR_LOG)) {
-    log(`No watch-drive logs found — nothing to diagnose`)
+    log('No watch-drive logs found — nothing to diagnose')
     log('━━━ eng-bot complete (no log) ━━━\n')
     return
   }
@@ -371,7 +280,7 @@ Log: logs/eng-bot.log`
 
   // Diagnose with Claude
   log('Calling Claude API for diagnosis...')
-  const client    = new Anthropic({ apiKey })
+  const client = new Anthropic({ apiKey })
   let diagnosis
   try {
     diagnosis = await diagnose(client, newFailures)
@@ -381,36 +290,13 @@ Log: logs/eng-bot.log`
     diagnosis = null
   }
 
-  // Write report to Google Drive (independent of email)
+  // Write report to Google Drive
   writeReport(today, newFailures, diagnosis)
 
-  if (!diagnosis) process.exit(1)
-
-  // Send email
-  log(`Sending email to ${ADMIN_EMAIL}...`)
-  const emailSent = await sendEmail(newFailures, diagnosis)
-
-  // Mark failures as seen regardless of email outcome — Drive report was already written
+  // Mark failures as seen
   newFailures.forEach(f => seen.add(failureHash(f)))
   saveSeen(seen)
   log(`Saved ${newFailures.length} new hash(es) to eng-seen.json`)
 
-  if (emailSent) {
-    // Also write human-readable record to eng-bot-sent.json
-    const sent      = loadSent()
-    const updatedSent = [
-      ...sent,
-      ...newFailures.map(f => ({
-        platform:   f.platform,
-        message:    f.message,
-        timestamp:  f.timestamp,
-        hash:       failureHash(f),
-        reportedAt: new Date().toISOString(),
-      })),
-    ]
-    saveSent(updatedSent)
-  }
-
-  log('Bot has taken no further action. Waiting for admin reply.')
   log('━━━ eng-bot complete ━━━\n')
 })()
