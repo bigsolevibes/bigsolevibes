@@ -109,6 +109,9 @@ const ext = path.extname(inputPath).toLowerCase()
       console.log(`  → copied to ${publicPath}`)
       copyToGDrive(outputPath)
     }
+
+    // Apply BSV branding overlay to all output images before committing
+    execSync(`node "${path.join(__dirname, 'brand-image.js')}" --dir "${outputDir}"`, { stdio: 'inherit' })
   }
 
   // Deploy to Cloudflare Pages — public/posts/output/ is served at /posts/output/
