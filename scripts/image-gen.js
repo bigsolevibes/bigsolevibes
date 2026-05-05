@@ -4,10 +4,12 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT     = path.join(__dirname, '..')
-const LOG_FILE = path.join(ROOT, 'logs', 'image-gen.log')
-const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-image-gen')
-const REMOTE   = 'big sole vibes:Big Sole Vibes'
+const ROOT                   = path.join(__dirname, '..')
+const LOG_FILE               = path.join(ROOT, 'logs', 'image-gen.log')
+const TEMP_DIR               = path.join(os.homedir(), 'tmp', 'bsv-image-gen')
+const REMOTE                 = 'big sole vibes:Big Sole Vibes'
+const GDRIVE_REMOTE          = 'big sole vibes'
+const READY_TO_POST_FOLDER   = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
 const IMAGE_MODEL = 'gemini-2.5-flash-image'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
@@ -168,8 +170,11 @@ async function generateImage(apiKey, prompt) {
       const buf       = await generateImage(apiKey, day.visualPrompt)
       const localPath = path.join(TEMP_DIR, filename)
       fs.writeFileSync(localPath, buf)
-      uploadFile(localPath, remote)
-      log(`    ✓ uploaded → ${remote} (${Math.round(buf.length / 1024)}KB)`)
+      execSync(
+        `rclone copyto "${localPath}" "${GDRIVE_REMOTE}:${filename}" --drive-root-folder-id ${READY_TO_POST_FOLDER}`,
+        { stdio: 'pipe' }
+      )
+      log(`    ✓ uploaded → folder:${READY_TO_POST_FOLDER}/${filename} (${Math.round(buf.length / 1024)}KB)`)
       generated++
     } catch (err) {
       log(`    ERROR: ${err.message}`)
