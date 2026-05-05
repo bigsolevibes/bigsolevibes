@@ -294,13 +294,29 @@ function distribute(caption, platformsList) {
 
       const captionText = fs.readFileSync(localCaption, 'utf8')
 
-      // Scheduling gate — only distribute at or after post_time
+      // Scheduling gate — only distribute at or after post_time.
+      // Uses _hold_since to detect cross-day stale holds: if today's UTC date is
+      // after the date this slug was first held, post_time is overdue — fire immediately.
       const { postTime, ready } = parsePostTime(captionText)
       if (!ready) {
-        const now = new Date()
-        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-        log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
-        continue
+        if (!state[base]) state[base] = {}
+        const holdSince = state[base]._hold_since
+        if (holdSince && holdSince < today) {
+          log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
+          // fall through to distribution
+        } else {
+          if (!holdSince) {
+            state[base]._hold_since = today
+            saveState(state)
+          }
+          const now = new Date()
+          const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+          log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
+          continue
+        }
+      } else if (state[base] && state[base]._hold_since) {
+        // post_time reached normally — clear the hold sentinel
+        delete state[base]._hold_since
       }
 
       const captions    = parseCaptions(captionText)
