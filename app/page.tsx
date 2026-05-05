@@ -164,8 +164,17 @@ export default function ComingSoonPage() {
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────────────── */}
-      <footer className="mt-10 font-body text-xs text-center" style={{ color: MUTED }}>
-        © 2025 Big Sole Vibes. All rights reserved.
+      <footer className="mt-10 font-body text-xs text-center flex flex-col items-center gap-2" style={{ color: CREAM + '99' }}>
+        <div className="flex items-center gap-3">
+          <Link href="/privacy" className="hover:opacity-100 transition-opacity" style={{ color: CREAM + '99' }}>
+            Privacy Policy
+          </Link>
+          <span style={{ color: CREAM + '40' }}>·</span>
+          <Link href="/terms" className="hover:opacity-100 transition-opacity" style={{ color: CREAM + '99' }}>
+            Terms of Service
+          </Link>
+        </div>
+        <span style={{ color: CREAM + '40' }}>© 2025 Big Sole Vibes</span>
       </footer>
 
     </div>
