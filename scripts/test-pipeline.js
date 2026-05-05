@@ -10,7 +10,7 @@ const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-test-pipeline')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
 const TEST_DIR = `${REMOTE}/Test`
 
-const IMAGE_MODEL = 'imagen-3.0-generate-002'
+const IMAGE_MODEL = 'imagen-4.0-fast-generate-001'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
 
 // ─── Minimal test plan fixture ────────────────────────────────────────────────

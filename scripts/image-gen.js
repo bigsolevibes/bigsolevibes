@@ -11,7 +11,7 @@ const REMOTE                 = 'big sole vibes:Big Sole Vibes'
 const GDRIVE_REMOTE          = 'big sole vibes'
 const READY_TO_POST_FOLDER   = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
-const IMAGE_MODEL = 'imagen-3.0-generate-002'
+const IMAGE_MODEL = 'imagen-4.0-fast-generate-001'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
