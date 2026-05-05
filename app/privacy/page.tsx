@@ -83,7 +83,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="YOUR RIGHTS">
-          <p>You can request to access, correct, or delete the personal information we hold about you at any time. To do so, email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>You can request to access, correct, or delete the personal information we hold about you at any time. To do so, email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
         <Section title="CHILDREN">
@@ -95,7 +95,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="CONTACT">
-          <p>Questions? Email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>Questions? Email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
       </main>

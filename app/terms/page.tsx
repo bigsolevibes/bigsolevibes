@@ -99,7 +99,7 @@ export default function TermsPage() {
         </Section>
 
         <Section title="CONTACT">
-          <p>Questions about these terms? Email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>Questions about these terms? Email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
       </main>
