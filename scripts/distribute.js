@@ -295,21 +295,35 @@ async function postToInstagram() {
   console.log(`  [debug] META_IG_ACCOUNT_ID  = "${META_IG_ACCOUNT_ID}"`)
   console.log(`  [debug] Local file exists: ${require('fs').existsSync(images.instagram)}, size: ${require('fs').statSync(images.instagram).size} bytes`)
 
-  // Verify URL is reachable before sending to Instagram
-  try {
-    const probe = await fetch(imageUrl, { method: 'HEAD' })
-    console.log(`  [debug] URL probe: HTTP ${probe.status} ${probe.statusText}`)
-    if (!probe.ok) {
-      log('Instagram', 'fail', `Image URL returned HTTP ${probe.status} — not publicly accessible yet. Wait for Cloudflare Pages deploy.`)
-      return
+  // Verify URL is reachable before sending to Instagram.
+  // Wait 120s for Cloudflare Pages to deploy, then probe up to 5 times
+  // at 30s intervals. Only give up if all probes return non-200.
+  console.log(`  [debug] CDN initial wait 120s for Cloudflare Pages deploy...`)
+  await new Promise(r => setTimeout(r, 120000))
+
+  const MAX_PROBES    = 5
+  const PROBE_WAIT_MS = 30000
+  let urlReady = false
+
+  for (let attempt = 1; attempt <= MAX_PROBES; attempt++) {
+    try {
+      const probe = await fetch(imageUrl, { method: 'HEAD' })
+      console.log(`  [debug] URL probe ${attempt}/${MAX_PROBES}: HTTP ${probe.status} ${probe.statusText}`)
+      if (probe.ok) { urlReady = true; break }
+    } catch (err) {
+      console.log(`  [debug] URL probe ${attempt}/${MAX_PROBES} failed: ${err.message}`)
     }
-    // Wait for Cloudflare CDN to propagate globally before Instagram fetches the image
-    console.log(`  [debug] CDN probe OK — waiting 45s for global propagation...`)
-    await new Promise(r => setTimeout(r, 45000))
-    console.log(`  [debug] CDN wait complete`)
-  } catch (err) {
-    console.log(`  [debug] URL probe failed: ${err.message}`)
+    if (attempt < MAX_PROBES) {
+      console.log(`  [debug] Waiting ${PROBE_WAIT_MS / 1000}s before next probe...`)
+      await new Promise(r => setTimeout(r, PROBE_WAIT_MS))
+    }
   }
+
+  if (!urlReady) {
+    log('Instagram', 'fail', `Image URL not accessible after ${MAX_PROBES} probes — ${imageUrl}`)
+    return
+  }
+  console.log(`  [debug] URL confirmed reachable — proceeding to post`)
 
   try {
     // Step 1: create media container
