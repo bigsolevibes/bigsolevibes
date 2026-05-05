@@ -42,6 +42,10 @@ export default function TermsPage() {
 
         <div className="w-16 h-px" style={{ backgroundColor: AMBER }} />
 
+        <p className="font-body text-sm leading-relaxed" style={{ color: MUTED }}>
+          These Terms of Service govern your use of the Big Sole Vibes app and website located at bigsolevibes.com, operated by Big Sole Vibes.
+        </p>
+
         <Section title="ACCEPTANCE">
           <p>By accessing bigsolevibes.com or signing up for any Big Sole Vibes newsletter, you agree to these Terms of Service. If you do not agree, do not use the site.</p>
         </Section>

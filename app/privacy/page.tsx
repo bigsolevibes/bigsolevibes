@@ -42,6 +42,10 @@ export default function PrivacyPage() {
 
         <div className="w-16 h-px" style={{ backgroundColor: AMBER }} />
 
+        <p className="font-body text-sm leading-relaxed" style={{ color: MUTED }}>
+          This Privacy Policy applies to the Big Sole Vibes app and website located at bigsolevibes.com, operated by Big Sole Vibes.
+        </p>
+
         <Section title="WHO WE ARE">
           <p>Big Sole Vibes ("BSV," "we," "us") operates the website bigsolevibes.com and related email newsletters. We make content about men's foot care and accessories.</p>
         </Section>
