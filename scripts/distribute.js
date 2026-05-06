@@ -293,32 +293,18 @@ async function postToInstagram() {
   console.log(`  [debug] META_IG_ACCOUNT_ID  = "${META_IG_ACCOUNT_ID}"`)
   console.log(`  [debug] Local file exists: ${require('fs').existsSync(images.instagram)}, size: ${require('fs').statSync(images.instagram).size} bytes`)
 
-  // Verify URL is reachable before sending to Instagram.
-  // Wait 120s for Cloudflare Pages to deploy, then probe up to 5 times
-  // at 30s intervals. Only give up if all probes return non-200.
-  console.log(`  [debug] CDN initial wait 120s for Cloudflare Pages deploy...`)
-  await new Promise(r => setTimeout(r, 120000))
-
-  const MAX_PROBES    = 5
-  const PROBE_WAIT_MS = 30000
-  let urlReady = false
-
-  for (let attempt = 1; attempt <= MAX_PROBES; attempt++) {
-    try {
-      const probe = await fetch(imageUrl, { method: 'HEAD' })
-      console.log(`  [debug] URL probe ${attempt}/${MAX_PROBES}: HTTP ${probe.status} ${probe.statusText}`)
-      if (probe.ok) { urlReady = true; break }
-    } catch (err) {
-      console.log(`  [debug] URL probe ${attempt}/${MAX_PROBES} failed: ${err.message}`)
+  // Quick reachability check — watch-drive.js waitForUrl() handles the full
+  // CDN polling before calling distribute. This single probe is a safety net
+  // for standalone invocations (e.g. manual runs outside the watcher).
+  try {
+    const probe = await fetch(imageUrl, { method: 'HEAD' })
+    console.log(`  [debug] URL probe: HTTP ${probe.status} ${probe.statusText}`)
+    if (!probe.ok) {
+      log('Instagram', 'fail', `Image URL not accessible — ${imageUrl}`)
+      return
     }
-    if (attempt < MAX_PROBES) {
-      console.log(`  [debug] Waiting ${PROBE_WAIT_MS / 1000}s before next probe...`)
-      await new Promise(r => setTimeout(r, PROBE_WAIT_MS))
-    }
-  }
-
-  if (!urlReady) {
-    log('Instagram', 'fail', `Image URL not accessible after ${MAX_PROBES} probes — ${imageUrl}`)
+  } catch (err) {
+    log('Instagram', 'fail', `Image URL probe failed — ${err.message}`)
     return
   }
   console.log(`  [debug] URL confirmed reachable — proceeding to post`)
