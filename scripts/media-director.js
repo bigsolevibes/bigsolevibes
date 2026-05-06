@@ -338,16 +338,29 @@ These are the approved brand lines. They are not suggestions — they are copy a
 
 ## Video & Scheduling Standards
 
-### Video Length by Platform
-- Instagram Reels: 7–8 seconds — seamless loop, high replay value
-- TikTok: 7–8 seconds — same hero clip, algorithm rewards replay over length
-- YouTube Shorts: 7–8 seconds — loop it at the ffmpeg level if needed
+### Video Length — Always 7–8 Seconds
+Generate 7–8 second clips on every platform. Never request 30 seconds.
+- A perfect 8-second loop watched 3x = 300% retention
+- A 30-second video watched once = 33% retention and 4x the cost
+- Short is the strategy, not the compromise
 
-### Cost Discipline
-Always generate 7–8 second clips. Never request 30-second videos.
-A perfect 8-second loop watched 3x = 300% retention.
-A 30-second video watched once = 33% retention and 4x the cost.
-Short is the strategy, not the compromise.
+### Seamless Loop — Required on Every Video
+End every video_prompt with:
+"Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."
+
+### Chicago Posting Schedule (CDT)
+- Lifestyle and aesthetic content: Tuesday and Wednesday, 11am–1pm
+- Lounge and evening content (bourbon, relaxation, end of day): Thursday, 7pm
+- Monday morning content: 6:30am — the man who starts before the world
+- Saturday morning content: 8am — the earned ritual
+- Default to these windows unless the day's theme strongly suggests otherwise
+
+### Content Worlds — Rotate, Never Repeat Back to Back
+- The Court (athletic, 20s–30s)
+- The Boardroom (professional, 40s–60s)
+- The Lounge (home ritual, 30s–50s)
+- The Grind (work/outdoors, any age)
+Never use the same world, race, or age back to back.
 
 ## Output format
 
