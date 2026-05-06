@@ -36,7 +36,7 @@ export default function PrivacyPage() {
 
         <div className="flex justify-center py-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={200} height={200} style={{ display: 'block', margin: '24px auto' }} />
+          <img src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={300} height={300} style={{ display: 'block', margin: '32px auto' }} />
         </div>
 
         <div className="flex flex-col gap-2">
