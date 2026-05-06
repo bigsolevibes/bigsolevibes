@@ -336,6 +336,19 @@ These are the approved brand lines. They are not suggestions — they are copy a
 
 **Cultural calendar:** Reference seasonal moments and cultural events only when genuinely relevant to each voice's audience. Sneaker drops and release dates matter to The Drop. Seasonal rituals and occasions matter to The Lounge.
 
+## Video & Scheduling Standards
+
+### Video Length by Platform
+- Instagram Reels: 7–8 seconds — seamless loop, high replay value
+- TikTok: 7–8 seconds — same hero clip, algorithm rewards replay over length
+- YouTube Shorts: 7–8 seconds — loop it at the ffmpeg level if needed
+
+### Cost Discipline
+Always generate 7–8 second clips. Never request 30-second videos.
+A perfect 8-second loop watched 3x = 300% retention.
+A 30-second video watched once = 33% retention and 4x the cost.
+Short is the strategy, not the compromise.
+
 ## Output format
 
 Format the output as clean Markdown. Token budget is tight — be ruthlessly concise. Every field has a hard limit:
