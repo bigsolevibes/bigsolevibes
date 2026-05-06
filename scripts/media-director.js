@@ -345,6 +345,8 @@ Format the output as clean Markdown. Token budget is tight — be ruthlessly con
 **Theme:** one line
 **Copy angle:** two lines max
 **Flow prompt:** 3–4 lines — specific enough to generate without edits, no padding
+**video_prompt:** one paragraph — what the camera sees, how it moves, what the subject does, lighting and mood. End with exactly: "9:16 vertical, no text, no logos, no watermarks."
+**audio_prompt:** one line — ambient sound description for the scene (no music titles, no copyrighted song references)
 **Platform notes:** one line per platform (TikTok / Instagram / X / Facebook)
 **Caption:** ready-to-post, hashtags included, no preamble
 
@@ -466,6 +468,18 @@ Avoid repeating angles or visuals that have clearly been used recently. Build on
     log('gemini-bridge triggered automatically.')
   } else {
     log(`ERROR: gemini-bridge exited with code ${bridge.status}`)
+  }
+
+  // Automatically chain into video-gen after gemini-bridge
+  log('Spawning video-gen.js...')
+  const videoGen = spawnSync(process.execPath, [path.join(__dirname, 'video-gen.js')], {
+    stdio: 'inherit',
+    env:   process.env,
+  })
+  if (videoGen.status === 0) {
+    log('video-gen triggered automatically.')
+  } else {
+    log(`ERROR: video-gen exited with code ${videoGen.status}`)
   }
 
   // Send Sunday checklist email with all prompts
