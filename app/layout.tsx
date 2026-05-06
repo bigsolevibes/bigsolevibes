@@ -25,8 +25,8 @@ export const metadata: Metadata = {
   },
   description: 'Your feet work hard. Start acting like it.',
   icons: {
-    icon: '/bsv-icon-1024.png',
-    apple: '/bsv-icon-1024.png',
+    icon: '/brand/bsv-favicon.png',
+    apple: '/brand/bsv-favicon.png',
   },
   openGraph: {
     title: 'Big Sole Vibes',
