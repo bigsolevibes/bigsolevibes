@@ -333,6 +333,16 @@ The transition shot — leather chair, bourbon, camera pans down to reveal fresh
 - The Grind (work/outdoors, any age)
 Vary race, age, and setting every day. Never the same world or demographic back to back.
 
+### Humor & Animation (1-2x per week)
+BSV takes feet seriously. BSV does not take itself seriously.
+Once or twice a week generate content that is funny, playful, or animated.
+- Cartoon or illustrated style feet — Imagen 4 handles this well
+- Exaggerated before/after foot scenarios
+- Feet with personality — tired feet, proud feet, neglected feet
+- Self-aware captions that wink at the AI or at foot care in general
+- Always ties back to the core truth: nice feet matter, BSV makes it easy
+Style: playful, warm, never mean. Punching up at neglected feet, never at the person.
+
 ## Chicago Posting Schedule (CDT)
 - Monday: 6:30am — the man who starts before the world
 - Tuesday: 11am–1pm — Street energy, lifestyle
