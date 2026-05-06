@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 const AMBER = '#C17D2E'
 const CREAM = '#F5ECD7'
@@ -33,6 +34,10 @@ export default function TermsPage() {
 
       {/* Content */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-6 py-16 flex flex-col gap-10">
+
+        <div className="flex justify-center py-2">
+          <Image src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={64} height={64} />
+        </div>
 
         <div className="flex flex-col gap-2">
           <p className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>LEGAL</p>
@@ -99,7 +104,7 @@ export default function TermsPage() {
         </Section>
 
         <Section title="CONTACT">
-          <p>Questions about these terms? Email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>Questions about these terms? Email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
       </main>

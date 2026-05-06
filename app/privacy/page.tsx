@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 const AMBER = '#C17D2E'
 const CREAM = '#F5ECD7'
@@ -33,6 +34,10 @@ export default function PrivacyPage() {
 
       {/* Content */}
       <main className="flex-1 w-full max-w-2xl mx-auto px-6 py-16 flex flex-col gap-10">
+
+        <div className="flex justify-center py-2">
+          <Image src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={64} height={64} />
+        </div>
 
         <div className="flex flex-col gap-2">
           <p className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>LEGAL</p>
@@ -83,7 +88,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="YOUR RIGHTS">
-          <p>You can request to access, correct, or delete the personal information we hold about you at any time. To do so, email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>You can request to access, correct, or delete the personal information we hold about you at any time. To do so, email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
         <Section title="CHILDREN">
@@ -95,7 +100,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="CONTACT">
-          <p>Questions? Email us at <a href="mailto:admin@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>admin@bigsolevibes.com</a>.</p>
+          <p>Questions? Email us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>.</p>
         </Section>
 
       </main>
