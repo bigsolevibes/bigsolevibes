@@ -60,42 +60,41 @@ function getLatestPlan() {
 }
 
 // ─── Day + visual prompt parsing ─────────────────────────────────────────────
-// Iterates ALL day sections (matching gemini-bridge.js day numbering exactly)
-// so day1-image.png always pairs with day1.md. Days without visual prompts are
-// skipped for generation but still counted in the numbering.
+// Parses flat day: N blocks produced by the new media-director format.
+// day1-image.png pairs with day1.md via the day: field, not array position.
+
+const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+
+function parseFields(block) {
+  const fields = {}
+  let key = null
+  for (const line of block.split('\n')) {
+    const m = line.match(/^([a-z_]+):\s*(.*)$/)
+    if (m && KNOWN_KEYS.has(m[1])) { key = m[1]; fields[key] = m[2].trim() }
+    else if (key && line.trim())    fields[key] += ' ' + line.trim()
+  }
+  return fields
+}
 
 function parseDayPrompts(planContent) {
-  const sections = planContent.split(/^(?=###\s)/m).filter(s => s.trim())
+  const blocks = planContent.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
   const days = []
-  let dayNum = 0
 
-  for (const section of sections) {
-    const headerMatch =
-      section.match(/^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/) ||
-      section.match(/^###\s+(\w+)\s*[—–-]+\s*(\d{4}-\d{2}-\d{2})/)
-    if (!headerMatch) continue
+  for (const block of blocks) {
+    const f = parseFields(block)
+    if (!f.day) continue
 
-    dayNum++
-    const label = headerMatch[1].trim()
-    const date  = headerMatch[2].trim()
+    const dayNum    = parseInt(f.day, 10)
+    const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
+    const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+    const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
 
-    const promptMatch = section.match(
-      /\*\*(?:Visual\s*\/\s*Flow|Flow)\s*prompt[:\*]*\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n###|$)/i
-    )
-    if (!promptMatch) {
-      log(`  day${dayNum} (${label} ${date}): no visual prompt — skipping`)
+    if (!f.image_prompt) {
+      log(`  day${dayNum} (${label} ${date}): no image_prompt — skipping`)
       continue
     }
 
-    const rawPrompt = promptMatch[1]
-      .split('\n').map(l => l.replace(/^>\s?/, '').trim()).filter(Boolean).join(' ')
-
-    if (!rawPrompt) {
-      log(`  day${dayNum} (${label} ${date}): empty visual prompt — skipping`)
-      continue
-    }
-
-    days.push({ dayNum, label, date, visualPrompt: rawPrompt })
+    days.push({ dayNum, label, date, visualPrompt: f.image_prompt })
   }
 
   return days

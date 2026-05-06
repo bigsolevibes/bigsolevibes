@@ -72,42 +72,54 @@ function driveList(remotePath) {
 
 // ─── Parsing helpers (exact logic from gemini-bridge.js / image-gen.js) ───────
 
+const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+
+function parseFields(block) {
+  const fields = {}
+  let key = null
+  for (const line of block.split('\n')) {
+    const m = line.match(/^([a-z_]+):\s*(.*)$/)
+    if (m && KNOWN_KEYS.has(m[1])) { key = m[1]; fields[key] = m[2].trim() }
+    else if (key && line.trim())    fields[key] += ' ' + line.trim()
+  }
+  return fields
+}
+
 function parseDays(planContent) {
-  const sections = planContent.split(/^(?=###\s)/m).filter(s => s.trim())
+  const blocks = planContent.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
   const days = []
-  for (const section of sections) {
-    const h =
-      section.match(/^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/) ||
-      section.match(/^###\s+(\w+)\s*[—–-]+\s*(\d{4}-\d{2}-\d{2})/)
-    if (!h) continue
-    days.push({ label: h[1].trim(), date: h[2].trim(), voice: (h[3]||'').trim(), brief: section.trim() })
+  for (const block of blocks) {
+    const f = parseFields(block)
+    if (!f.day) continue
+    const dayNum    = parseInt(f.day, 10)
+    const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
+    const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+    const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
+    days.push({ dayNum, label, date, voice: f.world || '', brief: block.trim() })
   }
   return days
 }
 
 function parseDayPrompts(planContent) {
-  const sections = planContent.split(/^(?=###\s)/m).filter(s => s.trim())
+  const blocks = planContent.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
   const days = []
-  let dayNum = 0
-  for (const section of sections) {
-    const h =
-      section.match(/^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/) ||
-      section.match(/^###\s+(\w+)\s*[—–-]+\s*(\d{4}-\d{2}-\d{2})/)
-    if (!h) continue
-    dayNum++
-    const m = section.match(
-      /\*\*(?:Visual\s*\/\s*Flow|Flow)\s*prompt[:\*]*\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n###|$)/i
-    )
-    if (!m) continue
-    const raw = m[1].split('\n').map(l => l.replace(/^>\s?/, '').trim()).filter(Boolean).join(' ')
-    if (raw) days.push({ dayNum, label: h[1].trim(), date: h[2].trim(), visualPrompt: raw })
+  for (const block of blocks) {
+    const f = parseFields(block)
+    if (!f.day || !f.image_prompt) continue
+    const dayNum    = parseInt(f.day, 10)
+    const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
+    const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+    const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
+    days.push({ dayNum, label, date, visualPrompt: f.image_prompt })
   }
   return days
 }
 
 function extractPostTime(brief) {
-  const m = brief.match(/\*\*Post\s+time:\*\*\s*(\d{1,2}:\d{2})/i)
-  return m ? m[1].trim() : null
+  const f = parseFields(brief)
+  if (!f.post_time) return null
+  const m = f.post_time.match(/(\d{1,2}:\d{2})/)
+  return m ? m[1] : null
 }
 
 function buildCaptionFile(day, generatedCopy) {

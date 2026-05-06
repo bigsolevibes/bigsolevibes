@@ -77,26 +77,35 @@ function getPlansToProcess() {
 }
 
 // ─── Day parsing ──────────────────────────────────────────────────────────────
-// Splits the plan on ### headers, returns array of { label, date, brief }
+// Parses flat day: N blocks produced by the new media-director format.
+
+const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+
+function parseFields(block) {
+  const fields = {}
+  let key = null
+  for (const line of block.split('\n')) {
+    const m = line.match(/^([a-z_]+):\s*(.*)$/)
+    if (m && KNOWN_KEYS.has(m[1])) { key = m[1]; fields[key] = m[2].trim() }
+    else if (key && line.trim())    fields[key] += ' ' + line.trim()
+  }
+  return fields
+}
 
 function parseDays(planContent) {
-  // Split on lines starting with ### (day headers)
-  const sections = planContent.split(/^(?=###\s)/m).filter(s => s.trim())
+  const blocks = planContent.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
   const days = []
 
-  for (const section of sections) {
-    // Current format:  ### Thursday 2026-04-30 — The Drop
-    // Legacy format:   ### Monday — 2026-04-27 — The Lounge
-    const headerMatch =
-      section.match(/^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/) ||
-      section.match(/^###\s+(\w+)\s*[—–-]+\s*(\d{4}-\d{2}-\d{2})/)
-    if (!headerMatch) continue
-    days.push({
-      label: headerMatch[1].trim(),          // e.g. "Thursday"
-      date:  headerMatch[2].trim(),          // e.g. "2026-04-30"
-      voice: (headerMatch[3] || '').trim(),  // e.g. "The Drop"
-      brief: section.trim(),
-    })
+  for (const block of blocks) {
+    const f = parseFields(block)
+    if (!f.day) continue
+
+    const dayNum    = parseInt(f.day, 10)
+    const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
+    const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+    const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
+
+    days.push({ dayNum, label, date, voice: f.world || '', brief: block.trim() })
   }
 
   return days
@@ -149,10 +158,12 @@ ${day.brief}
 // ─── Output file formatting ───────────────────────────────────────────────────
 // watch-drive.js parseCaptions() looks for ## instagram / ## twitter / ## facebook
 
-// Extracts post_time (HH:MM) from a day brief, if the plan includes one.
+// Extracts post_time (HH:MM) from a day brief.
 function extractPostTime(brief) {
-  const m = brief.match(/\*\*Post\s+time:\*\*\s*(\d{1,2}:\d{2})/i)
-  return m ? m[1].trim() : null
+  const f = parseFields(brief)
+  if (!f.post_time) return null
+  const m = f.post_time.match(/(\d{1,2}:\d{2})/)
+  return m ? m[1] : null
 }
 
 function buildCaptionFile(day, generatedCopy) {
@@ -169,20 +180,16 @@ function extractArcNote(planContent) {
   return match[0].replace(/\*\*/g, '').trim()
 }
 
-// Extracts the raw visual/flow prompt block from a day brief.
+// Extracts image_prompt from a day brief (used to distill dayX-prompt.txt).
 function extractVisualPrompt(brief) {
-  const match = brief.match(
-    /\*\*(?:Visual\s*\/\s*Flow|Flow)\s*prompt[:\*]*\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n###|$)/i
-  )
-  if (!match) return null
+  const f = parseFields(brief)
+  return f.image_prompt || null
+}
 
-  const clean = match[1]
-    .split('\n')
-    .map(l => l.replace(/^>\s?/, '').trim())
-    .filter(Boolean)
-    .join(' ')
-
-  return clean || null
+// Extracts video_prompt from a day brief (saved directly as dayX-flow-prompt.txt).
+function extractVideoPrompt(brief) {
+  const f = parseFields(brief)
+  return f.video_prompt || null
 }
 
 // Generates a Google Flow video prompt from the day's brief.
@@ -297,8 +304,8 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
     const dayPrompts = []
 
     for (let i = 0; i < days.length; i++) {
-      const day        = days[i]
-      const dayNum     = i + 1
+      const day         = days[i]
+      const dayNum      = day.dayNum
       const outFileName = `day${dayNum}.md`
 
       log(`  Day ${dayNum}/${days.length} — ${day.label} ${day.date}`)
@@ -346,25 +353,20 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
 
         dayPrompts.push({ dayNum, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
 
-        // dayX-flow-prompt.txt — Google Flow video generation paragraph
-        let flowPrompt
-        try {
-          flowPrompt = await distillFlowPrompt(client, rawPrompt)
-          log(`    Flow prompt: ${flowPrompt.slice(0, 80)}…`)
-        } catch (err) {
-          log(`    WARNING: flow prompt distill failed for day ${dayNum}: ${err.message} — skipping`)
-        }
-
-        if (flowPrompt) {
+        // dayX-flow-prompt.txt — use video_prompt directly (already a complete Veo prompt)
+        const videoPrompt = extractVideoPrompt(day.brief)
+        if (videoPrompt) {
           const flowFileName = `day${dayNum}-flow-prompt.txt`
           const flowPath     = path.join(TEMP_DIR, flowFileName)
-          fs.writeFileSync(flowPath, flowPrompt)
+          fs.writeFileSync(flowPath, videoPrompt)
           try {
             uploadFile(flowPath, `${REMOTE}/Ready to Post/${flowFileName}`)
             log(`    ✓ uploaded → ${REMOTE}/Ready to Post/${flowFileName}`)
           } catch (err) {
             log(`    ERROR: upload failed for ${flowFileName}: ${err.message}`)
           }
+        } else {
+          log(`    WARNING: no video_prompt for day ${dayNum} — skipping flow prompt file`)
         }
       } else {
         log(`    WARNING: no visual prompt found for day ${dayNum} — skipping prompt file`)

@@ -22,6 +22,21 @@ function log(msg) {
 const BRIDGE_TEMP = path.join(os.homedir(), 'tmp', 'bsv-gemini-bridge')
 const ADMIN_EMAIL = 'admin@bigsolevibes.com'
 
+// ─── Plan parser (flat day: N format) ────────────────────────────────────────
+
+const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+
+function parseFields(block) {
+  const fields = {}
+  let key = null
+  for (const line of block.split('\n')) {
+    const m = line.match(/^([a-z_]+):\s*(.*)$/)
+    if (m && KNOWN_KEYS.has(m[1])) { key = m[1]; fields[key] = m[2].trim() }
+    else if (key && line.trim())    fields[key] += ' ' + line.trim()
+  }
+  return fields
+}
+
 // ─── Sunday checklist email ───────────────────────────────────────────────────
 
 async function sendSundayChecklist(generatedPlans) {
@@ -31,40 +46,33 @@ async function sendSundayChecklist(generatedPlans) {
     return
   }
 
-  // Parse day headers from plan text to get label/date/voice per day
-  const DAY_RE = /^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/m
-
   // Build one section per week
   const weekSections = []
   for (const { planFileName, fullText } of generatedPlans) {
-    const sections = fullText.split(/^(?=###\s)/m).filter(s => s.trim())
+    const blocks = fullText.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
     const days = []
-    let dayNum = 1
-    for (const section of sections) {
-      const h = section.match(/^###\s+(\w+)\s+(\d{4}-\d{2}-\d{2})\s*[—–-]+\s*(.+)/)
-      if (!h) continue
-      const label = h[1], date = h[2], voice = h[3].trim()
+    for (const block of blocks) {
+      const f = parseFields(block)
+      if (!f.day) continue
 
-      // Read distilled image prompt from bridge temp dir if available
+      const dayNum    = parseInt(f.day, 10)
+      const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
+      const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+      const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
+      const voice     = f.world || ''
+
       const imgFile  = path.join(BRIDGE_TEMP, `day${dayNum}-prompt.txt`)
       const flowFile = path.join(BRIDGE_TEMP, `day${dayNum}-flow-prompt.txt`)
 
-      // Fall back to extracting raw visual prompt from plan text
-      const rawMatch = section.match(/\*\*(?:Visual\s*\/\s*Flow|Flow)\s*prompt[:\*]*\*\*[^\n]*\n([\s\S]*?)(?=\n\*\*|\n###|$)/i)
-      const rawPrompt = rawMatch
-        ? rawMatch[1].split('\n').map(l => l.replace(/^>\s?/, '').trim()).filter(Boolean).join(' ')
-        : null
-
       const imagePrompt = fs.existsSync(imgFile)
         ? fs.readFileSync(imgFile, 'utf8').trim()
-        : (rawPrompt ? `${rawPrompt.slice(0, 300)}… [full prompt in Drive]` : '(not available)')
+        : f.image_prompt ? `${f.image_prompt.slice(0, 300)}… [full prompt in Drive]` : '(not available)'
 
       const flowPrompt = fs.existsSync(flowFile)
         ? fs.readFileSync(flowFile, 'utf8').trim()
-        : '(generate after running gemini-bridge — check dayX-flow-prompt.txt in Drive)'
+        : f.video_prompt || '(not available)'
 
       days.push({ dayNum, label, date, voice, imagePrompt, flowPrompt })
-      dayNum++
     }
 
     if (!days.length) continue
