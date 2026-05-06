@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import Image from 'next/image'
 
 const AMBER = '#C17D2E'
 const CREAM = '#F5ECD7'
@@ -36,7 +35,8 @@ export default function PrivacyPage() {
       <main className="flex-1 w-full max-w-2xl mx-auto px-6 py-16 flex flex-col gap-10">
 
         <div className="flex justify-center py-2">
-          <Image src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={64} height={64} className="mx-auto" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bsv-icon-1024.png" alt="Big Sole Vibes" width={64} height={64} style={{ display: 'block', margin: '0 auto' }} />
         </div>
 
         <div className="flex flex-col gap-2">

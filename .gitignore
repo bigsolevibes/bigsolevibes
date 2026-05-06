@@ -12,6 +12,9 @@ out/
 .env.test.local
 .env.production.local
 
+# Google OAuth credentials
+client_secret.json
+
 # misc
 .DS_Store
 *.pem

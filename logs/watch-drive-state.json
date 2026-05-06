@@ -1,10 +1,42 @@
 {
-  "day1": {
-    "_migrated": "success"
-  },
   "day2": {
     "bluesky": "success",
     "instagram": "success",
-    "youtube": "pending"
+    "youtube": "success"
+  },
+  "fri-pm": {
+    "instagram": "success"
+  },
+  "mon-am": {
+    "instagram": "success"
+  },
+  "mon-pm": {
+    "_unknown": "pending",
+    "_hold_since": "2026-05-06"
+  },
+  "sat-am": {
+    "instagram": "success"
+  },
+  "thu-am": {
+    "instagram": "success"
+  },
+  "thu-pm": {
+    "_unknown": "pending",
+    "_hold_since": "2026-05-06"
+  },
+  "tue-am": {
+    "instagram": "success"
+  },
+  "wed-mid": {
+    "instagram": "success"
+  },
+  "day1": {
+    "_hold_since": "2026-05-06"
+  },
+  "day3": {
+    "_hold_since": "2026-05-06"
+  },
+  "day4": {
+    "_hold_since": "2026-05-06"
   }
 }
