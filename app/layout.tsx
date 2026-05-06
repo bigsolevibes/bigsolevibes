@@ -24,6 +24,10 @@ export const metadata: Metadata = {
     default: 'Big Sole Vibes — Premium Men\'s Foot Care',
   },
   description: 'Your feet work hard. Start acting like it.',
+  icons: {
+    icon: '/bsv-icon-1024.png',
+    apple: '/bsv-icon-1024.png',
+  },
   openGraph: {
     title: 'Big Sole Vibes',
     description:
