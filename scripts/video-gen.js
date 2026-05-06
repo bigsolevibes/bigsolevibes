@@ -99,7 +99,9 @@ function parseDayPrompts(planContent) {
 
 // ─── Veo video generation ─────────────────────────────────────────────────────
 
-async function generateVideo(ai, apiKey, prompt) {
+// Submits one generation operation and polls until done. Returns the
+// generatedVideos array (may be empty if Veo produced nothing).
+async function runOperation(ai, prompt) {
   let operation = await ai.models.generateVideos({
     model:  VIDEO_MODEL,
     prompt,
@@ -114,9 +116,19 @@ async function generateVideo(ai, apiKey, prompt) {
     log(`    polling... done=${operation.done}`)
   }
 
-  const videos = operation.response?.generatedVideos
-  if (!videos?.length) {
-    throw new Error('No generated videos in operation response')
+  return operation.response?.generatedVideos ?? []
+}
+
+async function generateVideo(ai, apiKey, prompt) {
+  let videos = await runOperation(ai, prompt)
+
+  if (!videos.length) {
+    log('    operation completed with no videos — retrying once...')
+    videos = await runOperation(ai, prompt)
+    if (!videos.length) {
+      throw new Error('No generated videos after retry')
+    }
+    log('    retry succeeded')
   }
 
   const uri = videos[0].video.uri
