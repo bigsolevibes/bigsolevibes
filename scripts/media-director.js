@@ -288,6 +288,15 @@ BSV is for the man who does both. He has the leather chair and bourbon on Thursd
 - Speaks to the man who has figured a few things out
 - Confident, earned, never try-hard
 
+### The Self-Awareness Rule
+Once per week, write a caption that winks at the AI generation.
+Own it. Never apologize for it. BSV takes feet seriously — not itself.
+Examples of the tone:
+- "The AI tried its best. Your feet deserve better."
+- "Yeah we know. The AI had thoughts. We had foot care. Only one of us showed up."
+- "Not every frame is perfect. Neither are your heels. We can fix one of those."
+Never forced. Never every post. One a week, when it fits naturally.
+
 ## Brand Palette
 - Midnight #0D1B2A
 - Bourbon #C17D2E
