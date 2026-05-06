@@ -220,11 +220,15 @@ function getHandoff() {
     process.exit(1)
   }
 
-  const now      = new Date()
-  const weeksArg = process.argv.indexOf('--weeks')
-  const numWeeks = weeksArg !== -1 ? Math.max(1, parseInt(process.argv[weeksArg + 1], 10) || 1) : 1
+  const now        = new Date()
+  const weeksArg   = process.argv.indexOf('--weeks')
+  const numWeeks   = weeksArg !== -1 ? Math.max(1, parseInt(process.argv[weeksArg + 1], 10) || 1) : 1
+  const planOnly   = process.argv.includes('--plan-only')   // skip bridge/video-gen/email spawns
+  const startToday = process.argv.includes('--start-today') // start from today even on Sundays
 
   log(`Weeks to generate: ${numWeeks}`)
+  if (planOnly)   log('--plan-only: skipping gemini-bridge, video-gen, and checklist email')
+  if (startToday) log('--start-today: starting from today regardless of day of week')
   log('Collecting context...')
 
   const recentLogs    = getRecentLogs(100)
@@ -237,23 +241,25 @@ function getHandoff() {
   const isSunday = now.getDay() === 0
 
   // generateWeek: weekOffset 0 = first week, 1 = second week, etc.
-  // For week 0, use the normal date logic (today or next Mon).
-  // For week N>0, always start the Monday 7*N days after the first week's start.
+  // --start-today: week 0 always starts from today, even on Sundays.
+  // Default (Sunday): advances to next Monday so the full Mon-Sun week is planned.
   async function generateWeek(weekOffset, client, priorPlanText) {
     let startDay
     if (weekOffset === 0) {
       startDay = new Date(now)
-      if (isSunday) startDay.setDate(now.getDate() + 1) // next Monday on Sundays
+      if (isSunday && !startToday) startDay.setDate(now.getDate() + 1)
     } else {
       // Week 1+ always starts on the Monday following the previous week
       const base = new Date(now)
-      if (isSunday) base.setDate(now.getDate() + 1)
-      else base.setDate(now.getDate() + (7 - now.getDay() + 1)) // next Monday from today
+      if (isSunday && !startToday) base.setDate(now.getDate() + 1)
+      else if (!isSunday) base.setDate(now.getDate() + (7 - now.getDay() + 1))
       startDay = new Date(base)
       startDay.setDate(base.getDate() + (weekOffset - 1) * 7)
     }
 
-    const daysLeft = (weekOffset === 0 && !isSunday) ? (6 - now.getDay() + 1) : 7
+    // Days from today through the nearest Saturday (inclusive).
+    // On Sunday with --start-today: 6 - 0 + 1 = 7 days (Sun–Sat).
+    const daysLeft = (weekOffset === 0 && (!isSunday || startToday)) ? (6 - now.getDay() + 1) : 7
     const weekDays = Array.from({ length: daysLeft }, (_, i) => {
       const d = new Date(startDay)
       d.setDate(startDay.getDate() + i)
@@ -449,32 +455,36 @@ Avoid repeating angles or visuals that have clearly been used recently. Build on
     generatedPlans.push(result)
   }
 
-  // Automatically chain into gemini-bridge
-  log('Spawning gemini-bridge.js...')
-  const bridge = spawnSync(process.execPath, [path.join(__dirname, 'gemini-bridge.js')], {
-    stdio: 'inherit',
-    env:   process.env,
-  })
-  if (bridge.status === 0) {
-    log('gemini-bridge triggered automatically.')
+  if (planOnly) {
+    log('--plan-only: skipping gemini-bridge, video-gen, and checklist email')
   } else {
-    log(`ERROR: gemini-bridge exited with code ${bridge.status}`)
-  }
+    // Automatically chain into gemini-bridge
+    log('Spawning gemini-bridge.js...')
+    const bridge = spawnSync(process.execPath, [path.join(__dirname, 'gemini-bridge.js')], {
+      stdio: 'inherit',
+      env:   process.env,
+    })
+    if (bridge.status === 0) {
+      log('gemini-bridge triggered automatically.')
+    } else {
+      log(`ERROR: gemini-bridge exited with code ${bridge.status}`)
+    }
 
-  // Automatically chain into video-gen after gemini-bridge
-  log('Spawning video-gen.js...')
-  const videoGen = spawnSync(process.execPath, [path.join(__dirname, 'video-gen.js')], {
-    stdio: 'inherit',
-    env:   process.env,
-  })
-  if (videoGen.status === 0) {
-    log('video-gen triggered automatically.')
-  } else {
-    log(`ERROR: video-gen exited with code ${videoGen.status}`)
-  }
+    // Automatically chain into video-gen after gemini-bridge
+    log('Spawning video-gen.js...')
+    const videoGen = spawnSync(process.execPath, [path.join(__dirname, 'video-gen.js')], {
+      stdio: 'inherit',
+      env:   process.env,
+    })
+    if (videoGen.status === 0) {
+      log('video-gen triggered automatically.')
+    } else {
+      log(`ERROR: video-gen exited with code ${videoGen.status}`)
+    }
 
-  // Send Sunday checklist email with all prompts
-  await sendSundayChecklist(generatedPlans)
+    // Send Sunday checklist email with all prompts
+    await sendSundayChecklist(generatedPlans)
+  }
 
   log('━━━ media-director complete ━━━\n')
 })()
