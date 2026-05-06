@@ -36,7 +36,7 @@ export default function TermsPage() {
 
         <div className="flex justify-center py-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/bsv-logo-round-1024.png" alt="Big Sole Vibes" width={300} height={300} style={{ display: 'block', margin: '32px auto' }} />
+          <img src="/brand/bsv-logo-round-transparent-1024.png" alt="Big Sole Vibes" width={300} height={300} style={{ display: 'block', margin: '32px auto' }} />
         </div>
 
         <div className="flex flex-col gap-2">
