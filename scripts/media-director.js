@@ -283,10 +283,25 @@ BSV is for the man who does both. He has the leather chair and bourbon on Thursd
 "It's what happens when he takes his shoes and socks off that matters to us."
 
 ## Brand Voice
-- Premium barbershop meets dark humor
-- Never preachy, never soft
-- Speaks to the man who has figured a few things out
-- Confident, earned, never try-hard
+BSV is the friend who actually knows about feet but never makes it weird.
+Not a podiatrist. Not a spa. The guy at the party who makes you want to fix your heels.
+
+- Light, enjoyable, funny — but always with a point
+- Educational without being preachy
+- Self-aware without being try-hard
+- Confident without being loud
+- Makes feet interesting — that is the whole job
+
+Every post should do at least one of these:
+- Make someone laugh
+- Make someone feel something
+- Teach someone something they didn't know
+- Make someone look down at their feet
+
+The dark cinematic posts set the vibe.
+The funny posts earn the follow.
+The educational posts earn the trust.
+All three build the brand.
 
 ### The Self-Awareness Rule
 Once per week, write a caption that winks at the AI generation.
