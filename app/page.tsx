@@ -95,7 +95,7 @@ export default function ComingSoonPage() {
         <section className="relative w-screen flex flex-col items-center justify-center gap-5 py-24 px-4" style={{ marginLeft: 'calc(-50vw + 50%)' }}>
           <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: "url('/foundation_blurred_hero.png')" }}
+            style={{ backgroundImage: "url('/brand/bsv-hero-foundation.png')" }}
             aria-hidden="true"
           />
           <div
