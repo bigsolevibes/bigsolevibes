@@ -162,6 +162,7 @@ function buildShopPage(approvedProducts) {
     .join('\n            ')
 
   const totalProducts = approvedProducts.length
+  const isEmpty       = totalProducts === 0
   const year          = new Date().getFullYear()
   const generated     = new Date().toISOString().slice(0, 10)
 
@@ -478,6 +479,39 @@ function buildShopPage(approvedProducts) {
       color: var(--cream);
     }
 
+    /* ── Coming soon floor (empty state) ── */
+    .locker-coming-soon {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 40vh;
+      padding: 6rem 1.5rem;
+    }
+    .coming-soon-inner {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .coming-soon-rule {
+      width: 32px;
+      height: 1px;
+      background: var(--amber);
+    }
+    .coming-soon-heading {
+      font-family: var(--font-playfair);
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-style: italic;
+      color: var(--cream);
+    }
+    .coming-soon-sub {
+      font-style: italic;
+      font-size: 0.9375rem;
+      color: var(--muted);
+      max-width: 480px;
+    }
+
     /* ── Bottom CTA ── */
     .shop-cta {
       text-align: center;
@@ -612,9 +646,20 @@ function buildShopPage(approvedProducts) {
       <em>That Hasn't Earned Its Place.</em>
     </h1>
     <p class="hero-tagline">Proprietor-approved picks across every category of men's foot care.</p>
-    <p class="hero-count">${totalProducts} approved picks</p>
+    <p class="hero-count">${isEmpty ? 'More lockers opening soon.' : `${totalProducts} approved picks`}</p>
   </header>
 
+  ${isEmpty ? `
+  <!-- Coming soon floor -->
+  <main class="locker-coming-soon">
+    <div class="coming-soon-inner">
+      <div class="coming-soon-rule"></div>
+      <p class="coming-soon-heading">More lockers opening soon.</p>
+      <p class="coming-soon-sub">The proprietor is still pulling product. Only the best earns a spot on these shelves.</p>
+      <a href="/audits" class="shop-cta-btn">READ THE AUDITS →</a>
+    </div>
+  </main>
+  ` : `
   <!-- Affiliate bar -->
   <div class="affiliate-bar">
     BSV participates in the Amazon Associates Program. Links on this page are affiliate links — we may earn a commission at no cost to you.
@@ -639,6 +684,7 @@ function buildShopPage(approvedProducts) {
     <p class="shop-cta-sub">The Sole Audits go deeper — every pick tested, ranked, and given a verdict.</p>
     <a href="/audits" class="shop-cta-btn">READ THE AUDITS →</a>
   </section>
+  `}
 
   <!-- Footer — matches Footer.tsx -->
   <footer class="site-footer">
@@ -731,12 +777,6 @@ function gitPush() {
   // Filter approved only
   const approved = allRows.filter(r => (r['Status'] || '').trim().toLowerCase() === 'approved')
   log(`Approved: ${approved.length} product(s) — Pending: ${allRows.length - approved.length}`)
-
-  if (!approved.length) {
-    log('No approved products yet — shop page not updated')
-    log('━━━ sync-shop complete ━━━\n')
-    return
-  }
 
   // Build HTML
   const html = buildShopPage(approved)
