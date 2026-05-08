@@ -640,7 +640,7 @@ function buildShopPage(approvedProducts) {
 
   <!-- Hero -->
   <header class="shop-hero">
-    <p class="hero-eyebrow">THE SOLE AUDIT SHOP</p>
+    <p class="hero-eyebrow">THE LOCKER ROOM</p>
     <h1 class="hero-title">
       Nothing Goes on This Shelf<br>
       <em>That Hasn't Earned Its Place.</em>
