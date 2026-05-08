@@ -5,6 +5,7 @@ const { execSync } = require('child_process')
 const { TwitterApi } = require('twitter-api-v2')
 const { AtpAgent, RichText } = require('@atproto/api')
 const FormData = require('form-data')
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3')
 
 const RESULTS_FILE = path.join(__dirname, '..', 'logs', 'distribute-results.json')
 
@@ -23,6 +24,7 @@ function getArg(flag) {
 const imageDir     = getArg('--image-dir') || 'posts/output'
 const baseUrl      = getArg('--base-url') || process.env.BASE_URL || null
 const isSetup      = args.includes('--setup')
+const isForce      = args.includes('--force')
 const captionFile  = getArg('--caption-file')
 
 // ─── Caption file parsing ─────────────────────────────────────────────────────
@@ -35,7 +37,6 @@ function parseCaptionFile(filePath) {
   let platform = null
   let postTime = null
 
-  // Strip recognised header lines from the top of the file
   const bodyLines = []
   let pastHeaders = false
   for (const line of raw.split('\n')) {
@@ -44,9 +45,11 @@ function parseCaptionFile(filePath) {
       if (pm) { platform = pm[1].trim().toLowerCase(); continue }
       const tm = line.match(/^post_time:\s*(\d{1,2}:\d{2})/i)
       if (tm) { postTime = tm[1].trim(); continue }
-      // First non-header line ends the header block
       pastHeaders = true
     }
+    // Strip markdown headings (# Title, ## instagram, etc.) but keep inline
+    // hashtags (#BigSoleVibes) — headings have a space after the #, tags don't.
+    if (/^#+\s/.test(line)) continue
     bodyLines.push(line)
   }
 
@@ -62,7 +65,7 @@ if (captionFile) {
   caption      = parsed.body
   filePlatform = parsed.platform
 
-  if (parsed.postTime) {
+  if (parsed.postTime && !isForce) {
     const [h, m]   = parsed.postTime.split(':').map(Number)
     const now      = new Date()
     const nowMins  = now.getHours() * 60 + now.getMinutes()
@@ -113,15 +116,13 @@ const images = {
   bluesky:   findImage(imageDir, 'bluesky') || findImage(imageDir, 'twitter'), // 1600x900 fallback
 }
 
-function findVideo(dir, platform) {
+const youtubeVideo = (() => {
   try {
-    const files = fs.readdirSync(dir)
-    const match = files.find(f => f.includes(`-${platform}.`) && f.match(/\.mp4$/i))
-    return match ? path.resolve(dir, match) : null
+    const files = fs.readdirSync(imageDir)
+    const ytFile = files.find(f => /\.mp4$/i.test(f))
+    return ytFile ? path.resolve(imageDir, ytFile) : null
   } catch { return null }
-}
-
-const youtubeVideo = findVideo(imageDir, 'youtube')
+})()
 
 // ─── Results log ─────────────────────────────────────────────────────────────
 
@@ -271,9 +272,33 @@ async function postToFacebook() {
   }
 }
 
+// ─── R2 upload ───────────────────────────────────────────────────────────────
+
+async function uploadToR2(localFilePath, fileName) {
+  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL } = process.env
+  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET || !R2_PUBLIC_URL) {
+    throw new Error('Missing R2 credentials (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL)')
+  }
+  const client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY },
+    forcePathStyle: true,
+  })
+  const ext = path.extname(fileName).toLowerCase()
+  const contentType = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png'
+  await client.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: fileName,
+    Body: fs.readFileSync(localFilePath),
+    ContentType: contentType,
+  }))
+  return `${process.env.R2_PUBLIC_URL}/${fileName}`
+}
+
 // ─── Instagram ───────────────────────────────────────────────────────────────
 // Two-step Graph API publish: create media container → media_publish.
-// Images must be in public/posts/output/ so Cloudflare Pages serves them at /posts/output/.
+// Image is uploaded to Cloudflare R2 so Meta can fetch a stable public URL.
 
 async function postToInstagram() {
   if (isPaused('instagram')) { log('Instagram', 'pause', 'paused — skipping'); return }
@@ -287,27 +312,18 @@ async function postToInstagram() {
     return
   }
 
-  const encodedName = encodeURIComponent(path.basename(images.instagram))
-  const imageUrl    = `https://bigsolevibes.com/posts/output/${encodedName}`
-  console.log(`  [debug] Instagram image_url = "${imageUrl}"`)
+  const fileName = path.basename(images.instagram)
   console.log(`  [debug] META_IG_ACCOUNT_ID  = "${META_IG_ACCOUNT_ID}"`)
-  console.log(`  [debug] Local file exists: ${require('fs').existsSync(images.instagram)}, size: ${require('fs').statSync(images.instagram).size} bytes`)
+  console.log(`  [debug] Local file: ${images.instagram} (exists: ${fs.existsSync(images.instagram)}, size: ${fs.statSync(images.instagram).size} bytes)`)
 
-  // Quick reachability check — watch-drive.js waitForUrl() handles the full
-  // CDN polling before calling distribute. This single probe is a safety net
-  // for standalone invocations (e.g. manual runs outside the watcher).
+  let imageUrl
   try {
-    const probe = await fetch(imageUrl, { method: 'HEAD' })
-    console.log(`  [debug] URL probe: HTTP ${probe.status} ${probe.statusText}`)
-    if (!probe.ok) {
-      log('Instagram', 'fail', `Image URL not accessible — ${imageUrl}`)
-      return
-    }
+    imageUrl = await uploadToR2(images.instagram, fileName)
+    console.log(`  [debug] Uploaded to R2: ${imageUrl}`)
   } catch (err) {
-    log('Instagram', 'fail', `Image URL probe failed — ${err.message}`)
+    log('Instagram', 'fail', `R2 upload failed — ${err.message}`)
     return
   }
-  console.log(`  [debug] URL confirmed reachable — proceeding to post`)
 
   try {
     // Step 1: create media container
@@ -374,10 +390,7 @@ async function postToYouTube() {
     log('YouTube', 'fail', 'Missing YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN')
     return
   }
-  if (!youtubeVideo) {
-    log('YouTube', 'skip', `No youtube .mp4 found in ${imageDir} — skipping video upload`)
-    return
-  }
+  if (!youtubeVideo) throw new Error(`No .mp4 found in ${imageDir} — video generation may have failed`)
 
   try {
     const scriptPath  = path.join(__dirname, 'youtube-post.js')

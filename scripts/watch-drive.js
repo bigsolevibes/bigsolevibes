@@ -243,28 +243,6 @@ function distribute(caption, platformsList) {
 const POLL_INTERVAL_MS = 15 * 60 * 1000  // 15 minutes between polls
 const CRASH_RESTART_MS = 30 * 1000       // 30-second delay after a crash
 
-// ─── Instagram CDN readiness ──────────────────────────────────────────────────
-// Polls HEAD on a Cloudflare Pages URL until it returns 200.
-// 12 attempts × 10s = 2-minute ceiling, then throws so the caller can skip
-// instagram cleanly rather than crashing the watcher.
-
-async function waitForUrl(url, maxAttempts = 12, intervalMs = 10000) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetch(url, { method: 'HEAD' })
-      if (res.ok) {
-        log(`[waitForUrl] ✓ URL ready after ${attempt} attempt(s)`)
-        return true
-      }
-    } catch (err) {
-      // not ready yet
-    }
-    log(`[waitForUrl] attempt ${attempt}/${maxAttempts} — waiting ${intervalMs / 1000}s`)
-    await new Promise(r => setTimeout(r, intervalMs))
-  }
-  throw new Error(`waitForUrl: URL not ready after ${maxAttempts} attempts — ${url}`)
-}
-
 // ─── Startup (runs once at process launch) ────────────────────────────────────
 
 fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
@@ -391,28 +369,6 @@ async function run() {
         log(`${base}: retrying pending platforms: ${retryPlatforms.join(', ')}`)
       } else {
         log(`${base}: full pipeline starting`)
-      }
-
-      // Wait for the Instagram CDN URL to be reachable before posting.
-      // distribute.js requires a public URL; Cloudflare Pages deployment can lag.
-      const instagramInScope = !effectivePlatforms || effectivePlatforms.includes('instagram')
-      if (instagramInScope) {
-        const igFile = fs.readdirSync(OUTPUT_DIR).find(f => f.includes('-instagram.'))
-        if (igFile) {
-          const imageUrl = `https://bigsolevibes.com/posts/output/${encodeURIComponent(igFile)}`
-          try {
-            await waitForUrl(imageUrl)
-          } catch (err) {
-            log(`${base}: Instagram CDN not ready — ${err.message} — skipping instagram this cycle`)
-            const allActive = ['x', 'bluesky', 'facebook', 'youtube']
-            const baseList  = effectivePlatforms || [...allActive, 'instagram']
-            effectivePlatforms = baseList.filter(p => p !== 'instagram')
-            if (!effectivePlatforms.length) {
-              log(`${base}: no platforms remain after skipping instagram — skipping distribute`)
-              continue
-            }
-          }
-        }
       }
 
       try {

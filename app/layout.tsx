@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://bigsolevibes.com'),
   title: {
     template: '%s | Big Sole Vibes',
-    default: 'Big Sole Vibes — Premium Men\'s Foot Care',
+    default: 'Big Sole Vibes',
   },
   description: 'Your feet work hard. Start acting like it.',
   icons: {
