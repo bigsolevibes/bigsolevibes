@@ -3,6 +3,7 @@ const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -243,6 +244,46 @@ function distribute(caption, platformsList) {
 const POLL_INTERVAL_MS = 15 * 60 * 1000  // 15 minutes between polls
 const CRASH_RESTART_MS = 30 * 1000       // 30-second delay after a crash
 
+// ─── Shop sync ────────────────────────────────────────────────────────────────
+// Tracks the approved ASIN set between polls. null = not yet initialized.
+// sync-shop.js runs only when the approved set grows — avoids a deploy every poll.
+
+let prevApprovedAsins = null
+
+async function checkAndSyncShop() {
+  try {
+    const conn = await connect()
+    await ensureHeaders(conn)
+    const rows = await readAllRows(conn)
+    const currentApproved = new Set(
+      rows.filter(r => (r['Status'] || '').trim().toLowerCase() === 'approved')
+          .map(r => r['ASIN'])
+          .filter(Boolean)
+    )
+
+    if (prevApprovedAsins === null) {
+      // First poll — establish baseline, don't trigger deploy
+      prevApprovedAsins = currentApproved
+      log(`Shop sync: baseline set — ${currentApproved.size} approved product(s)`)
+      return
+    }
+
+    const newApprovals = [...currentApproved].filter(a => !prevApprovedAsins.has(a))
+    prevApprovedAsins = currentApproved
+
+    if (newApprovals.length === 0) return
+
+    log(`Shop sync: ${newApprovals.length} new approval(s) detected (${newApprovals.join(', ')}) — running sync-shop.js`)
+    spawnSync(process.execPath, [path.join(__dirname, 'sync-shop.js')], {
+      cwd:   ROOT,
+      env:   process.env,
+      stdio: 'inherit',
+    })
+  } catch (err) {
+    log(`Shop sync: WARNING — could not check sheet: ${err.message}`)
+  }
+}
+
 // ─── Startup (runs once at process launch) ────────────────────────────────────
 
 fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
@@ -417,6 +458,9 @@ async function run() {
     env:   process.env,
     stdio: 'inherit',
   })
+
+  // Check product queue for new approvals — triggers sync-shop.js if found.
+  await checkAndSyncShop()
 }
 
 // ─── Loop (crash guard + interval) ───────────────────────────────────────────
