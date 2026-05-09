@@ -6,7 +6,7 @@ const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'sync-shop.log')
-const SHOP_OUT = path.join(ROOT, 'shop', 'index.html')
+const SHOP_OUT = path.join(ROOT, 'public', 'shop', 'index.html')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -731,10 +731,10 @@ function escapeHtml(str) {
 function gitPush() {
   const cwd = ROOT
   try {
-    execSync('git add shop/index.html', { cwd, stdio: 'pipe' })
+    execSync('git add public/shop/index.html', { cwd, stdio: 'pipe' })
 
     // Check if there's anything to commit
-    const status = execSync('git status --porcelain shop/index.html', { cwd, encoding: 'utf8', stdio: 'pipe' }).trim()
+    const status = execSync('git status --porcelain public/shop/index.html', { cwd, encoding: 'utf8', stdio: 'pipe' }).trim()
     if (!status) {
       log('Git: no changes to shop/index.html — skipping push')
       return false
