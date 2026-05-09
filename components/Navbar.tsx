@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 const navLinks = [
-  { label: 'Home',     href: '/' },
-  { label: 'Products', href: '/products' },
-  { label: 'Blog',     href: '/blog' },
+  { label: 'Home',            href: '/' },
+  { label: 'Lounge',          href: '/lounge' },
+  { label: 'Audits',          href: '/audits' },
+  { label: 'Brief',           href: '/brief' },
+  { label: 'The Locker Room', href: '/shop' },
 ]
 
 const socialLinks = [

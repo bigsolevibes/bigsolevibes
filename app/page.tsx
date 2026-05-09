@@ -70,6 +70,7 @@ export default function ComingSoonPage() {
           <Link href="/kickoff" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">KICK OFF</Link>
           <Link href="/audits" style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">AUDITS</Link>
           <Link href="/brief"  style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">BRIEF</Link>
+          <Link href="/shop"   style={{ color: AMBER }} className="hover:opacity-70 transition-opacity">THE LOCKER ROOM</Link>
         </div>
       )}
     <div

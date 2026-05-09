@@ -47,13 +47,22 @@ export default function LoungePage() {
         >
           BIG SOLE VIBES
         </Link>
-        <Link
-          href="/kickoff"
-          className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
-          style={{ color: MUTED }}
-        >
-          THE KICK OFF →
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link
+            href="/shop"
+            className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
+            style={{ color: MUTED }}
+          >
+            THE LOCKER ROOM
+          </Link>
+          <Link
+            href="/kickoff"
+            className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
+            style={{ color: MUTED }}
+          >
+            THE KICK OFF →
+          </Link>
+        </div>
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
