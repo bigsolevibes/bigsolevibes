@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import Navbar from '@/components/Navbar'
+import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import { getAllPosts } from '@/lib/mdx'
 
@@ -14,7 +14,7 @@ export default function BlogPage() {
 
   return (
     <>
-      <Navbar />
+      <SiteNav />
       <main className="pt-16">
         {/* Header */}
         <section className="py-20 bg-bsv-card border-b border-white/5">

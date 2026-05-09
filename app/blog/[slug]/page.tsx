@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { MDXRemote } from 'next-mdx-remote/rsc'
-import Navbar from '@/components/Navbar'
+import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import SocialShare from '@/components/SocialShare'
 import { getAllPosts, getPostBySlug } from '@/lib/mdx'
@@ -72,7 +72,7 @@ export default function BlogPostPage({ params }: Props) {
 
   return (
     <>
-      <Navbar />
+      <SiteNav />
       <main className="pt-16">
         {/* Hero */}
         <section className="py-20 bg-bsv-card border-b border-white/5">

@@ -2,6 +2,8 @@
 
 import { useState, FormEvent } from 'react'
 import Link from 'next/link'
+import SiteNav from '@/app/components/SiteNav'
+import Footer from '@/components/Footer'
 
 const AMBER = '#C17D2E'
 const CREAM = '#F5ECD7'
@@ -31,39 +33,12 @@ export default function LoungePage() {
   }
 
   return (
+    <>
+      <SiteNav />
     <div
-      className="min-h-screen flex flex-col"
+      className="min-h-screen flex flex-col pt-16"
       style={{ backgroundColor: NAVY, color: CREAM }}
     >
-      {/* ── Nav ─────────────────────────────────────────────────────────────── */}
-      <nav
-        className="w-full flex items-center justify-between px-6 py-4 border-b"
-        style={{ borderColor: AMBER + '22' }}
-      >
-        <Link
-          href="/"
-          className="font-heading text-xl tracking-widest hover:opacity-70 transition-opacity"
-          style={{ color: CREAM }}
-        >
-          BIG SOLE VIBES
-        </Link>
-        <div className="flex items-center gap-6">
-          <Link
-            href="/shop"
-            className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
-            style={{ color: MUTED }}
-          >
-            THE LOCKER ROOM
-          </Link>
-          <Link
-            href="/kickoff"
-            className="font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
-            style={{ color: MUTED }}
-          >
-            THE KICK OFF →
-          </Link>
-        </div>
-      </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────────── */}
       <section
@@ -255,17 +230,8 @@ export default function LoungePage() {
         </div>
       </section>
 
-      {/* ── Footer ──────────────────────────────────────────────────────────── */}
-      <footer
-        className="mt-auto px-6 py-8 text-center font-body text-xs border-t"
-        style={{ color: MUTED, borderColor: AMBER + '22' }}
-      >
-        © 2025 Big Sole Vibes. All rights reserved.
-        <span className="mx-3" style={{ color: AMBER + '44' }}>|</span>
-        <Link href="/kickoff" className="hover:opacity-70 transition-opacity" style={{ color: MUTED }}>
-          The Kick Off →
-        </Link>
-      </footer>
     </div>
+      <Footer />
+    </>
   )
 }

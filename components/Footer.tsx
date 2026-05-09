@@ -1,9 +1,12 @@
 import Link from 'next/link'
 
 const navLinks = [
-  { label: 'Home',     href: '/' },
-  { label: 'Products', href: '/products' },
-  { label: 'Blog',     href: '/blog' },
+  { label: 'Home',            href: '/' },
+  { label: 'Lounge',          href: '/lounge' },
+  { label: 'The Kick Off',    href: '/kickoff' },
+  { label: 'Audits',          href: '/audits' },
+  { label: 'Brief',           href: '/brief' },
+  { label: 'The Locker Room', href: '/shop' },
 ]
 
 const socialLinks = [
@@ -26,6 +29,15 @@ const socialLinks = [
     ),
   },
   {
+    label: 'YouTube',
+    href: 'https://www.youtube.com/@bigsolevibes',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+      </svg>
+    ),
+  },
+  {
     label: 'Facebook',
     href: 'https://www.facebook.com/profile.php?id=61574284755297',
     icon: (
@@ -43,15 +55,6 @@ const socialLinks = [
       </svg>
     ),
   },
-  {
-    label: 'YouTube',
-    href: 'https://www.youtube.com/@bigsolevibes',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-      </svg>
-    ),
-  },
 ]
 
 export default function Footer() {
@@ -62,21 +65,19 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="text-center md:text-left">
-            <Link href="/" className="font-heading text-3xl text-bsv-orange tracking-wider">
+            <Link href="/" className="font-heading text-3xl text-bsv-amber tracking-wider">
               BIG SOLE VIBES
             </Link>
-            <p className="text-bsv-muted text-sm mt-2">
-              Step Up. Feel Good. Own It.
-            </p>
+            <p className="text-bsv-muted text-sm mt-2">Step Up. Feel Good. Own It.</p>
           </div>
 
           {/* Nav */}
-          <div className="flex gap-8">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center md:justify-start">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-bsv-muted hover:text-bsv-white text-sm transition-colors"
+                className="text-bsv-muted hover:text-bsv-cream text-sm transition-colors"
               >
                 {link.label}
               </Link>
@@ -92,7 +93,7 @@ export default function Footer() {
                 aria-label={s.label}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-bsv-muted hover:text-bsv-orange transition-colors"
+                className="text-bsv-muted hover:text-bsv-amber transition-colors"
               >
                 {s.icon}
               </a>
@@ -100,9 +101,12 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-white/5 text-center">
+        <div className="mt-12 pt-8 border-t border-white/5 text-center flex flex-col gap-2">
+          <p className="text-bsv-muted text-xs">© 2025 Big Sole Vibes. All rights reserved.</p>
           <p className="text-bsv-muted text-xs">
-            © 2025 Big Sole Vibes. All rights reserved.
+            <Link href="/privacy" className="hover:text-bsv-cream transition-colors">Privacy Policy</Link>
+            <span className="mx-2 opacity-40">·</span>
+            <Link href="/terms" className="hover:text-bsv-cream transition-colors">Terms of Service</Link>
           </p>
         </div>
       </div>

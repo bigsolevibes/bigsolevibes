@@ -631,9 +631,10 @@ function buildShopPage(approvedProducts) {
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
         <li><a href="/lounge">Lounge</a></li>
+        <li><a href="/kickoff">The Kick Off</a></li>
         <li><a href="/audits">Audits</a></li>
         <li><a href="/brief">Brief</a></li>
-        <li><a href="/shop" class="active">Shop</a></li>
+        <li><a href="/shop" class="active">The Locker Room</a></li>
       </ul>
     </div>
   </nav>
@@ -695,8 +696,11 @@ function buildShopPage(approvedProducts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
+        <li><a href="/lounge">Lounge</a></li>
+        <li><a href="/kickoff">The Kick Off</a></li>
         <li><a href="/audits">Audits</a></li>
-        <li><a href="/shop">Shop</a></li>
+        <li><a href="/brief">Brief</a></li>
+        <li><a href="/shop">The Locker Room</a></li>
       </ul>
       <div class="footer-socials">
         <a href="https://instagram.com/bigsolevibes" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
@@ -714,7 +718,7 @@ function buildShopPage(approvedProducts) {
       </div>
     </div>
     <div class="footer-copy">
-      <p>© ${year} Big Sole Vibes. All rights reserved. &nbsp;·&nbsp; Generated ${generated} — ${totalProducts} approved picks</p>
+      <p>© 2025 Big Sole Vibes. All rights reserved. &nbsp;·&nbsp; <a href="/privacy" style="color:inherit;opacity:0.6">Privacy Policy</a> &nbsp;·&nbsp; <a href="/terms" style="color:inherit;opacity:0.6">Terms of Service</a></p>
     </div>
   </footer>
 
