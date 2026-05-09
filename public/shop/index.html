@@ -231,60 +231,92 @@
       box-shadow: 0 2px 10px rgba(193,125,46,0.18);
     }
 
-    /* Product grid */
-    .product-grid {
+    /* ── Locker card stack ── */
+    .locker-stack {
       padding: 1.5rem 1.25rem;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-      gap: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
     }
 
-    .product-card {
+    .locker-card {
       background: var(--bg);
       border: 1px solid rgba(255,255,255,0.05);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .locker-card:hover { border-color: rgba(193,125,46,0.2); }
+
+    /* Hero image — full bleed, portrait ~3:2 */
+    .card-hero {
+      width: 100%;
+      aspect-ratio: 3 / 2;
+      overflow: hidden;
+      background: #0a1220;
+    }
+    .card-hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+      filter: brightness(0.92);
+    }
+
+    /* Text panel */
+    .card-body {
       padding: 1.5rem;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      transition: border-color 0.2s;
     }
-    .product-card:hover { border-color: rgba(193,125,46,0.3); }
 
-    .card-score {
-      font-family: var(--font-bebas);
-      font-size: 0.75rem;
-      letter-spacing: 0.1em;
+    .card-cat {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.14em;
       color: var(--amber);
-      opacity: 0.7;
+      opacity: 0.8;
     }
     .card-name {
       font-family: var(--font-playfair);
-      font-size: 1rem;
-      font-weight: 600;
+      font-size: 1.375rem;
+      font-weight: 700;
       color: var(--cream);
-      line-height: 1.35;
+      line-height: 1.25;
     }
-    .card-desc {
+    .card-audit {
       font-style: italic;
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.65;
-      flex: 1;
+      font-size: 0.9375rem;
+      color: rgba(245,236,215,0.65);
+      line-height: 1.7;
     }
     .card-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      margin-top: auto;
       padding-top: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .card-score {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.1em;
+      color: var(--amber);
+      opacity: 0.55;
+    }
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
     }
     .card-price {
       font-family: var(--font-bebas);
       font-size: 1rem;
       letter-spacing: 0.06em;
       color: var(--cream);
-      opacity: 0.7;
+      opacity: 0.65;
     }
     .card-cta {
       display: inline-flex;
@@ -295,27 +327,11 @@
       font-family: var(--font-bebas);
       font-size: 0.75rem;
       letter-spacing: 0.1em;
-      padding: 0.55rem 1rem;
+      padding: 0.55rem 1.125rem;
       transition: opacity 0.15s;
       white-space: nowrap;
     }
     .card-cta:hover { opacity: 0.85; }
-
-    /* Locker atmosphere — shoes + socks at the bottom */
-    .locker-floor-atmo {
-      padding: 0.75rem 1.25rem 1rem;
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-      opacity: 0.06;
-      border-top: 1px solid #253044;
-    }
-    .atmo-icon {
-      width: 28px;
-      height: 28px;
-      color: var(--cream);
-      flex-shrink: 0;
-    }
 
     /* ── Coming soon floor (empty state) ── */
     .locker-coming-soon {
@@ -454,9 +470,8 @@
     }
 
     @media (max-width: 600px) {
-      .product-grid { grid-template-columns: 1fr; }
-      .locker-floor-atmo { display: none; }
       .card-footer { flex-direction: column; align-items: flex-start; }
+      .card-actions { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -660,33 +675,25 @@
             <span class="locker-cat-name">FOOT SERUMS</span>
           </div>
           <div class="locker-shelf-bar"></div>
-          <div class="product-grid">
+          <div class="locker-stack">
             
-          <article class="product-card">
-            <div class="card-score">48/50</div>
+        <article class="locker-card">
+          
+          <div class="card-body">
+            <p class="card-cat">FOOT SERUMS</p>
             <h3 class="card-name">Carpe Antiperspirant Foot Lotion</h3>
-            <p class="card-desc">Carpe blocks sweat at the source using a dermatologist-developed antiperspirant formula — not a masking spray, not a probiotic, but an actual sweat-stopping treatment for men with hyperhidrosis or chronic foot odor.</p>
+            <p class="card-audit">It is the only product in the BSV portfolio that addresses sweat production directly rather than treating its downstream symptoms, filling a true mechanism gap no prior shortlisted product covered.</p>
             <div class="card-footer">
-              <div class="card-price">$14</div>
-              <a href="https://www.amazon.com/dp/B019E8H5TC?tag=bigsolevibes-20" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                SHOP ON AMAZON ↗
-              </a>
+              <div class="card-score">48/50</div>
+              <div class="card-actions">
+                <span class="card-price">$14</span>
+                <a href="https://www.amazon.com/dp/B019E8H5TC?tag=bigsolevibes-20" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+                  SHOP ON AMAZON ↗
+                </a>
+              </div>
             </div>
-          </article>
           </div>
-          <div class="locker-floor-atmo" aria-hidden="true">
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-              <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-            </svg>
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M6 3v10a5 5 0 0010 0V3" stroke-linecap="round"/>
-              <path d="M4 8h4 M16 8h4" stroke-linecap="round"/>
-            </svg>
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-              <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-            </svg>
+        </article>
           </div>
         </div>
 
@@ -721,33 +728,25 @@
             <span class="locker-cat-name">FOOT POWDERS</span>
           </div>
           <div class="locker-shelf-bar"></div>
-          <div class="product-grid">
+          <div class="locker-stack">
             
-          <article class="product-card">
-            <div class="card-score">41/50</div>
+        <article class="locker-card">
+          
+          <div class="card-body">
+            <p class="card-cat">FOOT POWDERS</p>
             <h3 class="card-name">Rocket Pure Natural Foot Deodorizer Spray</h3>
-            <p class="card-desc">Natural botanical foot and shoe deodorizer spray that neutralizes odor-causing bacteria using essential oil actives rather than synthetic masking agents, in a fast-drying mist format.</p>
+            <p class="card-audit">Occupies the natural odor neutralization lane without overlap against Carpe's sweat-blocking mechanism, giving BSV two distinct odor-control products with a clear when-to-use-which story.</p>
             <div class="card-footer">
-              <div class="card-price">$15</div>
-              <a href="https://www.amazon.com/dp/B01LX0MGQB?tag=bigsolevibes-20" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                SHOP ON AMAZON ↗
-              </a>
+              <div class="card-score">41/50</div>
+              <div class="card-actions">
+                <span class="card-price">$15</span>
+                <a href="https://www.amazon.com/dp/B01LX0MGQB?tag=bigsolevibes-20" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+                  SHOP ON AMAZON ↗
+                </a>
+              </div>
             </div>
-          </article>
           </div>
-          <div class="locker-floor-atmo" aria-hidden="true">
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-              <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-            </svg>
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M6 3v10a5 5 0 0010 0V3" stroke-linecap="round"/>
-              <path d="M4 8h4 M16 8h4" stroke-linecap="round"/>
-            </svg>
-            <svg class="atmo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-              <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-              <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-            </svg>
+        </article>
           </div>
         </div>
 
