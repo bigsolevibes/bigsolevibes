@@ -49,7 +49,7 @@ Google Drive "Ready to Post/"
 | `youtube-auth.js` | OAuth flow for YouTube on port 3000 |
 | `reauth.js` | YouTube reauth on port 3456, writes `config/youtube-token.json` |
 | `sheets-client.js` | Google Sheets connection helper (product queue) |
-| `sync-shop.js` | Pushes approved sheet rows to the shop page |
+| `sync-shop.js` | Generates `public/shop/index.html` from approved sheet rows; git-commits and pushes to trigger Cloudflare deploy |
 | `social-listening.js` | Monitors social signals via web search |
 | `marketing-manager.js` | Marketing planning agent |
 | `media-director.js` | Weekly content plan agent |
@@ -66,6 +66,7 @@ Google Drive "Ready to Post/"
 ```
 posts/output/          — processed media ready to distribute (also mirrored to public/posts/output/)
 public/posts/output/   — served by Next.js at /posts/output/ → used for Instagram CDN URL (R2 now preferred)
+public/shop/index.html — The Locker Room shop page, written by sync-shop.js (do not edit manually)
 public/brand/          — BSV brand assets (logos, favicon)
 logs/                  — all script logs + watch-drive-state.json
 config/                — youtube-credentials.json, youtube-token.json (not committed)
@@ -119,6 +120,17 @@ Big Sole Vibes/
 - **YouTube** — refresh token expires/revokes periodically. Re-auth: `node reauth.js` (port 3456, reads `config/youtube-credentials.json`, writes `config/youtube-token.json`).
 - **X and Facebook** — currently in `PAUSED_PLATFORMS` in `distribute.js`. Remove to re-enable.
 - **Bluesky** — direct blob upload, compressed to JPEG under 2MB via sharp.
+
+---
+
+## Deleted — do not recreate
+
+- `app/shop/page.tsx` — replaced by `public/shop/index.html` (sync-shop.js owns this)
+- `app/products/page.tsx` — old hardcoded products page, gone
+- `app/dev/page.tsx` — dev placeholder, gone
+- `components/ProductShowcase.tsx` — depended on deleted affiliates lib
+- `lib/affiliates.ts` — hardcoded placeholder product data, gone
+- `shop/index.html` (repo root) — was never served; output is now `public/shop/index.html`
 
 ---
 
