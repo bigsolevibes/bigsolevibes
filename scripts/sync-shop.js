@@ -251,7 +251,7 @@ function buildShopPage(approvedProducts) {
     .hero-eyebrow {
       font-family: var(--font-bebas);
       font-size: 0.75rem;
-      letter-spacing: 0.22em;
+      letter-spacing: 0.1em;
       color: var(--amber);
       margin-bottom: 1rem;
     }
@@ -273,7 +273,7 @@ function buildShopPage(approvedProducts) {
     .hero-count {
       font-family: var(--font-bebas);
       font-size: 0.75rem;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.1em;
       color: rgba(193,125,46,0.5);
     }
 
@@ -307,8 +307,8 @@ function buildShopPage(approvedProducts) {
     }
     .jump-link {
       font-family: var(--font-bebas);
-      font-size: 0.7rem;
-      letter-spacing: 0.18em;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
       color: var(--muted);
       transition: color 0.15s;
       white-space: nowrap;
@@ -371,7 +371,7 @@ function buildShopPage(approvedProducts) {
     .locker-cat-name {
       font-family: var(--font-bebas);
       font-size: 1.25rem;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.1em;
       color: var(--cream);
     }
 
@@ -415,8 +415,8 @@ function buildShopPage(approvedProducts) {
 
     .card-score {
       font-family: var(--font-bebas);
-      font-size: 0.7rem;
-      letter-spacing: 0.14em;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
       color: var(--amber);
       opacity: 0.7;
     }
@@ -456,8 +456,8 @@ function buildShopPage(approvedProducts) {
       background: var(--amber);
       color: var(--bg);
       font-family: var(--font-bebas);
-      font-size: 0.7rem;
-      letter-spacing: 0.14em;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
       padding: 0.55rem 1rem;
       transition: opacity 0.15s;
       white-space: nowrap;
@@ -540,7 +540,7 @@ function buildShopPage(approvedProducts) {
     .shop-cta-btn {
       font-family: var(--font-bebas);
       font-size: 0.75rem;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.1em;
       border: 1px solid var(--amber);
       color: var(--amber);
       padding: 1rem 2.5rem;
