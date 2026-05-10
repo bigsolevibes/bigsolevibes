@@ -366,7 +366,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
             log(`    ERROR: upload failed for ${flowFileName}: ${err.message}`)
           }
         } else {
-          log(`    WARNING: no video_prompt for day ${dayNum} — skipping flow prompt file`)
+          throw new Error(`FATAL: no video_prompt for day ${dayNum} — source material was empty or distillation failed. Aborting week build.`)
         }
       } else {
         log(`    WARNING: no visual prompt found for day ${dayNum} — skipping prompt file`)

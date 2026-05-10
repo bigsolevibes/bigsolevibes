@@ -172,12 +172,14 @@ Specific, actionable changes for next week. Not suggestions — directives.`
   const client = new Anthropic({ apiKey })
   let fullText = ''
 
+  const originalMessages = [{ role: 'user', content: userPrompt }]
+
   const stream = await client.messages.stream({
     model:      'claude-sonnet-4-6',
     max_tokens: 4096,
     thinking:   { type: 'adaptive' },
     system:     systemPrompt,
-    messages:   [{ role: 'user', content: userPrompt }],
+    messages:   originalMessages,
   })
 
   process.stdout.write('Generating')
@@ -191,6 +193,22 @@ Specific, actionable changes for next week. Not suggestions — directives.`
 
   const final = await stream.finalMessage()
   log(`Done — ${final.usage?.output_tokens ?? '?'} tokens, stop: ${final.stop_reason}`)
+
+  if (final.stop_reason === 'max_tokens') {
+    log('[brand-manager] Hit max_tokens — requesting continuation...')
+    const continuation = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system:     systemPrompt,
+      messages: [
+        ...originalMessages,
+        { role: 'assistant', content: fullText },
+        { role: 'user', content: 'Continue exactly where you left off. Do not repeat anything.' },
+      ],
+    })
+    fullText += continuation.content[0]?.text ?? ''
+    log(`Continuation done — ${continuation.usage?.output_tokens ?? '?'} tokens`)
+  }
 
   if (!fullText.trim()) { log('ERROR: empty response'); process.exit(1) }
 
