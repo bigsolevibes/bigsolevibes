@@ -192,6 +192,15 @@ function extractVideoPrompt(brief) {
   return f.video_prompt || null
 }
 
+// Derives the day-of-week slug (e.g. "mon-am", "thu-pm") from a parsed day object.
+// Uses the label (day name) + post_time hour to determine am/pm.
+function daySlug(day) {
+  const dayName  = (day.label || '').toLowerCase().slice(0, 3) || `d${day.dayNum}`
+  const postTime = extractPostTime(day.brief)
+  const hour     = postTime ? parseInt(postTime.split(':')[0], 10) : 6
+  return `${dayName}-${hour < 12 ? 'am' : 'pm'}`
+}
+
 // Generates a Google Flow video prompt from the day's brief.
 async function distillFlowPrompt(client, rawPrompt) {
   const msg = await client.messages.create({
@@ -254,8 +263,8 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
   lines.push('Generate one image per day. Each prompt is self-contained — paste directly into your image tool.')
   lines.push('')
 
-  for (const { dayNum, label, date, voice, prompt } of dayPrompts) {
-    lines.push(`### Day ${dayNum} — ${label} ${date}${voice ? ` — ${voice}` : ''}`)
+  for (const { slug, label, date, voice, prompt } of dayPrompts) {
+    lines.push(`### ${slug} — ${label} ${date}${voice ? ` — ${voice}` : ''}`)
     lines.push('')
     lines.push(prompt)
     lines.push('')
@@ -306,7 +315,8 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
     for (let i = 0; i < days.length; i++) {
       const day         = days[i]
       const dayNum      = day.dayNum
-      const outFileName = `day${dayNum}.md`
+      const slug        = daySlug(day)
+      const outFileName = `${slug}.md`
 
       log(`  Day ${dayNum}/${days.length} — ${day.label} ${day.date}`)
 
@@ -341,7 +351,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
           oneLiner = `Generate a ${rawPrompt.slice(0, 200).replace(/\.$/, '')}, 1:1 square ratio, no text, no logos, no watermarks.`
         }
 
-        const promptFileName = `day${dayNum}-prompt.txt`
+        const promptFileName = `${slug}-prompt.txt`
         const promptPath     = path.join(TEMP_DIR, promptFileName)
         fs.writeFileSync(promptPath, oneLiner)
         try {
@@ -351,12 +361,12 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
           log(`    ERROR: upload failed for ${promptFileName}: ${err.message}`)
         }
 
-        dayPrompts.push({ dayNum, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
+        dayPrompts.push({ slug, dayNum, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
 
-        // dayX-flow-prompt.txt — use video_prompt directly (already a complete Veo prompt)
+        // slug-flow-prompt.txt — use video_prompt directly (already a complete Veo prompt)
         const videoPrompt = extractVideoPrompt(day.brief)
         if (videoPrompt) {
-          const flowFileName = `day${dayNum}-flow-prompt.txt`
+          const flowFileName = `${slug}-flow-prompt.txt`
           const flowPath     = path.join(TEMP_DIR, flowFileName)
           fs.writeFileSync(flowPath, videoPrompt)
           try {

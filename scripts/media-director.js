@@ -26,6 +26,15 @@ const ADMIN_EMAIL = 'admin@bigsolevibes.com'
 
 const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
 
+// Derives the day-of-week slug (e.g. "mon-am", "thu-pm") from a parsed fields object.
+function computeSlug(f) {
+  const dayMatch = (f.date || '').match(/^(\w+)/)
+  const dayName  = dayMatch ? dayMatch[1].toLowerCase().slice(0, 3) : `d${f.day || '?'}`
+  const hourMatch = (f.post_time || '').match(/^(\d{1,2}):/)
+  const hour     = hourMatch ? parseInt(hourMatch[1], 10) : 6
+  return `${dayName}-${hour < 12 ? 'am' : 'pm'}`
+}
+
 function parseFields(block) {
   const fields = {}
   let key = null
@@ -60,9 +69,10 @@ async function sendSundayChecklist(generatedPlans) {
       const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
       const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
       const voice     = f.world || ''
+      const slug      = computeSlug(f)
 
-      const imgFile  = path.join(BRIDGE_TEMP, `day${dayNum}-prompt.txt`)
-      const flowFile = path.join(BRIDGE_TEMP, `day${dayNum}-flow-prompt.txt`)
+      const imgFile  = path.join(BRIDGE_TEMP, `${slug}-prompt.txt`)
+      const flowFile = path.join(BRIDGE_TEMP, `${slug}-flow-prompt.txt`)
 
       const imagePrompt = fs.existsSync(imgFile)
         ? fs.readFileSync(imgFile, 'utf8').trim()

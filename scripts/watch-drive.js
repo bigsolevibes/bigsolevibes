@@ -246,7 +246,7 @@ const CRASH_RESTART_MS = 30 * 1000       // 30-second delay after a crash
 
 // ─── Shop sync ────────────────────────────────────────────────────────────────
 // Tracks the approved ASIN set between polls. null = not yet initialized.
-// sync-shop.js runs only when the approved set grows — avoids a deploy every poll.
+// sync-shop.js fires on any change to the approved set (additions OR removals).
 
 let prevApprovedAsins = null
 
@@ -268,12 +268,16 @@ async function checkAndSyncShop() {
       return
     }
 
-    const newApprovals = [...currentApproved].filter(a => !prevApprovedAsins.has(a))
+    const newApprovals  = [...currentApproved].filter(a => !prevApprovedAsins.has(a))
+    const newRejections = [...prevApprovedAsins].filter(a => !currentApproved.has(a))
     prevApprovedAsins = currentApproved
 
-    if (newApprovals.length === 0) return
+    if (newApprovals.length === 0 && newRejections.length === 0) return
 
-    log(`Shop sync: ${newApprovals.length} new approval(s) detected (${newApprovals.join(', ')}) — running sync-shop.js`)
+    if (newApprovals.length)  log(`Shop sync: ${newApprovals.length} new approval(s) — ${newApprovals.join(', ')}`)
+    if (newRejections.length) log(`Shop sync: ${newRejections.length} rejection(s) detected — removing from shelf (${newRejections.join(', ')})`)
+
+    log('Shop sync: running sync-shop.js')
     spawnSync(process.execPath, [path.join(__dirname, 'sync-shop.js')], {
       cwd:   ROOT,
       env:   process.env,
@@ -437,14 +441,17 @@ async function run() {
       mergeResults(state, base, distResults)
       saveState(state)
 
-      if (isComplete(state[base])) {
-        log(`${base}: all active platforms succeeded — moving to Posted/${today}/`)
+      const succeeded   = Object.entries(state[base]).filter(([k, v]) => !k.startsWith('_') && v === 'success').map(([k]) => k)
+      const stillFailed = pendingPlatforms(state[base])
+
+      if (succeeded.length > 0) {
+        const failNote = stillFailed.length ? ` — failed: ${stillFailed.join(', ')}` : ''
+        log(`${base}: posted to ${succeeded.join(', ')}${failNote} — moving to Posted/${today}/`)
         moveToPosted(media.name,   today)
         moveToPosted(caption.name, today)
-        log(`${base}: ✓ complete`)
+        log(`${base}: ✓ archived`)
       } else {
-        const stillPending = pendingPlatforms(state[base])
-        log(`${base}: ${stillPending.length} platform(s) pending — retry on next poll: ${stillPending.join(', ')}`)
+        log(`${base}: all platforms failed — not archiving, will retry on next poll`)
       }
     }
   }
@@ -459,7 +466,7 @@ async function run() {
     stdio: 'inherit',
   })
 
-  // Check product queue for new approvals — triggers sync-shop.js if found.
+  // Check product queue — triggers sync-shop.js on any approval or rejection change.
   await checkAndSyncShop()
 }
 
