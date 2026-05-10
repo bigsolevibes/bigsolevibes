@@ -77,9 +77,9 @@ function getPlansToProcess() {
 }
 
 // ─── Day parsing ──────────────────────────────────────────────────────────────
-// Parses flat day: N blocks produced by the new media-director format.
+// Parses slot: mon-am style blocks produced by media-director.
 
-const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+const KNOWN_KEYS = new Set(['slot','day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
 
 function parseFields(block) {
   const fields = {}
@@ -92,23 +92,36 @@ function parseFields(block) {
   return fields
 }
 
+const EXPECTED_SLOTS = ['mon-am','mon-pm','tue-am','tue-pm','wed-am','wed-pm','thu-am','thu-pm','fri-am','fri-pm','sat-am','sat-pm','sun-am','sun-pm']
+
 function parseDays(planContent) {
-  const blocks = planContent.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
+  const blocks = planContent.split(/^(?=slot:\s*\w+-(?:am|pm)\b)/m).filter(s => s.trim())
   const days = []
 
   for (const block of blocks) {
     const f = parseFields(block)
-    if (!f.day) continue
+    if (!f.slot) continue
 
-    const dayNum    = parseInt(f.day, 10)
+    const slug      = f.slot.trim()
     const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
-    const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+    const label     = dateMatch ? dateMatch[1] : slug
     const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
 
-    days.push({ dayNum, label, date, voice: f.world || '', brief: block.trim() })
+    days.push({ slug, label, date, voice: f.world || '', brief: block.trim() })
   }
 
   return days
+}
+
+function validateSlots(days) {
+  const present = new Set(days.map(d => d.slug))
+  const missing = EXPECTED_SLOTS.filter(s => !present.has(s))
+  if (missing.length) throw new Error(`plan is missing ${missing.length} slot(s): ${missing.join(', ')}`)
+  for (const day of days) {
+    const f = parseFields(day.brief)
+    if (!f.image_prompt?.trim()) throw new Error(`${day.slug} — image_prompt is empty or missing`)
+    if (!f.video_prompt?.trim()) throw new Error(`${day.slug} — video_prompt is empty or missing`)
+  }
 }
 
 // ─── Gemini copy generation ───────────────────────────────────────────────────
@@ -192,13 +205,9 @@ function extractVideoPrompt(brief) {
   return f.video_prompt || null
 }
 
-// Derives the day-of-week slug (e.g. "mon-am", "thu-pm") from a parsed day object.
-// Uses the label (day name) + post_time hour to determine am/pm.
+// Slug is set directly from the slot: field — no derivation needed.
 function daySlug(day) {
-  const dayName  = (day.label || '').toLowerCase().slice(0, 3) || `d${day.dayNum}`
-  const postTime = extractPostTime(day.brief)
-  const hour     = postTime ? parseInt(postTime.split(':')[0], 10) : 6
-  return `${dayName}-${hour < 12 ? 'am' : 'pm'}`
+  return day.slug
 }
 
 // Generates a Google Flow video prompt from the day's brief.
@@ -304,27 +313,34 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
 
     const days = parseDays(plan.content)
     if (!days.length) {
-      log(`  ERROR: Could not parse any days from ${plan.filename} — skipping`)
+      log(`  ERROR: Could not parse any slots from ${plan.filename} — skipping`)
       continue
     }
-    log(`  Parsed ${days.length} day(s)`)
+    log(`  Parsed ${days.length} slot(s)`)
+
+    try {
+      validateSlots(days)
+      log(`  All ${EXPECTED_SLOTS.length} slots present and valid`)
+    } catch (err) {
+      log(`  FATAL: ${err.message} — aborting plan, no files written`)
+      process.exit(1)
+    }
 
     const arcNote    = extractArcNote(plan.content)
     const dayPrompts = []
 
     for (let i = 0; i < days.length; i++) {
       const day         = days[i]
-      const dayNum      = day.dayNum
       const slug        = daySlug(day)
       const outFileName = `${slug}.md`
 
-      log(`  Day ${dayNum}/${days.length} — ${day.label} ${day.date}`)
+      log(`  ${slug} — ${day.label} ${day.date}`)
 
       let generatedCopy
       try {
         generatedCopy = await generateCopy(client, day)
       } catch (err) {
-        log(`    ERROR: copy generation failed for day ${dayNum}: ${err.message}`)
+        log(`    ERROR: copy generation failed for ${slug}: ${err.message}`)
         continue
       }
 
@@ -347,7 +363,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
           oneLiner = await distillPrompt(client, rawPrompt)
           log(`    Distilled prompt: ${oneLiner}`)
         } catch (err) {
-          log(`    WARNING: distill failed for day ${dayNum}: ${err.message} — falling back to raw`)
+          log(`    WARNING: distill failed for ${slug}: ${err.message} — falling back to raw`)
           oneLiner = `Generate a ${rawPrompt.slice(0, 200).replace(/\.$/, '')}, 1:1 square ratio, no text, no logos, no watermarks.`
         }
 
@@ -376,7 +392,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
             log(`    ERROR: upload failed for ${flowFileName}: ${err.message}`)
           }
         } else {
-          throw new Error(`FATAL: no video_prompt for day ${dayNum} — source material was empty or distillation failed. Aborting week build.`)
+          throw new Error(`FATAL: no video_prompt for ${slug} — source material was empty or distillation failed. Aborting week build.`)
         }
       } else {
         log(`    WARNING: no visual prompt found for day ${dayNum} — skipping prompt file`)

@@ -22,17 +22,13 @@ function log(msg) {
 const BRIDGE_TEMP = path.join(os.homedir(), 'tmp', 'bsv-gemini-bridge')
 const ADMIN_EMAIL = 'admin@bigsolevibes.com'
 
-// ─── Plan parser (flat day: N format) ────────────────────────────────────────
+// ─── Plan parser (slot: mon-am format) ───────────────────────────────────────
 
-const KNOWN_KEYS = new Set(['day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
+const KNOWN_KEYS = new Set(['slot','day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
 
-// Derives the day-of-week slug (e.g. "mon-am", "thu-pm") from a parsed fields object.
+// Slug is taken directly from the slot: field in the plan.
 function computeSlug(f) {
-  const dayMatch = (f.date || '').match(/^(\w+)/)
-  const dayName  = dayMatch ? dayMatch[1].toLowerCase().slice(0, 3) : `d${f.day || '?'}`
-  const hourMatch = (f.post_time || '').match(/^(\d{1,2}):/)
-  const hour     = hourMatch ? parseInt(hourMatch[1], 10) : 6
-  return `${dayName}-${hour < 12 ? 'am' : 'pm'}`
+  return (f.slot || '').trim() || 'unknown'
 }
 
 function parseFields(block) {
@@ -58,18 +54,17 @@ async function sendSundayChecklist(generatedPlans) {
   // Build one section per week
   const weekSections = []
   for (const { planFileName, fullText } of generatedPlans) {
-    const blocks = fullText.split(/^(?=day:\s*\d+\b)/m).filter(s => s.trim())
+    const blocks = fullText.split(/^(?=slot:\s*\w+-(?:am|pm)\b)/m).filter(s => s.trim())
     const days = []
     for (const block of blocks) {
       const f = parseFields(block)
-      if (!f.day) continue
+      if (!f.slot) continue
 
-      const dayNum    = parseInt(f.day, 10)
+      const slug      = computeSlug(f)
       const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
-      const label     = dateMatch ? dateMatch[1] : `Day${dayNum}`
+      const label     = dateMatch ? dateMatch[1] : slug
       const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
       const voice     = f.world || ''
-      const slug      = computeSlug(f)
 
       const imgFile  = path.join(BRIDGE_TEMP, `${slug}-prompt.txt`)
       const flowFile = path.join(BRIDGE_TEMP, `${slug}-flow-prompt.txt`)
@@ -82,7 +77,7 @@ async function sendSundayChecklist(generatedPlans) {
         ? fs.readFileSync(flowFile, 'utf8').trim()
         : f.video_prompt || '(not available)'
 
-      days.push({ dayNum, label, date, voice, imagePrompt, flowPrompt })
+      days.push({ slug, label, date, voice, imagePrompt, flowPrompt })
     }
 
     if (!days.length) continue
@@ -90,7 +85,7 @@ async function sendSundayChecklist(generatedPlans) {
     const weekKey    = planFileName.replace('week-', '').replace('.md', '')
     const dateRange  = `${days[0].date} → ${days[days.length - 1].date}`
     const dayBlocks  = days.map(d => [
-      `DAY ${d.dayNum} — ${d.label} ${d.date} — ${d.voice}`,
+      `${d.slug.toUpperCase()} — ${d.label} ${d.date} — ${d.voice}`,
       '─'.repeat(52),
       'IMAGE PROMPT (paste into Gemini / DALL-E / Midjourney):',
       d.imagePrompt,
@@ -118,12 +113,12 @@ async function sendSundayChecklist(generatedPlans) {
     '',
     '1. Open Google Drive → Big Sole Vibes → Ready to Post',
     '2. Open gemini-weekly-brief.md — it has all your prompts',
-    '3. For each day:',
+    '3. For each slot (e.g. mon-am, mon-pm, tue-am...):',
     '   a. Paste the IMAGE PROMPT into Gemini (or DALL-E / Midjourney)',
-    '      → Save the result as dayX-image.png',
+    '      → Save the result as [slot]-image.png  (e.g. mon-am-image.png)',
     '      → Drop it in Ready to Post/',
     '   b. Paste the FLOW PROMPT into Google Flow',
-    '      → Save the result as dayX-video.mp4',
+    '      → Save the result as [slot]-video.mp4  (e.g. mon-am-video.mp4)',
     '      → Drop it in Ready to Post/',
     '4. That\'s it — the pipeline handles everything else',
     '',
@@ -224,6 +219,12 @@ function getHandoff() {
 
   log('━━━ media-director start ━━━')
 
+  // Remove stale old-format day4-prompt.txt that contained a placeholder string.
+  try {
+    execSync(`rclone deletefile "${REMOTE}/Ready to Post/day4-prompt.txt"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    log('Cleaned up stale day4-prompt.txt from Ready to Post/')
+  } catch {}
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     log('ERROR: ANTHROPIC_API_KEY not set in .env')
@@ -233,12 +234,10 @@ function getHandoff() {
   const now        = new Date()
   const weeksArg   = process.argv.indexOf('--weeks')
   const numWeeks   = weeksArg !== -1 ? Math.max(1, parseInt(process.argv[weeksArg + 1], 10) || 1) : 1
-  const planOnly   = process.argv.includes('--plan-only')   // skip bridge/video-gen/email spawns
-  const startToday = process.argv.includes('--start-today') // start from today even on Sundays
+  const planOnly = process.argv.includes('--plan-only')
 
   log(`Weeks to generate: ${numWeeks}`)
-  if (planOnly)   log('--plan-only: skipping gemini-bridge, video-gen, and checklist email')
-  if (startToday) log('--start-today: starting from today regardless of day of week')
+  if (planOnly) log('--plan-only: skipping gemini-bridge, video-gen, and checklist email')
   log('Collecting context...')
 
   const recentLogs    = getRecentLogs(100)
@@ -247,38 +246,27 @@ function getHandoff() {
 
   log(`Handoff doc: ${handoff ? `${handoff.length} chars` : 'not found'}`)
 
-  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-  const isSunday = now.getDay() === 0
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 
-  // generateWeek: weekOffset 0 = first week, 1 = second week, etc.
-  // --start-today: week 0 always starts from today, even on Sundays.
-  // Default (Sunday): advances to next Monday so the full Mon-Sun week is planned.
+  // generateWeek always produces a full Mon–Sun week (7 days, 14 slots).
+  // weekOffset 0 = the Monday of the current or next calendar week.
   async function generateWeek(weekOffset, client, priorPlanText) {
-    let startDay
-    if (weekOffset === 0) {
-      startDay = new Date(now)
-      if (isSunday && !startToday) startDay.setDate(now.getDate() + 1)
-    } else {
-      // Week 1+ always starts on the Monday following the previous week
-      const base = new Date(now)
-      if (isSunday && !startToday) base.setDate(now.getDate() + 1)
-      else if (!isSunday) base.setDate(now.getDate() + (7 - now.getDay() + 1))
-      startDay = new Date(base)
-      startDay.setDate(base.getDate() + (weekOffset - 1) * 7)
-    }
+    // Find the Monday that opens this week offset.
+    // dow 0=Sun→+1, 1=Mon→+0, 2=Tue→+6, 3=Wed→+5, etc.
+    const dow = now.getDay()
+    const daysToMon = dow === 0 ? 1 : dow === 1 ? 0 : 8 - dow
+    const startDay = new Date(now)
+    startDay.setDate(now.getDate() + daysToMon + weekOffset * 7)
 
-    // Days from today through the nearest Saturday (inclusive).
-    // On Sunday with --start-today: 6 - 0 + 1 = 7 days (Sun–Sat).
-    const daysLeft = (weekOffset === 0 && (!isSunday || startToday)) ? (6 - now.getDay() + 1) : 7
-    const weekDays = Array.from({ length: daysLeft }, (_, i) => {
+    const weekDays = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(startDay)
       d.setDate(startDay.getDate() + i)
-      return `${dayNames[d.getDay()]} ${d.toISOString().slice(0, 10)}`
+      return `${DAY_NAMES[d.getDay()]} ${d.toISOString().slice(0, 10)}`
     })
 
     const [year, week] = isoWeek(startDay)
     const planFileName = `week-${year}-${week}.md`
-    log(`Generating ${planFileName} (${weekDays[0]} → ${weekDays[weekDays.length - 1]})`)
+    log(`Generating ${planFileName} (${weekDays[0]} → ${weekDays[6]}) — 7 days, 14 slots`)
 
   const systemPrompt = `You are the Media Director for Big Sole Vibes (BSV).
 
@@ -382,25 +370,29 @@ Style: playful, warm, never mean. Punching up at neglected feet, never at the pe
 - Lounge audio: soft crackling fireplace, low ambient jazz saxophone
 - Street audio: up-tempo lo-fi hip hop, heavy bass, crisp snare, distant city sounds
 
-## Per-Day Output Format
-For each day produce exactly:
+## Output Format — 14 Slots (Mon–Sun, AM + PM)
 
-day: [number]
-date: [day of week, YYYY-MM-DD]
+Output all 14 slots in order. Each slot uses this exact structure — no deviations:
+
+slot: [mon-am | mon-pm | tue-am | tue-pm | wed-am | wed-pm | thu-am | thu-pm | fri-am | fri-pm | sat-am | sat-pm | sun-am | sun-pm]
+date: [Day name, YYYY-MM-DD]
 theme: [one line]
 world: [The Court / The Boardroom / The Lounge / The Grind]
-post_time: [HH:MM CDT]
-platform: [instagram / tiktok / youtube]
-image_prompt: [photorealistic Imagen 4 prompt, dark cinematic, no text, no logos, square 1:1]
-video_prompt: [Veo 3.1 motion prompt, 7-8 seconds, 9:16 vertical, no text, no logos, no watermarks, seamless loop instruction at end]
+post_time: [09:00 CDT for AM slots — 19:00 CDT for PM slots]
+image_prompt: [Fully self-contained photorealistic Imagen 4 prompt — dark cinematic, no text, no logos, square 1:1. Paste-ready. No references to other slots.]
+video_prompt: [Veo 3.1 motion prompt — 7–8 seconds, 9:16 vertical, no text, no logos, no watermarks. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 audio_prompt: [one line ambient sound description]
-caption: [platform caption with hashtags]
+caption: [draft caption with #BigSoleVibes — pipeline generates final per-platform copy]
+
+All 14 slots are required. No placeholder text. No omissions. Same-day AM and PM must use different worlds and different visual approaches. Never repeat the same world in consecutive slots.
 
 ## The Vision
 Every piece of content builds toward the day BSV opens its first physical lounge. Chicago first. A place where a man walks in, gets taken care of, has a drink, and leaves feeling like himself. The product funds the brand. The brand builds the audience. The audience fills the lounge. Content is not marketing. It is the foundation.`
 
-  const userPrompt = `Generate the BSV content plan covering these ${daysLeft} day${daysLeft === 1 ? '' : 's'} (Day 1 = ${weekDays[0]}):
-${weekDays.join('\n')}
+  const userPrompt = `Generate the full BSV content plan for the week below. Output all 14 slots (mon-am through sun-pm) in order. Every slot must be fully populated — no placeholders, no omissions, no "same as above".
+
+Week: ${weekDays[0]} → ${weekDays[6]}
+${weekDays.map((d, i) => `  Day ${i + 1}: ${d}`).join('\n')}
 
 ## Recent pipeline activity (last 100 log lines)
 \`\`\`
@@ -444,7 +436,7 @@ Avoid repeating angles or visuals that have clearly been used recently. Build on
     try {
       const stream = await client.messages.stream({
         model:      'claude-sonnet-4-6',
-        max_tokens: 16000,
+        max_tokens: 32000,
         thinking:   { type: 'adaptive' },
         system:     systemPrompt,
         messages:   [{ role: 'user', content: userPrompt }],
