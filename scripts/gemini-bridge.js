@@ -1,6 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -122,6 +122,43 @@ function validateSlots(days) {
     if (!f.image_prompt?.trim()) throw new Error(`${day.slug} — image_prompt is empty or missing`)
     if (!f.video_prompt?.trim()) throw new Error(`${day.slug} — video_prompt is empty or missing`)
   }
+}
+
+const MAX_SLOT_RETRIES = 3
+
+// For each invalid/missing slot, calls media-director --slot <slug> to regenerate it,
+// then re-downloads the plan and re-validates. Hard exits after MAX_SLOT_RETRIES failures.
+async function healSlots(plan, days) {
+  let current = [...days]
+
+  for (const slug of EXPECTED_SLOTS) {
+    for (let attempt = 0; attempt <= MAX_SLOT_RETRIES; attempt++) {
+      const day  = current.find(d => d.slug === slug)
+      const f    = day ? parseFields(day.brief) : {}
+      const good = !!(day && f.image_prompt?.trim() && f.video_prompt?.trim())
+
+      if (good) break
+      if (attempt === MAX_SLOT_RETRIES) {
+        throw new Error(`FATAL: slot ${slug} failed to fill after ${MAX_SLOT_RETRIES} attempt(s) — aborting week build`)
+      }
+
+      log(`  Slot ${slug} missing/invalid — media-director --slot ${slug} (attempt ${attempt + 1}/${MAX_SLOT_RETRIES})`)
+      const fill = spawnSync(process.execPath, [path.join(__dirname, 'media-director.js'), '--slot', slug], {
+        env: process.env, stdio: 'inherit',
+      })
+      if (fill.status !== 0) log(`  WARNING: media-director --slot ${slug} exited ${fill.status}`)
+
+      // Re-download plan from Drive and re-parse
+      try { downloadFile(`${REMOTE}/Content Plan/${plan.filename}`, TEMP_DIR) } catch {}
+      const localPath = path.join(TEMP_DIR, plan.filename)
+      if (fs.existsSync(localPath)) {
+        plan.content = fs.readFileSync(localPath, 'utf8')
+        current = parseDays(plan.content)
+      }
+    }
+  }
+
+  return current
 }
 
 // ─── Gemini copy generation ───────────────────────────────────────────────────
@@ -311,7 +348,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
   for (const plan of plans) {
     log(`── Processing ${plan.filename} ──`)
 
-    const days = parseDays(plan.content)
+    let days = parseDays(plan.content)
     if (!days.length) {
       log(`  ERROR: Could not parse any slots from ${plan.filename} — skipping`)
       continue
@@ -319,10 +356,10 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
     log(`  Parsed ${days.length} slot(s)`)
 
     try {
-      validateSlots(days)
-      log(`  All ${EXPECTED_SLOTS.length} slots present and valid`)
+      days = await healSlots(plan, days)
+      log(`  All ${EXPECTED_SLOTS.length} slots validated`)
     } catch (err) {
-      log(`  FATAL: ${err.message} — aborting plan, no files written`)
+      log(`  ${err.message}`)
       process.exit(1)
     }
 
@@ -377,7 +414,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
           log(`    ERROR: upload failed for ${promptFileName}: ${err.message}`)
         }
 
-        dayPrompts.push({ slug, dayNum, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
+        dayPrompts.push({ slug, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
 
         // slug-flow-prompt.txt — use video_prompt directly (already a complete Veo prompt)
         const videoPrompt = extractVideoPrompt(day.brief)
@@ -395,7 +432,7 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
           throw new Error(`FATAL: no video_prompt for ${slug} — source material was empty or distillation failed. Aborting week build.`)
         }
       } else {
-        log(`    WARNING: no visual prompt found for day ${dayNum} — skipping prompt file`)
+        log(`    WARNING: no visual prompt found for ${slug} — skipping prompt file`)
       }
     }
 

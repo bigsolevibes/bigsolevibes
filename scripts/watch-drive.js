@@ -11,6 +11,7 @@ const ROOT            = path.join(__dirname, '..')
 const LOG_FILE        = path.join(ROOT, 'logs', 'watch-drive.log')
 const STATE_FILE      = path.join(ROOT, 'logs', 'watch-drive-state.json')
 const RESULTS_FILE    = path.join(ROOT, 'logs', 'distribute-results.json')
+const POST_STATE_FILE = path.join(ROOT, 'logs', 'post-state.json')
 const OUTPUT_DIR      = path.join(ROOT, 'posts', 'output')
 const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
 
@@ -26,19 +27,13 @@ function log(msg) {
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
-// Per-slug, per-platform tracking:
-//   { "day2": { "bluesky": "success", "instagram": "success", "youtube": "pending" } }
-// Paused platforms are never written. Archive only when all entries are "success".
+// watch-drive-state.json — scheduling sentinels only (_hold_since per slug).
+// post-state.json        — per-slug, per-platform results (success/failed/paused).
 
 function loadState() {
   try {
     const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
-    // Migrate old { distributed: [...] } format
-    if (Array.isArray(raw.distributed)) {
-      const migrated = {}
-      for (const slug of raw.distributed) migrated[slug] = { _migrated: 'success' }
-      return migrated
-    }
+    if (Array.isArray(raw.distributed)) return {}  // discard legacy format
     return raw
   } catch { return {} }
 }
@@ -47,28 +42,53 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
 }
 
-// True when every recorded platform for this slug is 'success'.
-// Keys starting with _ are internal sentinels and are ignored.
-function isComplete(slugState) {
+function loadPostState() {
+  try { return JSON.parse(fs.readFileSync(POST_STATE_FILE, 'utf8')) }
+  catch { return {} }
+}
+
+function savePostState(postState) {
+  fs.writeFileSync(POST_STATE_FILE, JSON.stringify(postState, null, 2))
+}
+
+// True when every platform for this slug is 'success' or 'paused' (nothing left to retry).
+function isArchivable(slugState) {
   if (!slugState) return false
-  const platformEntries = Object.entries(slugState).filter(([k]) => !k.startsWith('_'))
-  if (platformEntries.length === 0) return false
-  return platformEntries.every(([, v]) => v === 'success')
+  const entries = Object.entries(slugState).filter(([k]) => !k.startsWith('_'))
+  if (entries.length === 0) return false
+  return entries.every(([, v]) => v === 'success' || v === 'paused')
 }
 
-// Platform names recorded as 'pending' for this slug.
-function pendingPlatforms(slugState) {
+// Returns only the platforms that failed and need a retry.
+// null means no prior state → first run → attempt all active platforms.
+function failedPlatformsToRetry(slugState) {
+  if (!slugState) return null
+  const failed = Object.entries(slugState)
+    .filter(([k, v]) => !k.startsWith('_') && v === 'failed')
+    .map(([k]) => k)
+  return failed.length > 0 ? failed : null
+}
+
+// Names of platforms that failed in the last run (for logging).
+function failedPlatforms(slugState) {
   if (!slugState) return []
-  return Object.entries(slugState).filter(([k, v]) => !k.startsWith('_') && v === 'pending').map(([k]) => k)
+  return Object.entries(slugState)
+    .filter(([k, v]) => !k.startsWith('_') && v === 'failed')
+    .map(([k]) => k)
 }
 
-// Merge distribute-results.json into state for this slug.
-// 'ok' / 'skip' → 'success'  |  'fail' → 'pending'  |  'pause' → omitted.
-function mergeResults(state, base, distResults) {
-  if (!state[base]) state[base] = {}
+// Merge distribute-results into post-state for this slug.
+// 'ok'/'skip' → 'success' | 'fail' → 'failed' | 'pause' → 'paused'
+function mergePostResults(postState, base, distResults) {
+  if (!postState[base]) postState[base] = {}
   for (const [platform, status] of Object.entries(distResults)) {
-    if (status === 'pause') continue
-    state[base][platform] = (status === 'ok' || status === 'skip') ? 'success' : 'pending'
+    if (status === 'pause') {
+      postState[base][platform] = 'paused'
+    } else if (status === 'ok' || status === 'skip') {
+      postState[base][platform] = 'success'
+    } else {
+      postState[base][platform] = 'failed'
+    }
   }
 }
 
@@ -295,8 +315,9 @@ fs.mkdirSync(OUTPUT_DIR, { recursive: true })
 fs.mkdirSync(TEMP_DIR,   { recursive: true })
 
 if (process.argv.includes('--reset')) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify({}, null, 2))
-  log('State reset — all slug state cleared')
+  fs.writeFileSync(STATE_FILE,      JSON.stringify({}, null, 2))
+  fs.writeFileSync(POST_STATE_FILE, JSON.stringify({}, null, 2))
+  log('State reset — scheduling and post state cleared')
 }
 
 // ─── Poll ─────────────────────────────────────────────────────────────────────
@@ -304,8 +325,9 @@ if (process.argv.includes('--reset')) {
 async function run() {
   log('━━━ poll start ━━━')
 
-  const state = loadState()
-  const today = localDateString()
+  const state     = loadState()
+  const postState = loadPostState()
+  const today     = localDateString()
 
   // Filter out supporting files that are not post assets
   const IGNORE = /(-(prompt|flow-prompt)\.txt|gemini-(weekly-brief|brief-week-\d{4}-\d{2})\.md)$/i
@@ -321,8 +343,8 @@ async function run() {
   const groups = groupFiles(files)
 
   for (const [base, { media, caption }] of Object.entries(groups)) {
-    if (isComplete(state[base])) {
-      log(`${base}: already distributed, skipping`)
+    if (isArchivable(postState[base])) {
+      log(`${base}: already posted — skipping`)
       continue
     }
 
@@ -404,14 +426,13 @@ async function run() {
       //   Retry state (pending platforms) takes over on subsequent polls.
       //   null → all active platforms (first run, no platform field).
       const captionPlatforms = parsePlatformField(captionText)
-      const pending          = pendingPlatforms(state[base])
-      const retryPlatforms   = pending.length > 0 ? pending : null
+      const retryPlatforms   = failedPlatformsToRetry(postState[base])
       let effectivePlatforms = captionPlatforms || retryPlatforms
 
       if (captionPlatforms) {
         log(`${base}: platform lock — ${captionPlatforms[0]} only`)
       } else if (retryPlatforms) {
-        log(`${base}: retrying pending platforms: ${retryPlatforms.join(', ')}`)
+        log(`${base}: retrying failed platforms: ${retryPlatforms.join(', ')}`)
       } else {
         log(`${base}: full pipeline starting`)
       }
@@ -432,26 +453,23 @@ async function run() {
 
       if (!distResults || Object.keys(distResults).length === 0) {
         log(`${base}: WARNING — no distribute results found, not archiving`)
-        if (!state[base]) state[base] = {}
-        state[base]['_unknown'] = 'pending'
-        saveState(state)
         continue
       }
 
-      mergeResults(state, base, distResults)
-      saveState(state)
+      mergePostResults(postState, base, distResults)
+      savePostState(postState)
 
-      const succeeded   = Object.entries(state[base]).filter(([k, v]) => !k.startsWith('_') && v === 'success').map(([k]) => k)
-      const stillFailed = pendingPlatforms(state[base])
-
-      if (succeeded.length > 0) {
-        const failNote = stillFailed.length ? ` — failed: ${stillFailed.join(', ')}` : ''
-        log(`${base}: posted to ${succeeded.join(', ')}${failNote} — moving to Posted/${today}/`)
+      if (isArchivable(postState[base])) {
+        const succeeded = Object.entries(postState[base]).filter(([, v]) => v === 'success').map(([k]) => k)
+        log(`${base}: posted to ${succeeded.join(', ')} — moving to Posted/${today}/`)
         moveToPosted(media.name,   today)
         moveToPosted(caption.name, today)
+        delete postState[base]
+        savePostState(postState)
         log(`${base}: ✓ archived`)
       } else {
-        log(`${base}: all platforms failed — not archiving, will retry on next poll`)
+        const failed = failedPlatforms(postState[base])
+        log(`${base}: ${failed.length} platform(s) failed — will retry next poll: ${failed.join(', ')}`)
       }
     }
   }

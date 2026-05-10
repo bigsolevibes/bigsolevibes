@@ -31,6 +31,115 @@ function computeSlug(f) {
   return (f.slot || '').trim() || 'unknown'
 }
 
+// Replaces a named slot block in the plan text, or appends it if the slot is absent.
+function replaceSlotInPlan(planContent, slug, newBlock) {
+  const parts = planContent.split(/^(?=slot:\s*\w+-(?:am|pm)\b)/m)
+  const idx = parts.findIndex(p => {
+    const m = p.trimStart().match(/^slot:\s*(\S+)/)
+    return m && m[1] === slug
+  })
+  if (idx >= 0) {
+    parts[idx] = newBlock.trim() + '\n\n'
+    return parts.join('')
+  }
+  return planContent.trimEnd() + '\n\n' + newBlock.trim() + '\n'
+}
+
+// Single-slot fill — downloads the current week plan, generates just the requested slot,
+// patches it in, and uploads the updated plan back to Drive.
+async function fillSingleSlot(slug, client) {
+  log(`━━━ slot fill: ${slug} ━━━`)
+
+  let planFilename, planContent
+  try {
+    const listing = execSync(`rclone ls "${REMOTE}/Content Plan/"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    const plans = listing.trim().split('\n').filter(Boolean)
+      .map(l => l.trim().replace(/^\d+\s+/, ''))
+      .filter(f => /^week-\d{4}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!plans.length) throw new Error('no week plans found in Content Plan/')
+
+    const now = new Date()
+    const [curYear, curWeek] = isoWeek(now)
+    const currentKey = `${curYear}-${curWeek}`
+    const upcoming = plans.filter(f => { const m = f.match(/^week-(\d{4}-\d{2})\.md$/); return m && m[1] >= currentKey })
+    planFilename = upcoming.length ? upcoming[0] : plans[plans.length - 1]
+
+    fs.mkdirSync(TEMP_DIR, { recursive: true })
+    execSync(`rclone copy "${REMOTE}/Content Plan/${planFilename}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const localPath = path.join(TEMP_DIR, planFilename)
+    if (!fs.existsSync(localPath)) throw new Error(`download failed for ${planFilename}`)
+    planContent = fs.readFileSync(localPath, 'utf8')
+    log(`Loaded plan: ${planFilename}`)
+  } catch (err) {
+    log(`ERROR: could not load week plan: ${err.message}`)
+    process.exit(1)
+  }
+
+  const systemPrompt = `You are the Media Director for Big Sole Vibes (BSV) — a premium men's foot care lifestyle brand.
+
+BSV speaks to the man who does both: leather chair and bourbon on Thursday, sneakers and tequila on Friday night.
+Brand palette: Midnight #0D1B2A, Bourbon #C17D2E, Cream #F5ECD7, Steel #4A6380.
+Content worlds: The Court (athletic), The Boardroom (professional), The Lounge (home ritual), The Grind (work/outdoors).
+Video: Always 7–8 seconds, 9:16 vertical. End video_prompt with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."
+
+Output format — use this exact structure and nothing else:
+
+slot: [slug]
+date: [Day name, YYYY-MM-DD]
+theme: [one line]
+world: [The Court / The Boardroom / The Lounge / The Grind]
+post_time: [09:00 CDT for AM — 19:00 CDT for PM]
+image_prompt: [self-contained Imagen 4 prompt, dark cinematic, 1:1, no text or logos, paste-ready]
+video_prompt: [Veo 3.1 prompt, 7–8s, 9:16, no text or logos, end with seamless loop instruction]
+audio_prompt: [one line ambient sound description]
+caption: [draft caption with #BigSoleVibes]
+
+Output ONLY the single slot block — no preamble, no commentary, no other slots.`
+
+  const userPrompt = `The following week plan exists but slot ${slug} is missing or invalid. Generate ONLY that slot.
+
+Use the same week dates as the surrounding slots. Choose a world not already used in adjacent slots.
+
+Existing plan for context:
+${planContent.slice(0, 4000)}${planContent.length > 4000 ? '\n[truncated]' : ''}`
+
+  log(`Calling Claude API for slot: ${slug}...`)
+  let newSlotBlock
+  try {
+    const msg = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    })
+    newSlotBlock = msg.content[0].text.trim()
+  } catch (err) {
+    log(`ERROR: Claude API failed for slot ${slug}: ${err.message}`)
+    process.exit(1)
+  }
+
+  if (!newSlotBlock.startsWith('slot:')) {
+    log(`ERROR: response for ${slug} does not begin with "slot:" — aborting`)
+    log(`Response preview: ${newSlotBlock.slice(0, 200)}`)
+    process.exit(1)
+  }
+
+  const updatedPlan = replaceSlotInPlan(planContent, slug, newSlotBlock)
+  const localPath   = path.join(TEMP_DIR, planFilename)
+  fs.writeFileSync(localPath, updatedPlan)
+
+  try {
+    execSync(`rclone copyto "${localPath}" "${REMOTE}/Content Plan/${planFilename}"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    log(`Uploaded updated plan → ${REMOTE}/Content Plan/${planFilename}`)
+  } catch (err) {
+    log(`ERROR: upload failed: ${err.message}`)
+    process.exit(1)
+  }
+
+  log(`━━━ slot fill complete: ${slug} ━━━`)
+}
+
 function parseFields(block) {
   const fields = {}
   let key = null
@@ -483,6 +592,16 @@ Avoid repeating angles or visuals that have clearly been used recently. Build on
   } // end generateWeek
 
   const client = new Anthropic({ apiKey })
+
+  // --slot mon-am: fill a single missing slot then exit (called by gemini-bridge healer)
+  const slotArg = process.argv.indexOf('--slot')
+  if (slotArg !== -1) {
+    const singleSlot = process.argv[slotArg + 1]
+    if (!singleSlot) { log('ERROR: --slot requires a slug (e.g. --slot mon-am)'); process.exit(1) }
+    await fillSingleSlot(singleSlot, client)
+    return
+  }
+
   const generatedPlans = []
 
   for (let w = 0; w < numWeeks; w++) {
