@@ -38,9 +38,8 @@ function uploadFile(localPath, remotePath) {
   execSync(`rclone copyto "${localPath}" "${remotePath}"`, { stdio: ['pipe', 'pipe', 'pipe'] })
 }
 
-// ─── Content plan loading ─────────────────────────────────────────────────────
+// ─── Plan loading ─────────────────────────────────────────────────────────────
 
-// Returns the current ISO week key as "YYYY-WW" for comparison against filenames.
 function currentWeekKey() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -50,34 +49,29 @@ function currentWeekKey() {
   return `${d.getFullYear()}-${String(week).padStart(2, '0')}`
 }
 
-// Returns all plans with a week key >= the current week, sorted ascending.
-// Falls back to just the latest plan if none qualify (e.g. mid-week manual run).
-function getPlansToProcess() {
+// Returns the current or nearest upcoming week plan from Drive.
+function loadCurrentWeekPlan() {
   const files = listDriveFiles(`${REMOTE}/Content Plan`)
-  const plans = files.filter(f => f.match(/^week-\d{4}-\d{2}\.md$/)).sort()
-  if (!plans.length) return []
+  const plans = files.filter(f => /^week-\d{4}-\d{2}\.md$/.test(f)).sort()
+  if (!plans.length) return null
 
-  const current = currentWeekKey()
-  // e.g. "week-2026-18.md" → key "2026-18"
-  const upcoming = plans.filter(f => {
-    const m = f.match(/^week-(\d{4}-\d{2})\.md$/)
-    return m && m[1] >= current
-  })
+  const current  = currentWeekKey()
+  const upcoming = plans.filter(f => { const m = f.match(/^week-(\d{4}-\d{2})\.md$/); return m && m[1] >= current })
+  const filename = upcoming.length ? upcoming[0] : plans[plans.length - 1]
 
-  const toFetch = upcoming.length ? upcoming : [plans[plans.length - 1]]
   fs.mkdirSync(TEMP_DIR, { recursive: true })
+  log(`Fetching plan: ${filename}`)
+  try { downloadFile(`${REMOTE}/Content Plan/${filename}`, TEMP_DIR) } catch (err) {
+    log(`ERROR: download failed for ${filename}: ${err.message}`)
+    return null
+  }
 
-  return toFetch.map(filename => {
-    log(`Fetching plan: ${filename}`)
-    downloadFile(`${REMOTE}/Content Plan/${filename}`, TEMP_DIR)
-    const localPath = path.join(TEMP_DIR, filename)
-    if (!fs.existsSync(localPath)) { log(`  WARNING: download failed for ${filename}`); return null }
-    return { filename, content: fs.readFileSync(localPath, 'utf8') }
-  }).filter(Boolean)
+  const localPath = path.join(TEMP_DIR, filename)
+  if (!fs.existsSync(localPath)) { log(`ERROR: ${filename} not found after download`); return null }
+  return { filename, content: fs.readFileSync(localPath, 'utf8') }
 }
 
 // ─── Day parsing ──────────────────────────────────────────────────────────────
-// Parses slot: mon-am style blocks produced by media-director.
 
 const KNOWN_KEYS = new Set(['slot','day','date','theme','world','post_time','platform','image_prompt','video_prompt','audio_prompt','caption'])
 
@@ -92,76 +86,50 @@ function parseFields(block) {
   return fields
 }
 
-const EXPECTED_SLOTS = ['mon-am','mon-pm','tue-am','tue-pm','wed-am','wed-pm','thu-am','thu-pm','fri-am','fri-pm','sat-am','sat-pm','sun-am','sun-pm']
-
 function parseDays(planContent) {
   const blocks = planContent.split(/^(?=slot:\s*\w+-(?:am|pm)\b)/m).filter(s => s.trim())
   const days = []
-
   for (const block of blocks) {
     const f = parseFields(block)
     if (!f.slot) continue
-
     const slug      = f.slot.trim()
     const dateMatch = (f.date || '').match(/(\w+)[,\s]+(\d{4}-\d{2}-\d{2})/)
     const label     = dateMatch ? dateMatch[1] : slug
     const date      = dateMatch ? dateMatch[2] : (f.date || '').trim()
-
     days.push({ slug, label, date, voice: f.world || '', brief: block.trim() })
   }
-
   return days
 }
 
-function validateSlots(days) {
-  const present = new Set(days.map(d => d.slug))
-  const missing = EXPECTED_SLOTS.filter(s => !present.has(s))
-  if (missing.length) throw new Error(`plan is missing ${missing.length} slot(s): ${missing.join(', ')}`)
-  for (const day of days) {
-    const f = parseFields(day.brief)
-    if (!f.image_prompt?.trim()) throw new Error(`${day.slug} — image_prompt is empty or missing`)
-    if (!f.video_prompt?.trim()) throw new Error(`${day.slug} — video_prompt is empty or missing`)
-  }
+function daySlug(day) { return day.slug }
+
+// ─── Content extraction ───────────────────────────────────────────────────────
+
+function extractArcNote(planContent) {
+  const preamble = planContent.split(/^(?=###\s)/m)[0] || ''
+  const match = preamble.match(/\*\*Arc note[:\*]*\*\*[^\n]*\n?([\s\S]*?)(?=\n##|\n###|$)/i)
+  if (!match) return null
+  return match[0].replace(/\*\*/g, '').trim()
 }
 
-const MAX_SLOT_RETRIES = 3
-
-// For each invalid/missing slot, calls media-director --slot <slug> to regenerate it,
-// then re-downloads the plan and re-validates. Hard exits after MAX_SLOT_RETRIES failures.
-async function healSlots(plan, days) {
-  let current = [...days]
-
-  for (const slug of EXPECTED_SLOTS) {
-    for (let attempt = 0; attempt <= MAX_SLOT_RETRIES; attempt++) {
-      const day  = current.find(d => d.slug === slug)
-      const f    = day ? parseFields(day.brief) : {}
-      const good = !!(day && f.image_prompt?.trim() && f.video_prompt?.trim())
-
-      if (good) break
-      if (attempt === MAX_SLOT_RETRIES) {
-        throw new Error(`FATAL: slot ${slug} failed to fill after ${MAX_SLOT_RETRIES} attempt(s) — aborting week build`)
-      }
-
-      log(`  Slot ${slug} missing/invalid — media-director --slot ${slug} (attempt ${attempt + 1}/${MAX_SLOT_RETRIES})`)
-      const fill = spawnSync(process.execPath, [path.join(__dirname, 'media-director.js'), '--slot', slug], {
-        env: process.env, stdio: 'inherit',
-      })
-      if (fill.status !== 0) log(`  WARNING: media-director --slot ${slug} exited ${fill.status}`)
-
-      // Re-download plan from Drive and re-parse
-      try { downloadFile(`${REMOTE}/Content Plan/${plan.filename}`, TEMP_DIR) } catch {}
-      const localPath = path.join(TEMP_DIR, plan.filename)
-      if (fs.existsSync(localPath)) {
-        plan.content = fs.readFileSync(localPath, 'utf8')
-        current = parseDays(plan.content)
-      }
-    }
-  }
-
-  return current
+function extractVisualPrompt(brief) {
+  const f = parseFields(brief)
+  return f.image_prompt || null
 }
 
-// ─── Gemini copy generation ───────────────────────────────────────────────────
+function extractVideoPrompt(brief) {
+  const f = parseFields(brief)
+  return f.video_prompt || null
+}
+
+function extractPostTime(brief) {
+  const f = parseFields(brief)
+  if (!f.post_time) return null
+  const m = f.post_time.match(/(\d{1,2}:\d{2})/)
+  return m ? m[1] : null
+}
+
+// ─── Copy generation ──────────────────────────────────────────────────────────
 
 async function generateCopy(client, day) {
   const systemPrompt = `You are a social media copywriter for Big Sole Vibes (BSV) — a premium men's foot care brand.
@@ -205,62 +173,8 @@ ${day.brief}
   return msg.content[0].text
 }
 
-// ─── Output file formatting ───────────────────────────────────────────────────
-// watch-drive.js parseCaptions() looks for ## instagram / ## twitter / ## facebook
+// ─── Prompt distillation ──────────────────────────────────────────────────────
 
-// Extracts post_time (HH:MM) from a day brief.
-function extractPostTime(brief) {
-  const f = parseFields(brief)
-  if (!f.post_time) return null
-  const m = f.post_time.match(/(\d{1,2}:\d{2})/)
-  return m ? m[1] : null
-}
-
-function buildCaptionFile(day, generatedCopy) {
-  const postTime = extractPostTime(day.brief)
-  const header   = postTime ? `post_time: ${postTime}\n` : ''
-  return `${header}# ${day.label} — ${day.date}\n\n${generatedCopy.trim()}\n`
-}
-
-// Extracts the Arc note line(s) from the top of the plan (before the first ### day header).
-function extractArcNote(planContent) {
-  const preamble = planContent.split(/^(?=###\s)/m)[0] || ''
-  const match = preamble.match(/\*\*Arc note[:\*]*\*\*[^\n]*\n?([\s\S]*?)(?=\n##|\n###|$)/i)
-  if (!match) return null
-  return match[0].replace(/\*\*/g, '').trim()
-}
-
-// Extracts image_prompt from a day brief (used to distill dayX-prompt.txt).
-function extractVisualPrompt(brief) {
-  const f = parseFields(brief)
-  return f.image_prompt || null
-}
-
-// Extracts video_prompt from a day brief (saved directly as dayX-flow-prompt.txt).
-function extractVideoPrompt(brief) {
-  const f = parseFields(brief)
-  return f.video_prompt || null
-}
-
-// Slug is set directly from the slot: field — no derivation needed.
-function daySlug(day) {
-  return day.slug
-}
-
-// Generates a Google Flow video prompt from the day's brief.
-async function distillFlowPrompt(client, rawPrompt) {
-  const msg = await client.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 220,
-    messages: [{
-      role:    'user',
-      content: `Write a single paragraph for Google Flow video generation based on this scene brief. Cover exactly: (1) the scene and subject, (2) the motion — what moves and how, (3) the mood, (4) the lighting. End the paragraph with exactly this sentence: "9:16 vertical ratio, no text overlays, no logos, no watermarks, AI-generated content." Output only the paragraph — no intro, no label, no explanation.\n\n${rawPrompt}`,
-    }],
-  })
-  return msg.content[0].text.trim()
-}
-
-// Distills a full visual prompt to a single image generation sentence via Claude.
 async function distillPrompt(client, rawPrompt) {
   const msg = await client.messages.create({
     model:      'claude-sonnet-4-6',
@@ -273,50 +187,128 @@ async function distillPrompt(client, rawPrompt) {
   return msg.content[0].text.trim()
 }
 
-// Builds the single-paste weekly brief for Gemini image generation.
-function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
-  const lines = []
+async function distillFlowPrompt(client, rawPrompt) {
+  const msg = await client.messages.create({
+    model:      'claude-sonnet-4-6',
+    max_tokens: 220,
+    messages: [{
+      role:    'user',
+      content: `Write a single paragraph for Google Flow video generation based on this scene brief. Cover exactly: (1) the scene and subject, (2) the motion — what moves and how, (3) the mood, (4) the lighting. End the paragraph with exactly this sentence: "9:16 vertical ratio, no text overlays, no logos, no watermarks, AI-generated content." Output only the paragraph — no intro, no label, no explanation.\n\n${rawPrompt}`,
+    }],
+  })
+  return msg.content[0].text.trim()
+}
 
-  lines.push('# Big Sole Vibes — Weekly Image Generation Brief')
-  lines.push(`Source plan: ${planFilename}`)
-  lines.push(`Generated: ${new Date().toISOString().slice(0, 10)}`)
-  lines.push('')
-  lines.push('---')
-  lines.push('')
-  lines.push('## Brand Guidelines')
-  lines.push('')
-  lines.push('**Brand:** Big Sole Vibes (BSV) — premium men\'s foot care.')
-  lines.push('**Visual palette:** Midnight #0D1B2A background, Bourbon #C17D2E gold accents, Cream #F5ECD7 text.')
-  lines.push('**Style:** Photorealistic editorial. Clean compositions. No clutter. No studio backgrounds unless specified.')
-  lines.push('**Subject:** Real men in real moments. Never posed. Never stock-photo.')
-  lines.push('**Diversity:** Rotate race, ethnicity, age (20s–70s), lifestyle, and footwear across the week. No demographic defaults.')
-  lines.push('**Product:** When shown, the BSV foot balm jar has a Midnight label with Bourbon gold type. Present but not staged.')
-  lines.push('**Banned:** Leather ottoman setup, bourbon glass on barber counter, bare feet on marble — these scenes are retired.')
-  lines.push('**All images:** Square 1:1 ratio. No text overlays. No logos. No watermarks.')
-  lines.push('')
+// ─── Caption file format ──────────────────────────────────────────────────────
 
-  if (arcNote) {
-    lines.push('## Week Arc')
-    lines.push('')
-    lines.push(arcNote)
-    lines.push('')
+function buildCaptionFile(day, generatedCopy) {
+  const postTime = extractPostTime(day.brief)
+  const header   = postTime ? `post_time: ${postTime}\n` : ''
+  return `${header}# ${day.label} — ${day.date}\n\n${generatedCopy.trim()}\n`
+}
+
+// ─── Day processing ───────────────────────────────────────────────────────────
+
+async function processDaySlots(targetDay, client) {
+  log(`━━━ processing day slots: ${targetDay}-am, ${targetDay}-pm ━━━`)
+
+  const plan = loadCurrentWeekPlan()
+  if (!plan) { log('ERROR: no week plan available'); process.exit(1) }
+
+  const targetSlots = [`${targetDay}-am`, `${targetDay}-pm`]
+  let allDays  = parseDays(plan.content)
+  let days     = allDays.filter(d => targetSlots.includes(d.slug))
+  let planContent = plan.content
+
+  // Heal any missing slots via media-director --slot
+  for (const slug of targetSlots) {
+    if (days.find(d => d.slug === slug)) continue
+    log(`  Slot ${slug} missing — calling media-director --slot ${slug}`)
+    const fill = spawnSync(process.execPath, [path.join(__dirname, 'media-director.js'), '--slot', slug], {
+      env: process.env, stdio: 'inherit',
+    })
+    if (fill.status !== 0) { log(`ERROR: could not heal slot ${slug} — aborting`); process.exit(1) }
+    // Re-download and re-parse
+    try { downloadFile(`${REMOTE}/Content Plan/${plan.filename}`, TEMP_DIR) } catch {}
+    const localPath = path.join(TEMP_DIR, plan.filename)
+    if (fs.existsSync(localPath)) {
+      planContent = fs.readFileSync(localPath, 'utf8')
+      allDays     = parseDays(planContent)
+      days        = allDays.filter(d => targetSlots.includes(d.slug))
+    }
+    if (!days.find(d => d.slug === slug)) {
+      log(`ERROR: slot ${slug} still missing after heal attempt — aborting`)
+      process.exit(1)
+    }
   }
 
-  lines.push('---')
-  lines.push('')
-  lines.push('## Day-by-Day Image Prompts')
-  lines.push('')
-  lines.push('Generate one image per day. Each prompt is self-contained — paste directly into your image tool.')
-  lines.push('')
+  log(`  Found ${days.length} slot(s): ${days.map(d => d.slug).join(', ')}`)
 
-  for (const { slug, label, date, voice, prompt } of dayPrompts) {
-    lines.push(`### ${slug} — ${label} ${date}${voice ? ` — ${voice}` : ''}`)
-    lines.push('')
-    lines.push(prompt)
-    lines.push('')
+  for (const day of days) {
+    const slug = daySlug(day)
+    log(`  ${slug} — ${day.label} ${day.date}`)
+
+    // Generate per-platform copy and upload .md
+    let generatedCopy
+    try {
+      generatedCopy = await generateCopy(client, day)
+    } catch (err) {
+      log(`    ERROR: copy generation failed for ${slug}: ${err.message}`)
+      continue
+    }
+
+    const fileContent = buildCaptionFile(day, generatedCopy)
+    const mdPath      = path.join(TEMP_DIR, `${slug}.md`)
+    fs.writeFileSync(mdPath, fileContent)
+    try {
+      uploadFile(mdPath, `${REMOTE}/Ready to Post/${slug}.md`)
+      log(`    ✓ uploaded → Ready to Post/${slug}.md`)
+    } catch (err) {
+      log(`    ERROR: upload failed for ${slug}.md: ${err.message}`)
+    }
+
+    // Distill and upload image prompt
+    const rawPrompt = extractVisualPrompt(day.brief)
+    if (!rawPrompt) {
+      log(`    WARNING: no image_prompt for ${slug} — skipping prompt files`)
+      continue
+    }
+
+    let oneLiner
+    try {
+      oneLiner = await distillPrompt(client, rawPrompt)
+      log(`    Distilled image prompt: ${oneLiner.slice(0, 80)}...`)
+    } catch (err) {
+      log(`    WARNING: distill failed for ${slug}: ${err.message} — using raw`)
+      oneLiner = `Generate a ${rawPrompt.slice(0, 200).replace(/\.$/, '')}, 1:1 square ratio, no text, no logos, no watermarks.`
+    }
+
+    const promptPath = path.join(TEMP_DIR, `${slug}-prompt.txt`)
+    fs.writeFileSync(promptPath, oneLiner)
+    try {
+      uploadFile(promptPath, `${REMOTE}/Ready to Post/${slug}-prompt.txt`)
+      log(`    ✓ uploaded → Ready to Post/${slug}-prompt.txt`)
+    } catch (err) {
+      log(`    ERROR: upload failed for ${slug}-prompt.txt: ${err.message}`)
+    }
+
+    // Upload video prompt (raw Veo prompt from plan — already fully formed)
+    const videoPrompt = extractVideoPrompt(day.brief)
+    if (!videoPrompt) {
+      throw new Error(`FATAL: no video_prompt for ${slug} — aborting`)
+    }
+
+    const flowPath = path.join(TEMP_DIR, `${slug}-flow-prompt.txt`)
+    fs.writeFileSync(flowPath, videoPrompt)
+    try {
+      uploadFile(flowPath, `${REMOTE}/Ready to Post/${slug}-flow-prompt.txt`)
+      log(`    ✓ uploaded → Ready to Post/${slug}-flow-prompt.txt`)
+    } catch (err) {
+      log(`    ERROR: upload failed for ${slug}-flow-prompt.txt: ${err.message}`)
+    }
   }
 
-  return lines.join('\n')
+  log(`━━━ day slots complete: ${targetDay} ━━━`)
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -327,132 +319,24 @@ function buildWeeklyBrief(planFilename, arcNote, dayPrompts) {
 
   log('━━━ gemini-bridge start ━━━')
 
-  const geminiKey = process.env.ANTHROPIC_API_KEY
-  if (!geminiKey) {
-    log('ERROR: ANTHROPIC_API_KEY not set in .env')
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
+  const client = new Anthropic({ apiKey })
+
+  const VALID_DAYS = ['mon','tue','wed','thu','fri','sat','sun']
+  const dayArg = process.argv.indexOf('--day')
+  if (dayArg === -1) {
+    log('ERROR: --day <slug> required (e.g. --day mon)')
     process.exit(1)
   }
 
-  // Load all plans to process (current week and any future weeks)
-  log('Fetching content plans from Drive...')
-  const plans = getPlansToProcess()
-  if (!plans.length) {
-    log('ERROR: No content plans found in big sole vibes:Big Sole Vibes/Content Plan/')
+  const targetDay = (process.argv[dayArg + 1] || '').toLowerCase()
+  if (!VALID_DAYS.includes(targetDay)) {
+    log(`ERROR: --day requires a valid slug (${VALID_DAYS.join('|')})`)
     process.exit(1)
   }
-  log(`Plans to process: ${plans.map(p => p.filename).join(', ')}`)
 
-  // Init Anthropic
-  const client = new Anthropic({ apiKey: geminiKey })
-
-  for (const plan of plans) {
-    log(`── Processing ${plan.filename} ──`)
-
-    let days = parseDays(plan.content)
-    if (!days.length) {
-      log(`  ERROR: Could not parse any slots from ${plan.filename} — skipping`)
-      continue
-    }
-    log(`  Parsed ${days.length} slot(s)`)
-
-    try {
-      days = await healSlots(plan, days)
-      log(`  All ${EXPECTED_SLOTS.length} slots validated`)
-    } catch (err) {
-      log(`  ${err.message}`)
-      process.exit(1)
-    }
-
-    const arcNote    = extractArcNote(plan.content)
-    const dayPrompts = []
-
-    for (let i = 0; i < days.length; i++) {
-      const day         = days[i]
-      const slug        = daySlug(day)
-      const outFileName = `${slug}.md`
-
-      log(`  ${slug} — ${day.label} ${day.date}`)
-
-      let generatedCopy
-      try {
-        generatedCopy = await generateCopy(client, day)
-      } catch (err) {
-        log(`    ERROR: copy generation failed for ${slug}: ${err.message}`)
-        continue
-      }
-
-      const fileContent = buildCaptionFile(day, generatedCopy)
-      const localPath   = path.join(TEMP_DIR, outFileName)
-      fs.writeFileSync(localPath, fileContent)
-
-      try {
-        uploadFile(localPath, `${REMOTE}/Ready to Post/${outFileName}`)
-        log(`    ✓ uploaded → ${REMOTE}/Ready to Post/${outFileName}`)
-      } catch (err) {
-        log(`    ERROR: upload failed for ${outFileName}: ${err.message}`)
-      }
-
-      // Extract and distill visual prompt
-      const rawPrompt = extractVisualPrompt(day.brief)
-      if (rawPrompt) {
-        let oneLiner
-        try {
-          oneLiner = await distillPrompt(client, rawPrompt)
-          log(`    Distilled prompt: ${oneLiner}`)
-        } catch (err) {
-          log(`    WARNING: distill failed for ${slug}: ${err.message} — falling back to raw`)
-          oneLiner = `Generate a ${rawPrompt.slice(0, 200).replace(/\.$/, '')}, 1:1 square ratio, no text, no logos, no watermarks.`
-        }
-
-        const promptFileName = `${slug}-prompt.txt`
-        const promptPath     = path.join(TEMP_DIR, promptFileName)
-        fs.writeFileSync(promptPath, oneLiner)
-        try {
-          uploadFile(promptPath, `${REMOTE}/Ready to Post/${promptFileName}`)
-          log(`    ✓ uploaded → ${REMOTE}/Ready to Post/${promptFileName}`)
-        } catch (err) {
-          log(`    ERROR: upload failed for ${promptFileName}: ${err.message}`)
-        }
-
-        dayPrompts.push({ slug, label: day.label, date: day.date, voice: day.voice, prompt: oneLiner })
-
-        // slug-flow-prompt.txt — use video_prompt directly (already a complete Veo prompt)
-        const videoPrompt = extractVideoPrompt(day.brief)
-        if (videoPrompt) {
-          const flowFileName = `${slug}-flow-prompt.txt`
-          const flowPath     = path.join(TEMP_DIR, flowFileName)
-          fs.writeFileSync(flowPath, videoPrompt)
-          try {
-            uploadFile(flowPath, `${REMOTE}/Ready to Post/${flowFileName}`)
-            log(`    ✓ uploaded → ${REMOTE}/Ready to Post/${flowFileName}`)
-          } catch (err) {
-            log(`    ERROR: upload failed for ${flowFileName}: ${err.message}`)
-          }
-        } else {
-          throw new Error(`FATAL: no video_prompt for ${slug} — source material was empty or distillation failed. Aborting week build.`)
-        }
-      } else {
-        log(`    WARNING: no visual prompt found for ${slug} — skipping prompt file`)
-      }
-    }
-
-    // Build and upload gemini-weekly-brief.md (one per plan, named by week)
-    if (dayPrompts.length) {
-      const weekMatch      = plan.filename.match(/^(week-\d{4}-\d{2})\.md$/)
-      const weeklyFileName = weekMatch ? `gemini-brief-${weekMatch[1]}.md` : 'gemini-weekly-brief.md'
-      const weeklyBrief    = buildWeeklyBrief(plan.filename, arcNote, dayPrompts)
-      const weeklyPath     = path.join(TEMP_DIR, weeklyFileName)
-      fs.writeFileSync(weeklyPath, weeklyBrief)
-      try {
-        uploadFile(weeklyPath, `${REMOTE}/Ready to Post/${weeklyFileName}`)
-        log(`  ✓ uploaded → ${REMOTE}/Ready to Post/${weeklyFileName}`)
-      } catch (err) {
-        log(`  ERROR: upload failed for ${weeklyFileName}: ${err.message}`)
-      }
-    } else {
-      log(`  WARNING: no visual prompts collected for ${plan.filename} — skipping brief`)
-    }
-  }
+  await processDaySlots(targetDay, client)
 
   log('━━━ gemini-bridge complete ━━━\n')
 })()
