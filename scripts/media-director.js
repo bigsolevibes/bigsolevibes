@@ -86,10 +86,37 @@ function getHandoff() {
   return null
 }
 
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadLatestSocialListening() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+      .trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-listening-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
 // ─── Single-slot fill (called by gemini-bridge healer) ────────────────────────
 
 async function fillSingleSlot(slug, client) {
   log(`━━━ slot fill: ${slug} ━━━`)
+
+  fs.mkdirSync(TEMP_DIR, { recursive: true })
+  const directive = loadDirective()
+  if (directive) log('Directive loaded') ; else log('WARNING: directive not found — continuing without it')
 
   let planFilename, planContent
   try {
@@ -117,9 +144,8 @@ async function fillSingleSlot(slug, client) {
     process.exit(1)
   }
 
-  const systemPrompt = `You are the Media Director for Big Sole Vibes (BSV) — a premium men's foot care lifestyle brand.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Media Director for Big Sole Vibes (BSV). Everything you produce must align with the Proprietor's Directive above.
 
-BSV speaks to the man who does both: leather chair and bourbon on Thursday, sneakers and tequila on Friday night.
 Brand palette: Midnight #0D1B2A, Bourbon #C17D2E, Cream #F5ECD7, Steel #4A6380.
 Content worlds: The Court (athletic), The Boardroom (professional), The Lounge (home ritual), The Grind (work/outdoors).
 Video: Always 7–8 seconds, 9:16 vertical. End video_prompt with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."
@@ -203,56 +229,31 @@ async function generateDay(targetDay, client) {
 
   log(existingPlan ? `Loaded existing plan: ${planFileName}` : `No existing plan — will create ${planFileName}`)
 
-  const handoff = getHandoff()
+  const directive      = loadDirective()
+  const handoff        = getHandoff()
+  const socialListening = loadLatestSocialListening()
+  if (directive)       log('Directive loaded')
+  if (socialListening) log(`Social listening loaded: ${socialListening.filename}`)
 
-  const systemPrompt = `You are the Media Director for Big Sole Vibes (BSV).
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Media Director for Big Sole Vibes (BSV). Everything you produce must align with the Proprietor's Directive above.
 
-## Who BSV Is
+## Execution Standards
 
-Big Sole Vibes is not a foot care brand. It is a lifestyle brand that starts at the feet.
+**Brand palette:** Midnight #0D1B2A, Bourbon #C17D2E, Cream #F5ECD7, Navy #162233, Steel #4A6380.
 
-The foot care is the entry point. The lounge is the destination. One day — a physical space where a man walks in, gets taken care of, has a bourbon or a tequila, and leaves feeling like himself. That vision lives in every piece of content we make.
-
-BSV is for the man who does both. He has the leather chair and bourbon on Thursday. He has the sneakers and tequila on Friday night. Same man. Same standard. Different energy depending on the day. We speak to both versions of him equally.
-
-"It's what happens when he takes his shoes and socks off that matters to us."
-
-## Brand Voice
-BSV is the friend who actually knows about feet but never makes it weird. Not a podiatrist. Not a spa. The guy at the party who makes you want to fix your heels.
-
-- Light, enjoyable, funny — but always with a point
-- Educational without being preachy
-- Self-aware without being try-hard
-- Confident without being loud
-- Makes feet interesting — that is the whole job
-
-Every post should do at least one of these:
-- Make someone laugh
-- Make someone feel something
-- Teach someone something they didn't know
-- Make someone look down at their feet
-
-The dark cinematic posts set the vibe. The funny posts earn the follow. The educational posts earn the trust. All three build the brand.
-
-### The Self-Awareness Rule
-Once per week, write a caption that winks at the AI generation. Own it. Never apologize for it. BSV takes feet seriously — not itself.
-
-## Brand Palette
-- Midnight #0D1B2A
-- Bourbon #C17D2E
-- Cream #F5ECD7
-- Navy #162233
-- Steel #4A6380
-
-## Content Worlds — Rotate, Never Repeat Back to Back
+**Content worlds — rotate, never repeat back to back:**
 - The Court (athletic, 20s–30s)
 - The Boardroom (professional, 40s–60s)
 - The Lounge (home ritual, 30s–50s)
 - The Grind (work/outdoors, any age)
 
-Vary race, age, and setting. Never the same world back to back. AM and PM slots must use different worlds and different visual approaches.
+Vary race, age, and setting. AM and PM slots must use different worlds and opposite energy.
 
-## Video Standards — Non-Negotiable
+**Voice rules:**
+- Once per week, write a caption that winks at the AI generation. Own it. Never apologize.
+- Every post must do at least one of: make someone laugh, make someone feel something, teach them something, make them look down at their feet.
+
+**Video — non-negotiable:**
 - Always 7–8 seconds. Never 30.
 - End every video_prompt with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."
 
@@ -288,9 +289,11 @@ ${targetDay}-am posts at 9:00am. ${targetDay}-pm posts at 7:00pm. Use different 
 
 Push into visual territory that is fresh and specific to a real man in a real moment. Do not default to the leather ottoman or bourbon glass setup.
 
+${socialListening ? `## Live cultural context (social listening — ${socialListening.filename})\nUse this to inform angles, references, and timing. This is what's moving right now.\n${socialListening.content.slice(0, 2000)}${socialListening.content.length > 2000 ? '\n[truncated]' : ''}` : ''}
+
 ${existingPlan ? `## Existing week plan (do not repeat these worlds or visuals):\n${existingPlan.slice(0, 2000)}${existingPlan.length > 2000 ? '\n[truncated]' : ''}` : ''}
 
-${handoff ? `## Brand strategy context\n${handoff.slice(0, 1500)}${handoff.length > 1500 ? '\n[truncated]' : ''}` : ''}`
+${handoff ? `## Operational context\n${handoff.slice(0, 1000)}${handoff.length > 1000 ? '\n[truncated]' : ''}` : ''}`
 
   log('Calling Claude API...')
   const msg = await client.messages.create({

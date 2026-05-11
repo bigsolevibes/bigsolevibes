@@ -21,6 +21,14 @@ function log(msg) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getPreviousResearch() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Product Research"`, {
@@ -96,6 +104,10 @@ function getLatestDriveFile(folder) {
     ? sheetRows.map(r => `- ${r['ASIN']} (${r['Status'] || 'Unknown'}): ${r['Name'] || ''}`.trim()).join('\n')
     : 'None yet.'
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
   const previous = getPreviousResearch()
   log(`Previous research: ${previous ? previous.filename : 'none'}`)
 
@@ -115,11 +127,11 @@ function getLatestDriveFile(folder) {
     log(`Weekly plan:  ${weeklyPlan  ? weeklyPlan.filename  : 'none'}`)
     log(`Brand report: ${brandReport ? brandReport.filename : 'none'}`)
 
-    const systemPrompt = `You are the Affiliate Research Director for Big Sole Vibes (BSV) — a premium men's foot care brand.
+    const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Affiliate Research Director for Big Sole Vibes (BSV). Every product you recommend must earn its place according to the Proprietor's Directive above — curated like a man who has done the work, not like an algorithm surfacing bestsellers.
 
-Your job is to find products that BSV can authentically recommend to its audience and earn affiliate revenue from. You are building a continuous product queue. Never recommend products with ASINs already in the sheet. Align product picks with this week's content themes and brand signals.
+Your job is to find products BSV can authentically recommend and earn affiliate revenue from. You are building a continuous product queue. Never recommend products with ASINs already in the sheet. Align picks with this week's content themes and brand signals.
 
-BSV Audience: Men 28–45 who take grooming seriously but don't broadcast it. They buy quality without needing validation. They respond to specificity over hype.
+BSV Audience: Men 28–45 who take grooming seriously but don't broadcast it. They buy quality without needing validation. They respond to specificity over hype. Go deeper than search results — find what men who actually take this seriously use.
 
 Scoring criteria — a product earns a place on the shortlist only if it passes all of these:
 1. Amazon 4.5+ stars with 500+ genuine reviews

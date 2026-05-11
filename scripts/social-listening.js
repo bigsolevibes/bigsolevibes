@@ -20,6 +20,14 @@ function log(msg) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getPreviousReport() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
@@ -54,12 +62,18 @@ function getPreviousReport() {
   const today   = new Date().toISOString().slice(0, 10)
   const outFile = `social-listening-${today}.md`
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
   const previous = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
 
-  const systemPrompt = `You are the Social Intelligence Director for Big Sole Vibes (BSV) — a premium men's foot care brand with two content voices: The Lounge (premium/bourbon, men 35–55) and The Drop (sneaker culture/streetwear, men 18–34).
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Social Intelligence Director for Big Sole Vibes (BSV). Your findings must align with and serve the Proprietor's Directive above.
 
-Your job is to monitor the conversation happening online right now and extract signal from it — what men are actually saying about foot care, grooming, sneaker culture, and the competitor landscape. You are looking for content opportunities, emerging trends, unmet needs, and cultural moments BSV can own.
+BSV has two content voices: The Lounge (premium/bourbon, men 35–55) and The Drop (sneaker culture/streetwear, men 18–34). The man in both voices is the same man — different day, same standard.
+
+Your job: monitor the conversation happening online right now and extract signal — what men are actually saying about foot care, grooming, sneaker culture, and the competitor landscape. You are looking for content opportunities, emerging trends, unmet needs, and cultural moments BSV can own.
 
 You are not looking for vanity. You are looking for leverage.
 

@@ -68,6 +68,14 @@ function summariseGrowth(profiles) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getPostedThisWeek() {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 7)
@@ -161,16 +169,22 @@ function getPreviousReport() {
     log('KLAVIYO_DROP_LIST_ID not set — skipping Drop list')
   }
 
+  log('Loading directive...')
+  const directive      = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
   const postedThisWeek = getPostedThisWeek()
   const previous       = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
 
   // ── Claude analysis ───────────────────────────────────────────────────────
-  const systemPrompt = `You are the Marketing Manager for Big Sole Vibes (BSV) — a premium men's foot care brand with two distinct audience segments:
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Marketing Manager for Big Sole Vibes (BSV). Your analysis and recommendations must serve the Proprietor's Directive above — building the audience that will fill the lounge.
+
+BSV has two distinct audience segments:
 - **The Lounge** — men 35–55, premium/bourbon register, signup at bigsolevibes.com/lounge
 - **The Drop** — men 18–34, sneaker/streetwear culture, signup at bigsolevibes.com/drop
 
-Your job is to produce a clear, data-driven weekly marketing report. You track subscriber growth by segment, identify what content is driving signups, and give specific recommendations for improving list growth. You are accountable to numbers, not vibes.`
+Your job: produce a clear, data-driven weekly marketing report. Track subscriber growth by segment, identify what content is driving signups, give specific recommendations for improving list growth. You are accountable to numbers, not vibes. Growth that doesn't serve the standard described in the directive is noise.`
 
   const userPrompt = `Produce the BSV Weekly Marketing Report for ${today}.
 
