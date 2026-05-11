@@ -20,6 +20,14 @@ function log(msg) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getPreviousBrief() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Product Development"`, {
@@ -54,12 +62,22 @@ function getPreviousBrief() {
   const today   = new Date().toISOString().slice(0, 10)
   const outFile = `product-brief-${today}.md`
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
   const previous = getPreviousBrief()
   log(`Previous brief: ${previous ? previous.filename : 'none — starting fresh'}`)
 
-  const systemPrompt = `You are the Product Development Director for Big Sole Vibes (BSV) — a premium men's foot care brand preparing to launch its first private label product: Proprietor's Foot Balm.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Product Development Director for Big Sole Vibes (BSV) — a premium men's foot care brand preparing to launch its first private label product: Proprietor's Foot Balm.
 
-Product vision:
+## Ritual Positioning — The Foundation
+
+This product is not a fix for a foot problem. It is an addition to a man's ritual. The same man who takes his skincare seriously, his grooming seriously, his recovery seriously. The Proprietor's Foot Balm earns its place on that counter — not in the medicine cabinet.
+
+Every manufacturer, every formulation choice, every packaging decision must serve this positioning. If it looks like something you'd find under a drugstore shelf next to the bandaids, start over.
+
+## Product Vision
 - **Name:** Proprietor's Foot Balm
 - **Positioning:** "Nothing goes on this shelf that hasn't earned its place. This earned it."
 - **Target retail price:** $35–$50
@@ -167,6 +185,42 @@ Top 3 actions for next week, specific and actionable.`
   } catch (err) {
     log(`ERROR: upload failed: ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)
+  }
+
+  // ── Extract milestone state for Chief of Staff ────────────────────────────────
+
+  log('Extracting milestone state...')
+  const STATE_FILE = path.join(ROOT, 'logs', 'product-development-state.json')
+  try {
+    const stateMsg = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      system:     'Extract structured state from this product development brief. Return ONLY valid JSON — no markdown, no explanation — with these exact fields: last_run (string YYYY-MM-DD), brief_file (string filename), milestone (string, 3–6 words, current milestone name), opportunity (string, one sentence, the single most actionable finding — or empty string if none), action_needed (boolean, true if the Proprietor needs to make a decision this week).',
+      messages:   [{ role: 'user', content: `Today: ${today}\nFile: ${outFile}\n\n${fullText.slice(0, 3000)}` }],
+    })
+    const raw = stateMsg.content[0]?.text?.trim() || ''
+    let stateObj
+    try {
+      stateObj = JSON.parse(raw)
+    } catch {
+      const m = raw.match(/\{[\s\S]*\}/)
+      stateObj = m ? JSON.parse(m[0]) : null
+    }
+    if (stateObj) {
+      fs.writeFileSync(STATE_FILE, JSON.stringify(stateObj, null, 2))
+      log(`State JSON written → ${STATE_FILE}`)
+      log(`  Milestone:     ${stateObj.milestone}`)
+      log(`  Opportunity:   ${stateObj.opportunity || '(none)'}`)
+      log(`  Action needed: ${stateObj.action_needed}`)
+    } else {
+      log('WARNING: could not parse state JSON — writing fallback')
+      fs.writeFileSync(STATE_FILE, JSON.stringify({
+        last_run: today, brief_file: outFile,
+        milestone: 'See brief', opportunity: '', action_needed: false,
+      }, null, 2))
+    }
+  } catch (err) {
+    log(`WARNING: state extraction failed: ${err.message}`)
   }
 
   log('━━━ product-development complete ━━━\n')

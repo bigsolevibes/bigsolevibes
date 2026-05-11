@@ -135,6 +135,13 @@ function getPostedLast24h() {
   } catch { return '(unavailable)' }
 }
 
+function getProductDevState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'product-development-state.json')
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  } catch { return null }
+}
+
 // ─── Telegram ─────────────────────────────────────────────────────────────────
 
 async function sendTelegram(token, chatId, text) {
@@ -172,7 +179,9 @@ async function sendTelegram(token, chatId, text) {
   const socialReport   = loadLatestReport('social-report')
   const brandReport    = loadLatestReport('brand-health')
   const marketingReport = loadLatestReport('marketing')
-  const productResearch = loadLatestReport('research', 'Product Research')
+  const productResearch    = loadLatestReport('research', 'Product Research')
+  const productBrief       = loadLatestReport('product-brief', 'Product Development')
+  const productDevState    = getProductDevState()
 
   log(`Directive: ${directive ? 'loaded' : 'missing'}`)
   log(`Handoff: ${handoff ? 'loaded' : 'missing'}`)
@@ -180,6 +189,8 @@ async function sendTelegram(token, chatId, text) {
   log(`Brand report: ${brandReport?.filename || 'none'}`)
   log(`Marketing report: ${marketingReport?.filename || 'none'}`)
   log(`Product research: ${productResearch?.filename || 'none'}`)
+  log(`Product brief: ${productBrief?.filename || 'none'}`)
+  log(`Product dev state: ${productDevState ? `milestone="${productDevState.milestone}" action_needed=${productDevState.action_needed}` : 'none'}`)
 
   const watchLog       = getRecentLog('watch-drive.log', 150)
   const socialLog      = getRecentLog('social-listening.log', 40)
@@ -189,6 +200,7 @@ async function sendTelegram(token, chatId, text) {
   const imageLog       = getRecentLog('image-gen.log', 40)
   const videoLog       = getRecentLog('video-gen.log', 40)
   const engBotLog      = getRecentLog('eng-bot.log', 30)
+  const productDevLog  = getRecentLog('product-development.log', 30)
 
   const postState      = getPostState()
   const outputFiles    = getOutputFiles()
@@ -227,7 +239,8 @@ The Proprietor's morning is limited. Every line you write must earn its place.
 - **watch-drive.js** — polls every 15 min, posts when .md + media are both present at post_time
 - **brand-manager.js** — runs weekly, reviews content quality
 - **marketing-manager.js** — tracks audience growth (Klaviyo)
-- **product-research.js** — sources products for the shelf
+- **product-research.js** — sources affiliate products for the shelf (weekly)
+- **product-development.js** — builds the Proprietor's Foot Balm brief, runs every Sunday 10PM
 - **eng-bot.js** — runs after every watch-drive poll, triages errors
 - **update-handoff.js** — runs 11:00PM, rewrites handoff doc
 
@@ -256,6 +269,17 @@ From the latest marketing report — Lounge and Drop subscriber counts and weekl
 
 ## Product Shelf
 From the latest product research — how many pending in queue, any approved, any watchlist items. One sentence.
+
+## Product Development
+From product-development-state.json and the latest product-brief. Cover:
+- **Brief:** week N — current milestone name (track progression: Week 1 Foundation → Week 2 Manufacturer research → Week 3 Packaging + FDA → Week 4 Cost model → Week 5+ Ready for calls)
+- **Status:** on track / blocked / action needed
+- **Opportunity:** surface it clearly if action_needed = true — one specific sentence
+- → **Big D action:** specific ask if the Proprietor needs to make a decision this week
+
+ESCALATION RULE: If the milestone contains "Ready for calls" or "Ready for Big D" — lead the ENTIRE stand-up with this section regardless of anything else. That is a Proprietor decision point, not an autonomous one. Make it impossible to miss.
+
+If product-development-state.json is missing, say: "product-development.js has not run yet — state unknown."
 
 ## Intelligence
 Top 2–3 bullets from the latest social report. The ones that should inform tonight's content. Specific.
@@ -315,6 +339,11 @@ ${videoLog || '(no log)'}
 ${engBotLog || '(no log)'}
 \`\`\`
 
+### product-development.log
+\`\`\`
+${productDevLog || '(no log)'}
+\`\`\`
+
 ## Post State (post-state.json)
 \`\`\`json
 ${postState || '(no post-state.json)'}
@@ -341,6 +370,14 @@ ${marketingReport ? marketingReport.content.slice(0, 1200) + (marketingReport.co
 
 ### Product Research (${productResearch?.filename || 'none'})
 ${productResearch ? productResearch.content.slice(0, 800) + (productResearch.content.length > 800 ? '\n[truncated]' : '') : '(not available)'}
+
+### Product Development State (product-development-state.json)
+\`\`\`json
+${productDevState ? JSON.stringify(productDevState, null, 2) : '(not available — product-development.js has not run yet)'}
+\`\`\`
+
+### Product Development Brief (${productBrief?.filename || 'none'})
+${productBrief ? productBrief.content.slice(0, 1500) + (productBrief.content.length > 1500 ? '\n[truncated]' : '') : '(not available)'}
 
 ## Current Handoff Doc (BSV-Handoff-v5.md)
 ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}`

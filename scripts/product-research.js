@@ -49,6 +49,24 @@ function getPreviousResearch() {
   } catch { return null }
 }
 
+function loadProductBrief() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Product Development"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => f.match(/^product-brief-\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Product Development/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
 // Returns { filename, content } for the alphabetically-latest .md in a Drive folder.
 function getLatestDriveFile(folder) {
   try {
@@ -107,6 +125,10 @@ function getLatestDriveFile(folder) {
   log('Loading directive...')
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
+  log('Loading product development brief...')
+  const productBrief = loadProductBrief()
+  log(`Product brief: ${productBrief ? productBrief.filename : 'none'}`)
 
   const previous = getPreviousResearch()
   log(`Previous research: ${previous ? previous.filename : 'none'}`)
@@ -175,7 +197,19 @@ If the reasoning sounds like a product description or an Amazon review, send it 
 ## Existing product queue — DO NOT recommend any of these ASINs
 ${sheetSummary}
 ${weeklyPlan  ? `\n## This week's content context\n${weeklyPlan.content.slice(0, 2000)}` : ''}
-${brandReport ? `\n## Brand signals\n${brandReport.content.slice(0, 1000)}` : ''}`
+${brandReport ? `\n## Brand signals\n${brandReport.content.slice(0, 1000)}` : ''}
+
+## BSV Private Label Roadmap — Mandatory Context
+
+BSV is developing its own private label product — Proprietor's Foot Balm. Your affiliate recommendations must not conflict with or undermine this roadmap.
+
+Specifically:
+- Do not recommend foot balms that occupy the same positioning as Proprietor's Foot Balm
+- Do not recommend products that would cannibalize the $35–50 premium balm category BSV will own
+- Do recommend products that complement the ritual — tools, soaks, recovery items that sit alongside the balm, not against it
+
+Product-research and product-development are teammates — one curates the shelf today, the other builds what owns the shelf tomorrow. They do not work against each other.
+${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}`
 
     const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
 
