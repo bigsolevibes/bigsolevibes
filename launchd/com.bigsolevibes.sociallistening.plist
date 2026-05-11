@@ -3,31 +3,31 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.bigsolevibes.mediadirector</string>
+    <string>com.bigsolevibes.sociallistening</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/node</string>
-        <string>/Users/davidgeer/claude/bigsolevibes-web/scripts/media-director.js</string>
+        <string>/Users/davidgeer/claude/bigsolevibes-web/scripts/social-listening.js</string>
     </array>
 
     <key>WorkingDirectory</key>
     <string>/Users/davidgeer/claude/bigsolevibes-web</string>
 
-    <!-- Runs every night at 11:30PM — after social-listening (11:00PM) has filed its report -->
+    <!-- Runs every night at 11:00PM — intelligence first, creative agents follow at 11:30PM -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
         <integer>23</integer>
         <key>Minute</key>
-        <integer>30</integer>
+        <integer>0</integer>
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/davidgeer/claude/bigsolevibes-web/logs/media-director.log</string>
+    <string>/Users/davidgeer/claude/bigsolevibes-web/logs/social-listening.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/davidgeer/claude/bigsolevibes-web/logs/media-director-error.log</string>
+    <string>/Users/davidgeer/claude/bigsolevibes-web/logs/social-listening-error.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

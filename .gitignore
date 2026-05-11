@@ -24,3 +24,6 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Generated brief files (local pipeline artifacts)
+posts/briefs/*.txt
