@@ -142,6 +142,13 @@ function getProductDevState() {
   } catch { return null }
 }
 
+function getChangeState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'change-state.json')
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  } catch { return null }
+}
+
 // ─── Org chart helpers ────────────────────────────────────────────────────────
 
 function loadOrgChart() {
@@ -255,6 +262,7 @@ async function sendTelegram(token, chatId, text) {
   const productResearch    = loadLatestReport('research', 'Product Research')
   const productBrief       = loadLatestReport('product-brief', 'Product Development')
   const productDevState    = getProductDevState()
+  const changeState        = getChangeState()
 
   log(`Directive: ${directive ? 'loaded' : 'missing'}`)
   log(`Handoff: ${handoff ? 'loaded' : 'missing'}`)
@@ -264,6 +272,7 @@ async function sendTelegram(token, chatId, text) {
   log(`Product research: ${productResearch?.filename || 'none'}`)
   log(`Product brief: ${productBrief?.filename || 'none'}`)
   log(`Product dev state: ${productDevState ? `milestone="${productDevState.milestone}" action_needed=${productDevState.action_needed}` : 'none'}`)
+  log(`Change state: ${changeState ? `open=${changeState.open_issues} action_needed=${changeState.action_needed}` : 'none'}`)
 
   const watchLog       = getRecentLog('watch-drive.log', 150)
   const socialLog      = getRecentLog('social-listening.log', 40)
@@ -274,6 +283,7 @@ async function sendTelegram(token, chatId, text) {
   const videoLog       = getRecentLog('video-gen.log', 40)
   const engBotLog      = getRecentLog('eng-bot.log', 30)
   const productDevLog  = getRecentLog('product-development.log', 30)
+  const changeAgentLog = getRecentLog('change-agent.log', 30)
 
   const postState      = getPostState()
   const outputFiles    = getOutputFiles()
@@ -341,6 +351,7 @@ The Proprietor's morning is limited. Every line you write must earn its place.
 - **product-research.js** — sources affiliate products for the shelf (weekly)
 - **product-development.js** — builds the Proprietor's Foot Balm brief, runs every Sunday 10PM
 - **eng-bot.js** — runs after every watch-drive poll, triages errors
+- **change-agent.js** — runs 8:30AM daily + post-commit hook; tracks commits, opens GitHub issues, owns known-fix library, writes change-state.json
 - **update-handoff.js** — runs 11:00PM, rewrites handoff doc
 
 ## Output Format
@@ -379,6 +390,23 @@ From product-development-state.json and the latest product-brief. Cover:
 ESCALATION RULE: If the milestone contains "Ready for calls" or "Ready for Big D" — lead the ENTIRE stand-up with this section regardless of anything else. That is a Proprietor decision point, not an autonomous one. Make it impossible to miss.
 
 If product-development-state.json is missing, say: "product-development.js has not run yet — state unknown."
+
+## Change Agent
+From change-state.json. Cover:
+- **Open issues:** N total — X monitoring, Y flagged
+- **Stable this week:** [list closed items, or "none yet"]
+- **Known fix library:** N entries — mention any Tier 1 candidates awaiting approval
+- → **Big D action:** required if flagged issues exist OR if Tier 1 candidates need approval decision
+
+Tier system for context:
+- Tier 1 = pre-approved (Change Agent recommends, Big D approves the tier → eng acts autonomously)
+- Tier 2 = monitored (seen before, not fully proven — Change Agent recommends, Big D approves)
+- Tier 3 = novel (never seen → full stop, Big D decides)
+
+Change Agent never promotes to Tier 1 unilaterally. It recommends. Big D decides.
+
+ESCALATION: If flagged issues exist — name them explicitly and lead with them.
+If change-state.json is missing: "change-agent.js has not run yet — state unknown."
 
 ## Intelligence
 Top 2–3 bullets from the latest social report. The ones that should inform tonight's content. Specific.
@@ -466,6 +494,11 @@ ${engBotLog || '(no log)'}
 ${productDevLog || '(no log)'}
 \`\`\`
 
+### change-agent.log
+\`\`\`
+${changeAgentLog || '(no log)'}
+\`\`\`
+
 ## Post State (post-state.json)
 \`\`\`json
 ${postState || '(no post-state.json)'}
@@ -500,6 +533,11 @@ ${productDevState ? JSON.stringify(productDevState, null, 2) : '(not available �
 
 ### Product Development Brief (${productBrief?.filename || 'none'})
 ${productBrief ? productBrief.content.slice(0, 1500) + (productBrief.content.length > 1500 ? '\n[truncated]' : '') : '(not available)'}
+
+### Change Agent State (change-state.json)
+\`\`\`json
+${changeState ? JSON.stringify(changeState, null, 2) : '(not available — change-agent.js has not run yet)'}
+\`\`\`
 
 ## Org Chart Gap Detection
 Org chart loaded: ${orgChartSvg ? `yes (${knownAgents.length} agents known)` : 'NO — BSV-Org-Chart.svg missing from Drive'}
