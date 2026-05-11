@@ -142,6 +142,77 @@ function getProductDevState() {
   } catch { return null }
 }
 
+// ─── Org chart helpers ────────────────────────────────────────────────────────
+
+function loadOrgChart() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Org-Chart.svg" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, 'BSV-Org-Chart.svg')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function parseOrgChartAgents(svgContent) {
+  const seen = new Set()
+  const re = /[\w-]+\.js/g
+  let m
+  while ((m = re.exec(svgContent)) !== null) seen.add(m[0])
+  return [...seen]
+}
+
+function checkLogActivity(agentFilenames, days) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  return agentFilenames.filter(name => {
+    const logPath = path.join(ROOT, 'logs', name.replace('.js', '.log'))
+    if (!fs.existsSync(logPath)) return true
+    try { return fs.statSync(logPath).mtimeMs < cutoff } catch { return true }
+  })
+}
+
+async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents) {
+  const changes = []
+  if (newScripts.length)     changes.push(`Add new agents as nodes: ${newScripts.join(', ')}`)
+  if (inactiveAgents.length) changes.push(`Mark as inactive (grey fill, "(inactive)" label suffix): ${inactiveAgents.join(', ')}`)
+
+  if (!changes.length) {
+    log('Org chart update: no changes to apply')
+    return { updated: false, reason: 'no changes needed' }
+  }
+
+  log(`Org chart update: applying — ${changes.join(' | ')}`)
+  try {
+    const msg = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system:     'You are updating an SVG org chart. Return ONLY the complete updated SVG — no explanation, no markdown fencing, just raw SVG XML starting with <?xml or <svg.',
+      messages:   [{
+        role:    'user',
+        content: `Update this BSV agent org chart SVG with the following approved changes:\n\n${changes.join('\n')}\n\nFor new agents: add them as nodes matching the visual style of existing nodes in their logical layer. For inactive agents: change their node fill to #888888 and append " (inactive)" to the label text.\n\nReturn the complete updated SVG.\n\nCurrent SVG:\n${orgChartSvg}`,
+      }],
+    })
+
+    const updatedSvg = msg.content[0]?.text?.trim() || ''
+    if (!updatedSvg.includes('<svg') && !updatedSvg.includes('<?xml')) {
+      log('ERROR: Claude returned invalid SVG for org chart update')
+      return { updated: false, reason: 'invalid SVG response' }
+    }
+
+    const localSvg = path.join(TEMP_DIR, 'BSV-Org-Chart.svg')
+    fs.writeFileSync(localSvg, updatedSvg)
+    execSync(`rclone copyto "${localSvg}" "${REMOTE}/BSV-Org-Chart.svg"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    log('Org chart updated and uploaded to Drive ✓')
+    changes.forEach(c => log(`  → ${c}`))
+    return { updated: true, changes }
+  } catch (err) {
+    log(`ERROR: org chart update failed: ${err.message}`)
+    return { updated: false, reason: err.message }
+  }
+}
+
 // ─── Telegram ─────────────────────────────────────────────────────────────────
 
 async function sendTelegram(token, chatId, text) {
@@ -166,9 +237,11 @@ async function sendTelegram(token, chatId, text) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
 
-  const today    = new Date().toISOString().slice(0, 10)
-  const dayName  = new Date().toLocaleDateString('en-US', { weekday: 'long' })
-  const outFile  = `standup-${today}.md`
+  const client           = new Anthropic({ apiKey })
+  const today            = new Date().toISOString().slice(0, 10)
+  const dayName          = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+  const outFile          = `standup-${today}.md`
+  const updateOrgChart   = process.argv.includes('--update-org-chart')
 
   // ── Collect context ──────────────────────────────────────────────────────────
 
@@ -213,10 +286,36 @@ async function sendTelegram(token, chatId, text) {
   log(`Output files: ${outputFiles.join(', ') || 'none'}`)
   log(`Brief files: ${briefFiles.join(', ') || 'none'}`)
 
+  // ── Org chart gap detection ──────────────────────────────────────────────────
+
+  log('Running org chart gap detection...')
+  const orgChartSvg    = loadOrgChart()
+  const knownAgents    = orgChartSvg ? parseOrgChartAgents(orgChartSvg) : []
+  const scriptFiles    = fs.readdirSync(path.join(ROOT, 'scripts'))
+    .filter(f => f.endsWith('.js')).sort()
+  const inactiveAgents = checkLogActivity(knownAgents, 7)
+  const newScripts     = scriptFiles.filter(s => !knownAgents.includes(s))
+  const orgHasGaps     = newScripts.length > 0 || inactiveAgents.length > 0
+
+  log(`Org chart: ${orgChartSvg ? `loaded (${knownAgents.length} agents known)` : 'missing from Drive'}`)
+  log(`New scripts not in chart: ${newScripts.join(', ') || 'none'}`)
+  log(`Inactive agents (7d): ${inactiveAgents.join(', ') || 'none'}`)
+
+  // ── Org chart update (if approved by Big D via --update-org-chart) ───────────
+
+  let orgUpdateResult = null
+  if (updateOrgChart) {
+    if (!orgChartSvg) {
+      log('ERROR: --update-org-chart requires org chart in Drive — BSV-Org-Chart.svg not found')
+    } else {
+      log('--update-org-chart flag set — executing approved update...')
+      orgUpdateResult = await runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents)
+    }
+  }
+
   // ── Stand-up generation ──────────────────────────────────────────────────────
 
   log('Calling Claude API for stand-up...')
-  const client = new Anthropic({ apiKey })
 
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Chief of Staff for Big Sole Vibes. You report directly to the Proprietor (Big D).
 
@@ -286,6 +385,29 @@ Top 2–3 bullets from the latest social report. The ones that should inform ton
 
 ## Blockers / Proprietor Attention Required
 Be direct. If something is broken and needs a human decision, name it. If credentials are expired, say so. If the queue is empty for an upcoming post_time, flag it. If nothing needs attention, say: "Nothing requires Proprietor action today."
+
+## Org Chart
+Compare scripts/ against the known agents in BSV-Org-Chart.svg. Use the gap data provided.
+
+If gaps exist, output:
+\`\`\`
+ORG CHANGES DETECTED
+  New script: [name] — not in org chart
+  Inactive: [name] — no log activity in 7 days
+  → Awaiting Big D approval to update org chart
+  → To approve: node scripts/chief-of-staff.js --update-org-chart
+\`\`\`
+
+If an org chart update was just executed (orgUpdateResult.updated = true), output instead:
+\`\`\`
+ORG CHART UPDATED
+  [list each change applied]
+  Uploaded: Big Sole Vibes/BSV-Org-Chart.svg
+\`\`\`
+
+If no gaps and no update: "Org chart current — no changes detected."
+
+RULE: Chief never updates autonomously. Always flags → waits for Big D → executes on approval via --update-org-chart flag.
 
 ## Tonight's Schedule
 What the pipeline will run tonight at 11:00PM. Which day's slots will be generated (tomorrow = [day name]).
@@ -378,6 +500,16 @@ ${productDevState ? JSON.stringify(productDevState, null, 2) : '(not available �
 
 ### Product Development Brief (${productBrief?.filename || 'none'})
 ${productBrief ? productBrief.content.slice(0, 1500) + (productBrief.content.length > 1500 ? '\n[truncated]' : '') : '(not available)'}
+
+## Org Chart Gap Detection
+Org chart loaded: ${orgChartSvg ? `yes (${knownAgents.length} agents known)` : 'NO — BSV-Org-Chart.svg missing from Drive'}
+Known agents in chart: ${knownAgents.join(', ') || '(none parsed)'}
+Scripts in scripts/ directory: ${scriptFiles.join(', ')}
+New scripts not in chart: ${newScripts.join(', ') || 'none'}
+Inactive agents (no log activity 7d): ${inactiveAgents.join(', ') || 'none'}
+Gaps detected: ${orgHasGaps ? 'YES' : 'no'}
+Update mode (--update-org-chart): ${updateOrgChart ? 'YES' : 'no'}
+Org update result: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : 'n/a'}
 
 ## Current Handoff Doc (BSV-Handoff-v5.md)
 ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}`
