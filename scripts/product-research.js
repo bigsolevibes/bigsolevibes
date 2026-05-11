@@ -127,57 +127,80 @@ function getLatestDriveFile(folder) {
     log(`Weekly plan:  ${weeklyPlan  ? weeklyPlan.filename  : 'none'}`)
     log(`Brand report: ${brandReport ? brandReport.filename : 'none'}`)
 
-    const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Affiliate Research Director for Big Sole Vibes (BSV). Every product you recommend must earn its place according to the Proprietor's Directive above — curated like a man who has done the work, not like an algorithm surfacing bestsellers.
+    const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the BSV Product Curator. Everything you recommend must earn its place according to the Proprietor's Directive above.
 
-Your job is to find products BSV can authentically recommend and earn affiliate revenue from. You are building a continuous product queue. Never recommend products with ASINs already in the sheet. Align picks with this week's content themes and brand signals.
+Your job is not to find solutions to foot problems. Your job is to find products that belong in the ritual of a man who already takes his core seriously.
 
-BSV Audience: Men 28–45 who take grooming seriously but don't broadcast it. They buy quality without needing validation. They respond to specificity over hype. Go deeper than search results — find what men who actually take this seriously use.
+The BSV man is not broken. He is not searching for a fix. He is building a practice — the same way he thinks about his skincare, his grooming kit, his workout recovery, his bourbon. He wants to know what belongs in his rotation, not what fixes a problem.
 
-Scoring criteria — a product earns a place on the shortlist only if it passes all of these:
-1. Amazon 4.5+ stars with 500+ genuine reviews
-2. Price point $10–$50 (impulse-to-considered purchase range)
-3. Amazon Associates eligible (not restricted/sold by third-party only)
-4. Premium positioning — could appear next to BSV content without embarrassing the brand
-5. Ingredient quality — real actives, not fragrance-forward filler
-6. Men's use case — either explicitly marketed to men or clearly unisex without being feminine
+The test question for every product: "Would a man who has his life together reach for this as part of how he takes care of himself — or does it belong in the medicine cabinet next to the bandaids?"
 
-For each qualifying product you find, score it 1–10 against each criterion and give a total score. Include the ASIN, current price, review count, and a one-sentence BSV content angle (how would we feature this in a post?).
+If it's medicine cabinet — it's off the shelf. Full stop.
+
+## What stays off the shelf permanently
+
+- Antifungal treatments
+- Medicated anything
+- Products whose primary positioning is fixing a visible problem
+- Anything that would embarrass a man to have on his bathroom counter
+- Anything findable on the first page of a Google search for "best foot cream"
+
+## Source hierarchy — go in this order
+
+1. **Professional channels** — what are podiatrists, athletic trainers, and physical therapists actually recommending to patients who take care of themselves
+2. **Specialty retailers** — what's on the shelf at high-end grooming shops, men's specialty stores, apothecaries
+3. **Athletic and performance community** — what are serious athletes, coaches, and trainers using for recovery and maintenance
+4. **Barber and grooming insider community** — what do the best barbers recommend their clients add to their home routine
+5. **Understated brands** — products that have earned a quiet reputation without mass marketing
+6. **Amazon as a last check only** — confirm availability and pricing, never as a discovery source
+
+## Scoring — 100 points total
+
+| Criterion | Weight | Question |
+|-----------|--------|----------|
+| Ritual fit | 25% | Does this belong in a man's grooming rotation, not his medicine cabinet? |
+| Discovery depth | 20% | Would the BSV man find this himself on a Google search? If yes, score lower. |
+| Ingredient/quality standard | 20% | Is this genuinely premium or just premium-priced? |
+| Story | 20% | Is there a real reason this earned its place — not just ratings and reviews? |
+| Availability | 15% | Can he actually buy it — Amazon, brand direct, or specialty retail? |
+
+Score each criterion 0–10, weight it, sum to 100. A product needs 70+ to make the shortlist.
+
+## The Proprietor's Audit
+
+Every shortlisted product must include a reasoning field that answers: "Why does this belong on the BSV shelf — not what problem it solves, but what standard it upholds and why a man who takes his core seriously would reach for it."
+
+If the reasoning sounds like a product description or an Amazon review, send it back. It should sound like the Proprietor looked at it, picked it up, and decided it belonged.
 
 ## Existing product queue — DO NOT recommend any of these ASINs
 ${sheetSummary}
-${weeklyPlan  ? `\n## This week's content plan\n${weeklyPlan.content}`   : ''}
-${brandReport ? `\n## Brand signals and trending topics\n${brandReport.content}` : ''}`
+${weeklyPlan  ? `\n## This week's content context\n${weeklyPlan.content.slice(0, 2000)}` : ''}
+${brandReport ? `\n## Brand signals\n${brandReport.content.slice(0, 1000)}` : ''}`
 
-    const userPrompt = `Search Amazon and the web for the best men's foot care products to add to BSV's affiliate shortlist this week.
+    const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
 
-Focus areas:
-- Foot creams, balms, and moisturizers (primary category)
-- Exfoliating scrubs and pumice tools
-- Antifungal and odor-control treatments (premium positioned, not medical-clinical)
-- Foot soaks and recovery products
-- Compression socks and recovery footwear (if premium brands)
+Focus: foot and lower-leg care products that belong in a serious man's grooming rotation. Think balms, salves, scrubs, soaks, recovery tools, and premium nail care. Exclude anything medical, medicated, or problem-focused.
 
-Search for recently launched products as well as established bestsellers with strong review velocity.
-
-${previous ? `## Previous research (for context — do not re-recommend anything already in the queue)\n${previous.content}` : '## No previous research — build the initial shortlist from scratch'}
+${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
 ---
 
-Output format:
+# BSV Product Curation Report — ${today}
 
-# BSV Affiliate Product Research — ${today}
+## The Shelf (shortlist, scored and ranked)
+For each product: Name, source where discovered, ASIN or purchase URL, price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), and the Proprietor's Audit field — one paragraph, written as if the Proprietor picked it up and decided it belonged.
 
-## Shortlist (scored and ranked)
-For each product: Name, ASIN, Price, Reviews, BSV Score (/50), breakdown by criterion, content angle.
+## Held Back
+Products that showed promise but didn't clear 70 — what kept them off the shelf and what would change that.
 
-## Watchlist
-Products that almost made it — flag why they didn't qualify and what would change that.
+## Discovery Notes
+Where the best finds came from this cycle. Which source channels are producing and which are dry.
 
-## Category Gaps
-What types of products are underrepresented in the shortlist that BSV should actively seek?
+## Shelf Gaps
+What categories or product types are underrepresented that BSV should actively seek next cycle.
 
 ## Revenue Estimate
-Rough estimate: if BSV featured the top 3 products once each per week for a month at 2% conversion on 1,000 engaged followers, what's the affiliate revenue potential?`
+If BSV featured the top 3 products once each per week for a month at 2% conversion on 1,000 engaged followers — rough affiliate revenue potential.`
 
     log('Calling Claude API with web search...')
     const researchClient = new Anthropic({ apiKey })
@@ -242,7 +265,7 @@ Rough estimate: if BSV featured the top 3 products once each per week for a mont
     system:     'You extract structured product data from research documents. Return only valid JSON — no markdown fences, no commentary.',
     messages:   [{
       role: 'user',
-      content: `From the research below, extract the top 12 affiliate products for BSV review.
+      content: `From the research below, extract the top 12 products from the shelf shortlist for BSV review.
 
 Return a JSON array with this exact shape:
 [
@@ -251,18 +274,19 @@ Return a JSON array with this exact shape:
     "category": "Foot Serums | Foot Creams | Foot Powders | Foot Grooming Tools | Foot Soaks & Recovery | Nail Care | Full Kits",
     "asin": "B00XXXXXXX",
     "price": "$XX",
-    "score": "42/50",
+    "score": "82/100",
     "description": "One sentence — BSV voice: direct, specific, no hype. This is what appears on the shop card.",
-    "reasoning": "One sentence on why this made the cut — the key differentiator that earned its place."
+    "reasoning": "The Proprietor's Audit — one paragraph explaining why this belongs on the BSV shelf: what standard it upholds, why a man who takes his core seriously would reach for it. Not a product description. Not an Amazon review."
   }
 ]
 
 Rules:
-- Pick the 12 highest-scoring products from the Shortlist
-- description must be 1 sentence, BSV voice: factual, confident, no exclamation marks
-- reasoning must be 1 sentence focused on what makes it stand out
+- Pick the 12 highest-scoring products from The Shelf section
+- description: 1 sentence, BSV voice — factual, confident, no exclamation marks
+- reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize
 - category must exactly match one of the seven values above
-- score must be "XX/50" format
+- score must be "XX/100" format
+- If a product has no ASIN, use its brand direct or specialty retailer URL in the asin field
 
 Research:
 ${fullText}`,
