@@ -60,26 +60,66 @@ const C = {
 }
 
 function buildProductCard(product) {
-  const asin      = product['ASIN'] || ''
-  const tag       = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
-  const amazonUrl = asin
+  const asin       = product['ASIN'] || ''
+  const tag        = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+  const amazonUrl  = asin
     ? `https://www.amazon.com/dp/${asin}?tag=${tag}`
     : `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
-  const score = product['Score'] ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
-  const price = product['Price'] ? `<div class="card-price">${escapeHtml(product['Price'])}</div>` : ''
+  const imageUrl   = (product['Locker Image'] || '').trim()
+  const score      = product['Score']       ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
+  const audit      = product['Reasoning']   ? `<p class="card-audit">${escapeHtml(product['Reasoning'])}</p>` : ''
+  const price      = product['Price']       ? `<span class="card-price">${escapeHtml(product['Price'])}</span>` : ''
+  const category   = product['Category']    ? `<p class="card-cat">${escapeHtml(product['Category'].toUpperCase())}</p>` : ''
+  const heroHtml   = imageUrl
+    ? `<div class="card-hero"><img src="${imageUrl}" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
+    : ''
 
   return `
-          <article class="product-card">
-            ${score}
+        <article class="locker-card">
+          ${heroHtml}
+          <div class="card-body">
+            ${category}
             <h3 class="card-name">${escapeHtml(product['Product Name'] || '')}</h3>
-            <p class="card-desc">${escapeHtml(product['Description'] || '')}</p>
+            ${audit}
             <div class="card-footer">
-              ${price}
-              <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                SHOP ON AMAZON ↗
-              </a>
+              ${score}
+              <div class="card-actions">
+                ${price}
+                <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+                  SHOP ON AMAZON ↗
+                </a>
+              </div>
             </div>
-          </article>`
+          </div>
+        </article>`
+}
+
+function buildLockerBayHeaderSVG() {
+  const lockerW = 144
+  const totalW  = 1440
+  const h       = 200
+  const lockers = Array.from({ length: 10 }, (_, i) => {
+    const x   = i * lockerW
+    const cx  = x + lockerW / 2
+    const num = String(i + 1).padStart(2, '0')
+    return `
+      <rect x="${x}" y="0" width="${lockerW}" height="${h}" fill="#1e2535" stroke="#253044" stroke-width="2"/>
+      <rect x="${x+4}" y="18" width="5" height="14" fill="#253044" rx="1"/>
+      <rect x="${x+4}" y="158" width="5" height="14" fill="#253044" rx="1"/>
+      <rect x="${x+32}" y="40" width="80" height="3" fill="#253044" rx="1"/>
+      <rect x="${x+32}" y="52" width="80" height="3" fill="#253044" rx="1"/>
+      <rect x="${x+32}" y="64" width="80" height="3" fill="#253044" rx="1"/>
+      <rect x="${x+32}" y="76" width="80" height="3" fill="#253044" rx="1"/>
+      <rect x="${x+32}" y="88" width="80" height="3" fill="#253044" rx="1"/>
+      <rect x="${cx-3}" y="112" width="6" height="22" fill="#253044" rx="2"/>
+      <rect x="${cx-9}" y="110" width="18" height="4" fill="#253044" rx="1"/>
+      <rect x="${cx-18}" y="160" width="36" height="22" fill="none" stroke="#C17D2E" stroke-width="1" opacity="0.6"/>
+      <text x="${cx}" y="175" font-family="Courier New, monospace" font-size="12" font-weight="bold" fill="#C17D2E" text-anchor="middle" opacity="0.8">${num}</text>`
+  }).join('')
+
+  return `<svg viewBox="0 0 ${totalW} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style="display:block;width:100%;height:auto;">${lockers}
+    <rect x="0" y="${h-8}" width="${totalW}" height="8" fill="#162233"/>
+  </svg>`
 }
 
 function buildLockerSection(category, products, lockerNum) {
@@ -89,43 +129,37 @@ function buildLockerSection(category, products, lockerNum) {
 
   return `
       <!-- Locker ${numStr}: ${escapeHtml(category)} -->
-      <section class="locker" id="${catSlug}">
+      <section class="locker-bay" id="${catSlug}">
 
-        <!-- Locker door frame -->
-        <div class="locker-frame">
-          <div class="locker-door-top">
-            <div class="locker-number-badge">${numStr}</div>
-            <div class="locker-vents" aria-hidden="true">
-              <span></span><span></span><span></span><span></span>
-            </div>
-            <div class="locker-label-row">
-              <span class="locker-cat-name">${escapeHtml(category.toUpperCase())}</span>
-            </div>
+        <!-- Left: steel door frame -->
+        <div class="locker-door">
+          <svg class="door-vents-svg" viewBox="0 0 52 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="0" y="0" width="52" height="80" fill="#1e2535"/>
+            <rect x="8" y="8"  width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="19" width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="30" width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="41" width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="52" width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="63" width="36" height="3" fill="#253044" rx="1"/>
+            <rect x="8" y="74" width="36" height="3" fill="#253044" rx="1"/>
+          </svg>
+          <div class="door-number">${numStr}</div>
+        </div>
+
+        <!-- Right: locker interior -->
+        <div class="locker-interior">
+          <div class="interior-vent-band" aria-hidden="true">
+            <svg width="100%" height="20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="0" y="4"  width="100%" height="3" fill="#253044" rx="1"/>
+              <rect x="0" y="12" width="100%" height="3" fill="#253044" rx="1"/>
+            </svg>
           </div>
-
-          <!-- Inside the locker — shelf with products -->
-          <div class="locker-interior">
-            <div class="locker-shelf-top" aria-hidden="true"></div>
-            <div class="product-grid">
-              ${cards}
-            </div>
-            <div class="locker-shelf-bottom" aria-hidden="true"></div>
-
-            <!-- Atmosphere: shoes + socks at the bottom of the locker -->
-            <div class="locker-floor-items" aria-hidden="true">
-              <svg class="atmosphere-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-                <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-              </svg>
-              <svg class="atmosphere-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M6 3v10a5 5 0 0010 0V3" stroke-linecap="round"/>
-                <path d="M4 8h4 M16 8h4" stroke-linecap="round"/>
-              </svg>
-              <svg class="atmosphere-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M3 17h14l2-5H5L3 17z M3 17c0 1.1.9 2 2 2h12a2 2 0 002-2"/>
-                <path d="M8 12V8a4 4 0 018 0v4" stroke-linecap="round"/>
-              </svg>
-            </div>
+          <div class="locker-label-area">
+            <span class="locker-cat-name">${escapeHtml(category.toUpperCase())}</span>
+          </div>
+          <div class="locker-shelf-bar"></div>
+          <div class="locker-stack">
+            ${cards}
           </div>
         </div>
 
@@ -315,6 +349,9 @@ function buildShopPage(approvedProducts) {
     }
     .jump-link:hover { color: var(--amber); }
 
+    /* ── Locker bay header illustration ── */
+    .locker-bay-header { width:100%; background:var(--bg); border-bottom:3px solid #1e2535; overflow:hidden; line-height:0; }
+
     /* ── Locker room container ── */
     .locker-room {
       max-width: 1100px;
@@ -322,52 +359,60 @@ function buildShopPage(approvedProducts) {
       padding: 3rem 1.5rem 6rem;
       display: flex;
       flex-direction: column;
-      gap: 4rem;
+      gap: 3rem;
     }
 
-    /* ── Locker ── */
-    .locker { display: flex; flex-direction: column; }
-
-    .locker-frame {
-      border: 1px solid rgba(255,255,255,0.08);
+    /* ── Open locker = category section ── */
+    .locker-bay {
+      display: flex;
+      border: 1px solid #1e2535;
       border-radius: 2px;
       overflow: hidden;
     }
 
-    /* Top band — locker door face */
-    .locker-door-top {
-      background: var(--surface);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      padding: 1rem 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .locker-number-badge {
-      font-family: var(--font-bebas);
-      font-size: 2rem;
-      line-height: 1;
-      letter-spacing: 0.04em;
-      color: var(--amber);
-      opacity: 0.6;
-      min-width: 2.5rem;
-    }
-
-    .locker-vents {
+    .locker-door {
+      width: 72px;
+      flex-shrink: 0;
+      background: #1e2535;
+      border-right: 2px solid #253044;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-    }
-    .locker-vents span {
-      display: block;
-      width: 22px;
-      height: 2px;
-      background: rgba(255,255,255,0.07);
-      border-radius: 1px;
+      align-items: center;
+      padding: 0.75rem 0 1rem;
     }
 
-    .locker-label-row { flex: 1; }
+    .door-vents-svg { width: 52px; }
+
+    .door-number {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.25rem;
+      font-weight: bold;
+      color: var(--amber);
+      letter-spacing: 0.05em;
+      border: 1px solid rgba(193,125,46,0.35);
+      padding: 3px 7px;
+      line-height: 1;
+      margin-top: auto;
+      opacity: 0.9;
+    }
+
+    .locker-interior {
+      flex: 1;
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .interior-vent-band {
+      background: #1e2535;
+      padding: 0.5rem 1.25rem;
+      border-bottom: 1px solid #253044;
+      line-height: 0;
+    }
+
+    .locker-label-area { padding: 0.875rem 1.25rem 0.625rem; }
+
     .locker-cat-name {
       font-family: var(--font-bebas);
       font-size: 1.25rem;
@@ -375,79 +420,105 @@ function buildShopPage(approvedProducts) {
       color: var(--cream);
     }
 
-    /* Interior — where the products live */
-    .locker-interior {
-      background: var(--card);
-      padding: 0 1.25rem 0;
-    }
-
-    /* Shelf bars */
-    .locker-shelf-top, .locker-shelf-bottom {
-      height: 4px;
+    .locker-shelf-bar {
+      height: 5px;
       background: linear-gradient(90deg,
         rgba(193,125,46,0) 0%,
-        rgba(193,125,46,0.4) 20%,
-        rgba(193,125,46,0.4) 80%,
+        rgba(193,125,46,0.55) 4%,
+        #C17D2E 12%,
+        #C17D2E 88%,
+        rgba(193,125,46,0.55) 96%,
         rgba(193,125,46,0) 100%
       );
-      margin: 0 -1.25rem;
-    }
-    .locker-shelf-top  { margin-bottom: 1.5rem; }
-    .locker-shelf-bottom { margin-top: 1.5rem; }
-
-    /* Product grid */
-    .product-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-      gap: 1.25rem;
+      box-shadow: 0 2px 10px rgba(193,125,46,0.18);
     }
 
-    .product-card {
+    /* ── Locker card stack ── */
+    .locker-stack {
+      padding: 1.5rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    .locker-card {
       background: var(--bg);
       border: 1px solid rgba(255,255,255,0.05);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .locker-card:hover { border-color: rgba(193,125,46,0.2); }
+
+    /* Hero image — full bleed, portrait ~3:2 */
+    .card-hero {
+      width: 100%;
+      aspect-ratio: 3 / 2;
+      overflow: hidden;
+      background: #0a1220;
+    }
+    .card-hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
+      filter: brightness(0.92);
+    }
+
+    /* Text panel */
+    .card-body {
       padding: 1.5rem;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      transition: border-color 0.2s;
     }
-    .product-card:hover { border-color: rgba(193,125,46,0.3); }
 
-    .card-score {
-      font-family: var(--font-bebas);
-      font-size: 0.75rem;
-      letter-spacing: 0.1em;
+    .card-cat {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.14em;
       color: var(--amber);
-      opacity: 0.7;
+      opacity: 0.8;
     }
     .card-name {
       font-family: var(--font-playfair);
-      font-size: 1rem;
-      font-weight: 600;
+      font-size: 1.375rem;
+      font-weight: 700;
       color: var(--cream);
-      line-height: 1.35;
+      line-height: 1.25;
     }
-    .card-desc {
+    .card-audit {
       font-style: italic;
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.65;
-      flex: 1;
+      font-size: 0.9375rem;
+      color: rgba(245,236,215,0.65);
+      line-height: 1.7;
     }
     .card-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      margin-top: auto;
       padding-top: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .card-score {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.6875rem;
+      letter-spacing: 0.1em;
+      color: var(--amber);
+      opacity: 0.55;
+    }
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
     }
     .card-price {
       font-family: var(--font-bebas);
       font-size: 1rem;
       letter-spacing: 0.06em;
       color: var(--cream);
-      opacity: 0.7;
+      opacity: 0.65;
     }
     .card-cta {
       display: inline-flex;
@@ -458,26 +529,11 @@ function buildShopPage(approvedProducts) {
       font-family: var(--font-bebas);
       font-size: 0.75rem;
       letter-spacing: 0.1em;
-      padding: 0.55rem 1rem;
+      padding: 0.55rem 1.125rem;
       transition: opacity 0.15s;
       white-space: nowrap;
     }
     .card-cta:hover { opacity: 0.85; }
-
-    /* Locker atmosphere — shoes + socks at the bottom */
-    .locker-floor-items {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 2rem;
-      padding: 1.25rem 0 1.5rem;
-      opacity: 0.08;
-    }
-    .atmosphere-icon {
-      width: 28px;
-      height: 28px;
-      color: var(--cream);
-    }
 
     /* ── Coming soon floor (empty state) ── */
     .locker-coming-soon {
@@ -616,9 +672,8 @@ function buildShopPage(approvedProducts) {
     }
 
     @media (max-width: 600px) {
-      .product-grid { grid-template-columns: 1fr; }
-      .locker-floor-items { display: none; }
       .card-footer { flex-direction: column; align-items: flex-start; }
+      .card-actions { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -649,6 +704,9 @@ function buildShopPage(approvedProducts) {
     <p class="hero-tagline">Proprietor-approved picks across every category of men's foot care.</p>
     <p class="hero-count">${isEmpty ? 'More lockers opening soon.' : `${totalProducts} approved picks`}</p>
   </header>
+
+  <!-- Locker bay header illustration -->
+  <div class="locker-bay-header">${buildLockerBayHeaderSVG()}</div>
 
   ${isEmpty ? `
   <!-- Coming soon floor -->

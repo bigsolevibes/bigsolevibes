@@ -11,8 +11,7 @@
     "instagram": "success"
   },
   "mon-pm": {
-    "_unknown": "pending",
-    "_hold_since": "2026-05-06"
+    "_unknown": "pending"
   },
   "sat-am": {
     "instagram": "success"
@@ -22,7 +21,10 @@
   },
   "thu-pm": {
     "_unknown": "pending",
-    "_hold_since": "2026-05-06"
+    "bluesky": "success",
+    "instagram": "success",
+    "youtube": "pending",
+    "_hold_since": "2026-05-11"
   },
   "tue-am": {
     "instagram": "success"
@@ -31,12 +33,22 @@
     "instagram": "success"
   },
   "day1": {
-    "_hold_since": "2026-05-06"
+    "bluesky": "success",
+    "instagram": "success",
+    "youtube": "success"
   },
   "day3": {
-    "_hold_since": "2026-05-06"
+    "bluesky": "success",
+    "instagram": "success",
+    "youtube": "pending",
+    "_hold_since": "2026-05-10"
   },
   "day4": {
-    "_hold_since": "2026-05-06"
+    "bluesky": "success",
+    "instagram": "success",
+    "youtube": "success"
+  },
+  "wed-pm": {
+    "_hold_since": "2026-05-11"
   }
 }

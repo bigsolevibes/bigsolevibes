@@ -3,16 +3,17 @@ const { google } = require('googleapis')
 const fs   = require('fs')
 const path = require('path')
 
-// Column order in BSV Product Queue sheet (A–H)
+// Column order in BSV Product Queue sheet (A–I)
 const HEADERS = [
   'Product Name',
   'Category',
   'ASIN',
   'Price',
   'Score',
-  'Status',       // Pending / Approved / Rejected
-  'Description',  // BSV voice — shown on shop card
-  'Reasoning',    // why it qualified — for Big D's review context
+  'Status',        // Pending / Approved / Rejected
+  'Description',   // BSV voice — shown on shop card
+  'Reasoning',     // why it qualified — for Big D's review context
+  'Locker Image',  // public image URL for the locker card hero
 ]
 
 async function connect() {
@@ -38,13 +39,13 @@ async function connect() {
 async function ensureHeaders({ sheets, spreadsheetId }) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Sheet1!A1:H1',
+    range: 'Sheet1!A1:I1',
   })
   const existing = (res.data.values || [])[0] || []
-  if (existing[0] === HEADERS[0]) return  // already initialised
+  if (existing[0] === HEADERS[0] && existing.length >= HEADERS.length) return  // already initialised
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: 'Sheet1!A1:H1',
+    range: 'Sheet1!A1:I1',
     valueInputOption: 'RAW',
     requestBody: { values: [HEADERS] },
   })
@@ -55,7 +56,7 @@ async function ensureHeaders({ sheets, spreadsheetId }) {
 async function readAllRows({ sheets, spreadsheetId }) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Sheet1!A:H',
+    range: 'Sheet1!A:I',
   })
   const rows = res.data.values || []
   if (rows.length < 2) return []
@@ -79,10 +80,11 @@ async function appendPick({ sheets, spreadsheetId }, pick) {
     'Pending',
     pick.description,
     pick.reasoning,
+    pick.lockerImage || '',
   ]
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Sheet1!A:H',
+    range: 'Sheet1!A:I',
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
