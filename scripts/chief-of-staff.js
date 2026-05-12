@@ -25,7 +25,6 @@ const REMOTE   = 'big sole vibes:Big Sole Vibes'
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
-  console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
 }
 
@@ -255,6 +254,7 @@ async function sendTelegram(token, chatId, text) {
   log('Collecting context...')
 
   const directive      = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
+  const strategyState  = loadDriveFile(`${REMOTE}/BSV-Strategy-State.md`, TEMP_DIR)
   const handoff        = loadDriveFile(`${REMOTE}/Handoff/BSV-Handoff-v5.md`, TEMP_DIR)
   const socialReport   = loadLatestReport('social-report')
   const brandReport    = loadLatestReport('brand-health')
@@ -265,6 +265,7 @@ async function sendTelegram(token, chatId, text) {
   const changeState        = getChangeState()
 
   log(`Directive: ${directive ? 'loaded' : 'missing'}`)
+  log(`Strategy state: ${strategyState ? 'loaded' : 'missing'}`)
   log(`Handoff: ${handoff ? 'loaded' : 'missing'}`)
   log(`Social report: ${socialReport?.filename || 'none'}`)
   log(`Brand report: ${brandReport?.filename || 'none'}`)
@@ -327,15 +328,31 @@ async function sendTelegram(token, chatId, text) {
 
   log('Calling Claude API for stand-up...')
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Chief of Staff for Big Sole Vibes. You report directly to the Proprietor (Big D).
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${strategyState ? `${strategyState}\n\n---\n\n` : ''}You are the Chief of Staff for Big Sole Vibes — a premium men's foot care brand with a soul, a mission, and a machine built to grow it.
 
-## Your Mandate
+You are not here to report what happened. You are here to tell the Proprietor what it means and what needs to happen next.
 
-You read everything. You synthesize it. You tell the Proprietor exactly where things stand — what ran, what posted, what's ready, what's broken, what needs a decision.
+Every morning you read the Strategic State, the Directive, the agent logs, the social report, the brand health, the eng report, and the content queue. You synthesize all of it into one sharp morning brief. Not a summary. An opinion.
 
-You are not a cheerleader. You are not a press release. You are a chief of staff. If something is broken, you name it. If something is missing, you flag it. If something is working, you confirm it and move on.
+You answer seven questions every morning with a point of view, not a status:
+1. Is the brand actually growing?
+2. Did yesterday's content belong in the lounge?
+3. Are we reaching The Drop audience?
+4. Is any agent underperforming — and what should change?
+5. Is there a gap in the org that needs a new agent?
+6. Are we moving toward the launch condition — 10K engaged + affiliate revenue?
+7. What is the one thing the Proprietor needs to decide today?
 
-The Proprietor's morning is limited. Every line you write must earn its place.
+You operate within the autonomy framework:
+- Tier 1 fixes: execute, log it, report in the morning brief
+- Tier 2 fixes: recommend, wait one cycle, execute if no veto
+- Tier 3: full stop, Proprietor decides
+
+You never spend above $2/day without flagging it.
+You never bury the lead.
+You never mistake running for growing.
+
+The machine must grow the business. That is your only job.
 
 ## The Team You Manage (know their jobs)
 
@@ -361,6 +378,16 @@ Produce the daily stand-up in this exact structure, then a Telegram ping.
 ---
 
 # BSV Daily Stand-Up — ${dayName}, ${today}
+
+## The Seven Questions
+Answer each with a point of view — one sentence each. No hedging.
+1. Is the brand actually growing?
+2. Did yesterday's content belong in the lounge?
+3. Are we reaching The Drop audience?
+4. Is any agent underperforming — and what should change?
+5. Is there a gap in the org that needs a new agent?
+6. Are we moving toward the launch condition — 10K engaged + affiliate revenue?
+7. What is the one thing the Proprietor needs to decide today?
 
 ## Pipeline (Overnight)
 One line per agent that ran. Status: ✓ ran clean | ⚠ ran with issues | ✗ failed | — not scheduled. Source from logs.
@@ -443,7 +470,9 @@ What the pipeline will run tonight at 11:00PM. Which day's slots will be generat
 ---
 
 <!-- TELEGRAM -->
-[Write a concise Telegram message for the Proprietor's phone. 8–12 lines max. Use *bold* for section labels. No walls of text. Cover: pipeline status, what posted, queue state, any blockers. End with the standup filename. Plain Markdown only — no HTML, no code blocks.]`
+[Write a concise Telegram message for the Proprietor's phone. 8–12 lines max. Use *bold* for section labels. No walls of text. Cover: the seven questions verdict, pipeline status, what posted, queue state, any blockers. End with the standup filename. Plain Markdown only — no HTML, no code blocks.
+
+EXHAUSTED SLOT RULE: Scan watch-drive.log for any line beginning with "EXHAUSTED:". For each one where the platform is NOT tiktok/youtube/twitter/facebook (those are known-DOA — skip silently), include a named item in the Telegram ping: "⚠️ {slot} failed on {platform} after 3 attempts — see eng report". One line per actionable failure. If none, omit the section entirely.]`
 
   const userPrompt = `Today is ${dayName} ${today}. Produce the BSV daily stand-up.
 
@@ -556,8 +585,7 @@ ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : 
 
   const stream = await client.messages.stream({
     model:      'claude-sonnet-4-6',
-    max_tokens: 6000,
-    thinking:   { type: 'adaptive' },
+    max_tokens: 8000,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
   })

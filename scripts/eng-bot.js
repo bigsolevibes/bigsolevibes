@@ -60,6 +60,32 @@ function normalizeMessage(msg) {
     .trim()
 }
 
+// Known-DOA platforms — EXHAUSTED lines for these are expected and need no action.
+const KNOWN_DOA_PLATFORMS = ['tiktok', 'youtube', 'twitter', 'facebook']
+
+// Parse structured EXHAUSTED: lines written by watch-drive.js when a slot runs out of retries.
+// Format: EXHAUSTED: {slot} / {platform} — {N} attempts, all failed. Last error: {msg}
+function extractExhaustedEntries(logContent, source) {
+  const entries = []
+  for (const line of logContent.split('\n')) {
+    if (!line.includes('EXHAUSTED:')) continue
+    const tsMatch  = line.match(/\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/)
+    const bodyMatch = line.match(/EXHAUSTED:\s+([^/\s]+)\s*\/\s*([^\s—–-]+)\s*[—–-].*?Last error:\s*(.+)/)
+    if (!bodyMatch) continue
+    const [, slot, platform, lastError] = bodyMatch
+    const known = KNOWN_DOA_PLATFORMS.includes(platform.trim().toLowerCase())
+    entries.push({
+      timestamp: tsMatch ? tsMatch[1] : 'unknown time',
+      slot:      slot.trim(),
+      platform:  platform.trim(),
+      lastError: lastError.trim(),
+      known,
+      source,
+    })
+  }
+  return entries
+}
+
 function extractFailures(logContent, source) {
   const failures = []
   const lines = logContent.split('\n')
@@ -67,6 +93,8 @@ function extractFailures(logContent, source) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const ll = line.toLowerCase()
+    // EXHAUSTED: lines are handled separately — skip here to avoid double-counting
+    if (line.includes('EXHAUSTED:')) continue
     if (
       !line.includes('✗') &&
       !ll.includes('error') &&
@@ -132,11 +160,35 @@ function extractSlug(context) {
   return m ? m[1] : null
 }
 
-function writeReport(date, failures, diagnosis) {
+function writeReport(date, failures, diagnosis, exhaustedEntries = []) {
   const timestamp = new Date().toISOString()
 
   const slugs = [...new Set(failures.map(f => extractSlug(f.context)).filter(Boolean))]
   const slugLine = slugs.length ? slugs.join(', ') : 'unknown'
+
+  const actionableExhausted = exhaustedEntries.filter(e => !e.known)
+  const knownExhausted      = exhaustedEntries.filter(e => e.known)
+
+  const exhaustedSection = exhaustedEntries.length ? [
+    '## Exhausted Slots',
+    '',
+    ...(actionableExhausted.length ? [
+      '### ⚠️ Actionable — slot failed completely, requires investigation',
+      '',
+      ...actionableExhausted.map(e =>
+        `- **${e.slot} / ${e.platform}** — ${e.timestamp}\n  Last error: \`${e.lastError}\``
+      ),
+      '',
+    ] : []),
+    ...(knownExhausted.length ? [
+      '### ℹ️ Known platform limitation — no action needed',
+      '',
+      ...knownExhausted.map(e => `- ${e.slot} / ${e.platform} — expected (platform not active)`),
+      '',
+    ] : []),
+    '---',
+    '',
+  ].join('\n') : ''
 
   const failureSections = failures.map((f, i) => [
     `## Failure ${i + 1}: ${f.platform}${f.active ? ' 🔁 ACTIVE' : ''}`,
@@ -164,10 +216,12 @@ function writeReport(date, failures, diagnosis) {
     '',
     `**Generated:** ${timestamp}`,
     `**Failures:** ${failures.length}`,
+    `**Exhausted slots:** ${actionableExhausted.length} actionable, ${knownExhausted.length} known`,
     `**Affected slugs:** ${slugLine}`,
     '',
     '---',
     '',
+    exhaustedSection,
     failureSections,
     '',
     '---',
@@ -294,22 +348,31 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     return
   }
 
-  // Extract failures from the tail of every log file (last 4MB each — avoids OOM on large logs)
-  const failures = []
+  // Extract failures and exhausted entries from the tail of every log file
+  const failures        = []
+  const exhaustedAll    = []
   for (const logPath of logFiles) {
     try {
       const content  = readTailBytes(logPath)
       const source   = path.basename(logPath)
       const found    = extractFailures(content, source)
-      if (found.length) log(`  ${source}: ${found.length} failure(s)`)
+      const exhausted = extractExhaustedEntries(content, source)
+      if (found.length)    log(`  ${source}: ${found.length} failure(s)`)
+      if (exhausted.length) log(`  ${source}: ${exhausted.length} EXHAUSTED entr${exhausted.length === 1 ? 'y' : 'ies'} (${exhausted.filter(e => !e.known).length} actionable)`)
       failures.push(...found)
+      exhaustedAll.push(...exhausted)
     } catch (err) {
       log(`WARNING: could not read ${path.basename(logPath)} — ${err.message}`)
     }
   }
 
-  if (!failures.length) {
-    log('No failures found across all logs')
+  const actionableExhausted = exhaustedAll.filter(e => !e.known)
+  const knownExhausted      = exhaustedAll.filter(e => e.known)
+  if (knownExhausted.length)      log(`${knownExhausted.length} known-DOA exhausted slot(s) — no action needed (${knownExhausted.map(e => `${e.slot}/${e.platform}`).join(', ')})`)
+  if (actionableExhausted.length) log(`${actionableExhausted.length} ACTIONABLE exhausted slot(s): ${actionableExhausted.map(e => `${e.slot}/${e.platform}`).join(', ')}`)
+
+  if (!failures.length && !actionableExhausted.length) {
+    log('No failures or actionable exhausted slots found across all logs')
     log('━━━ eng-bot complete (no failures) ━━━\n')
     return
   }
@@ -353,21 +416,32 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
   const allFailures = [...newFailures, ...activeFailures]
 
-  if (!allFailures.length) {
+  if (!allFailures.length && !actionableExhausted.length) {
     log('All failures already in eng-seen.json — nothing new to report')
     log('━━━ eng-bot complete (no new failures) ━━━\n')
     return
   }
 
-  if (newFailures.length)    log(`${newFailures.length} new failure(s) to report`)
-  if (activeFailures.length) log(`${activeFailures.length} active recurring failure(s) detected (post-baseline)`)
+  if (newFailures.length)         log(`${newFailures.length} new failure(s) to report`)
+  if (activeFailures.length)      log(`${activeFailures.length} active recurring failure(s) detected (post-baseline)`)
+  if (actionableExhausted.length) log(`${actionableExhausted.length} actionable exhausted slot(s) to include in report`)
 
-  // Diagnose with Claude
+  // Diagnose with Claude — include actionable exhausted slots in the prompt
   log('Calling Claude API for diagnosis...')
   const client = new Anthropic({ apiKey })
   let diagnosis
+  const diagnosisInput = [
+    ...allFailures,
+    ...actionableExhausted.map(e => ({
+      timestamp: e.timestamp,
+      platform:  e.platform,
+      message:   `Slot ${e.slot} exhausted all ${MAX_ATTEMPTS ?? 3} attempts on ${e.platform}. Last error: ${e.lastError}`,
+      context:   `EXHAUSTED: ${e.slot} / ${e.platform} — retried to the limit. This slot will not post to ${e.platform} without manual intervention.`,
+      source:    e.source,
+    })),
+  ]
   try {
-    diagnosis = await diagnose(client, allFailures)
+    diagnosis = await diagnose(client, diagnosisInput)
     log(`Diagnosis complete (${diagnosis.length} chars)`)
   } catch (err) {
     log(`ERROR: Claude diagnosis failed: ${err.message}`)
@@ -375,7 +449,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   }
 
   // Write report to Google Drive
-  writeReport(today, allFailures, diagnosis)
+  writeReport(today, allFailures, diagnosis, exhaustedAll)
 
   // Mark genuinely new failures as seen (active ones already have a hash entry)
   const now = new Date().toISOString()

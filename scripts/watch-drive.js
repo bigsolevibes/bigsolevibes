@@ -282,7 +282,7 @@ function processMedia(base, mediaFile, localPath) {
 }
 
 function distribute(caption, platformsList) {
-  const platformsNote = platformsList ? ` [retry: ${platformsList.join(',')}]` : ''
+  const platformsNote = platformsList ? ` [${platformsList.join(',')}]` : ''
   log(`  running distribute.js — caption: "${caption.slice(0, 60)}${caption.length > 60 ? '…' : ''}"${platformsNote}`)
   const spawnArgs = [
     path.join(__dirname, 'distribute.js'),
@@ -290,8 +290,30 @@ function distribute(caption, platformsList) {
     '--image-dir', OUTPUT_DIR,
   ]
   if (platformsList) spawnArgs.push('--platforms', platformsList.join(','))
-  const result = spawnSync(process.execPath, spawnArgs, { stdio: 'inherit', env: process.env })
+  const result = spawnSync(process.execPath, spawnArgs, {
+    stdio:    ['inherit', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    env:      process.env,
+  })
+  const output = (result.stdout || '') + (result.stderr || '')
+  for (const line of output.split('\n').filter(Boolean)) log(`  [distribute] ${line}`)
   if (result.status !== 0) throw new Error(`distribute.js exited with code ${result.status}`)
+  return output
+}
+
+// Extract the most relevant error line from captured distribute output for a given platform.
+function extractLastError(output, platform) {
+  const lines = output.split('\n').filter(Boolean)
+  const ll = lines.map(l => l.toLowerCase())
+  // Prefer lines mentioning the platform + an error/fail keyword
+  const specific = lines.filter((l, i) =>
+    ll[i].includes(platform) && (ll[i].includes('error') || ll[i].includes('fail'))
+  )
+  if (specific.length) return specific[specific.length - 1].trim().slice(0, 160)
+  // Fall back to any error/fail line
+  const generic = lines.filter((_, i) => ll[i].includes('error') || ll[i].includes('fail'))
+  if (generic.length) return generic[generic.length - 1].trim().slice(0, 160)
+  return 'no error detail captured'
 }
 
 // ─── Timing ───────────────────────────────────────────────────────────────────
@@ -484,12 +506,22 @@ async function run() {
         log(`${base}: ${parts.join(' | ')}`)
       }
 
+      // Snapshot which platforms are already exhausted before this distribute run.
+      // Used to detect transitions to exhausted that happen in this cycle.
+      const preExhausted = new Set(ACTIVE_PLATFORMS.filter(p => state[base][p]?.status === 'exhausted'))
+
+      let distributeOutput = ''
       try {
-        distribute(caption_str, effectivePlatforms)
+        distributeOutput = distribute(caption_str, effectivePlatforms)
       } catch (err) {
         log(`${base}: ERROR during distribute: ${err.message}`)
         markAttemptedFailed(state, base, effectivePlatforms)
         saveState(state)
+        for (const p of effectivePlatforms) {
+          if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
+            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${err.message.slice(0, 160)}`)
+          }
+        }
         continue
       }
 
@@ -501,11 +533,24 @@ async function run() {
         log(`${base}: WARNING — no distribute results found, marking attempted platforms failed`)
         markAttemptedFailed(state, base, effectivePlatforms)
         saveState(state)
+        for (const p of effectivePlatforms) {
+          if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
+            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: no distribute results written`)
+          }
+        }
         continue
       }
 
       applyDistResults(state, base, distResults)
       saveState(state)
+
+      // Log any platforms that just exhausted this cycle
+      for (const p of ACTIVE_PLATFORMS) {
+        if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
+          const lastError = extractLastError(distributeOutput, p)
+          log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${lastError}`)
+        }
+      }
 
       if (isSlotDone(state[base])) {
         const succeeded = ACTIVE_PLATFORMS.filter(p => state[base][p]?.status === 'success')
