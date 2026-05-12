@@ -5,10 +5,11 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT     = path.join(__dirname, '..')
-const LOG_FILE = path.join(ROOT, 'logs', 'product-development.log')
-const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-product-development')
-const REMOTE   = 'big sole vibes:Big Sole Vibes'
+const ROOT      = path.join(__dirname, '..')
+const LOG_FILE  = path.join(ROOT, 'logs', 'product-development.log')
+const LOCK_FILE = path.join(ROOT, 'logs', 'product-development.lock')
+const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-product-development')
+const REMOTE    = 'big sole vibes:Big Sole Vibes'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,29 @@ function log(msg) {
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
 }
+
+// ─── Lockfile guard ───────────────────────────────────────────────────────────
+
+function acquireLock() {
+  if (fs.existsSync(LOCK_FILE)) {
+    const pid = fs.readFileSync(LOCK_FILE, 'utf8').trim()
+    log(`Already running (PID ${pid}) — exiting to avoid double-instance`)
+    process.exit(0)
+  }
+  fs.writeFileSync(LOCK_FILE, String(process.pid))
+}
+
+function releaseLock() {
+  try { fs.unlinkSync(LOCK_FILE) } catch {}
+}
+
+process.on('exit',            releaseLock)
+process.on('SIGTERM',         () => process.exit(0))
+process.on('SIGINT',          () => process.exit(0))
+process.on('uncaughtException', (err) => {
+  log(`UNCAUGHT: ${err.stack || err.message}`)
+  process.exit(1)
+})
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
@@ -54,6 +78,7 @@ function getPreviousBrief() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
+  acquireLock()
   log('━━━ product-development start ━━━')
 
   const apiKey = process.env.ANTHROPIC_API_KEY
