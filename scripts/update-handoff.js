@@ -98,6 +98,35 @@ function getDriveStructure() {
   } catch { return '(rclone unavailable)' }
 }
 
+function getLatestBrandHealth() {
+  const REMOTE = 'big sole vibes:Big Sole Vibes'
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => f.match(/^brand-health-\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    fs.mkdirSync(TEMP_DIR, { recursive: true })
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, latest)
+    if (!fs.existsSync(p)) return null
+    // Extract only the ## Growth Metrics section (first ~25 lines)
+    const content = fs.readFileSync(p, 'utf8')
+    const metricsStart = content.indexOf('## Growth Metrics')
+    if (metricsStart === -1) return { filename: latest, metrics: null }
+    const metricsEnd = content.indexOf('\n## ', metricsStart + 1)
+    const metrics = metricsEnd !== -1
+      ? content.slice(metricsStart, metricsEnd).trim()
+      : content.slice(metricsStart, metricsStart + 600).trim()
+    return { filename: latest, metrics }
+  } catch { return null }
+}
+
 function getExistingHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -133,11 +162,13 @@ function getExistingHandoff() {
   const driveStructure = getDriveStructure()
   const existingHandoff = getExistingHandoff()
   const tokenExpiry   = await checkMetaTokenExpiry()
+  const brandHealth   = getLatestBrandHealth()
   const now = new Date().toISOString()
 
   log(`Env keys: ${envKeys.join(', ')}`)
   log(`Output files: ${outputFiles.length}`)
   log(`Distributed posts: ${pipelineState.distributed?.length ?? 0}`)
+  log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
   if (tokenExpiry?.daysLeft !== undefined) {
     const msg = tokenExpiry.daysLeft <= 7
       ? `⚠ META_ACCESS_TOKEN expires in ${tokenExpiry.daysLeft} day(s) — regenerate now`
@@ -191,6 +222,7 @@ ${gitLog}
 ## Available scripts
 ${fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort().map(s => `- scripts/${s}`).join('\n')}
 
+${brandHealth?.metrics ? `## Audience — Current Follower Counts (from ${brandHealth.filename})\n${brandHealth.metrics}\n` : ''}
 ## Phase 2 — BSV Own Product Line (fixed strategy, always include)
 - **First product:** Proprietor's Foot Balm — private label, custom formulation
 - **Packaging:** Midnight #0D1B2A and Bourbon #C17D2E colorway
@@ -240,8 +272,7 @@ Do not invent or fabricate information not present in the context.`
   try {
     const stream = await client.messages.stream({
       model:      'claude-opus-4-7',
-      max_tokens: 4096,
-      thinking:   { type: 'adaptive' },
+      max_tokens: 8192,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     })
@@ -257,6 +288,9 @@ Do not invent or fabricate information not present in the context.`
 
     const finalMsg = await stream.finalMessage()
     log(`Done — ${finalMsg.usage?.output_tokens ?? '?'} output tokens, stop_reason: ${finalMsg.stop_reason}`)
+    if (finalMsg.stop_reason === 'max_tokens') {
+      log('WARNING: response was truncated at max_tokens — using partial output')
+    }
   } catch (err) {
     log(`ERROR: Claude API call failed: ${err.message}`)
     process.exit(1)

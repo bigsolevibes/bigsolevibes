@@ -28,6 +28,25 @@ function loadDirective() {
   } catch { return null }
 }
 
+function loadLatestBrandHealth() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => f.match(/^brand-health-\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    fs.mkdirSync(TEMP_DIR, { recursive: true })
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
 function getPreviousReport() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
@@ -66,8 +85,11 @@ function getPreviousReport() {
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
-  const previous = getPreviousReport()
+  const previous    = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
+
+  const brandHealth = loadLatestBrandHealth()
+  log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
 
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver signal, not noise.
 
@@ -81,6 +103,7 @@ Be specific. Quote real sources (subreddit, handle, platform — no links). A va
 
 Search Reddit, X/Twitter, TikTok comment culture, and specialty communities. Find signal, not surface noise.
 
+${brandHealth ? `## Current Audience (from Brand Health Report ${brandHealth.filename})\nUse these numbers to calibrate what counts as significant traction — a community that would matter to an audience of this size.\n${brandHealth.content.split('\n').slice(0, 20).join('\n')}\n` : ''}
 ${previous ? `## Previous report: ${previous.filename}\nNote any evolutions or threads worth following.\n${previous.content.slice(0, 1500)}${previous.content.length > 1500 ? '\n[truncated]' : ''}` : '## No previous report — establish baseline.'}
 
 ---
@@ -127,7 +150,6 @@ One thing that looks important but probably isn't. One thing easy to miss that m
       system:     systemPrompt,
       tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 12 }],
       messages,
-      betas:      ['web-search-2025-03-05'],
     })
 
     messages.push({ role: 'assistant', content: response.content })

@@ -99,6 +99,25 @@ function getPostedThisWeek() {
   } catch { return '(rclone unavailable)' }
 }
 
+function loadLatestBrandHealth() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => f.match(/^brand-health-\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    fs.mkdirSync(TEMP_DIR, { recursive: true })
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
 function getPreviousReport() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
@@ -177,6 +196,9 @@ function getPreviousReport() {
   const previous       = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
 
+  const brandHealth = loadLatestBrandHealth()
+  log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
+
   // ── Claude analysis ───────────────────────────────────────────────────────
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Marketing Manager for Big Sole Vibes (BSV). Your analysis and recommendations must serve the Proprietor's Directive above — building the audience that will fill the lounge.
 
@@ -184,10 +206,13 @@ BSV has two distinct audience segments:
 - **The Lounge** — men 35–55, premium/bourbon register, signup at bigsolevibes.com/lounge
 - **The Drop** — men 18–34, sneaker/streetwear culture, signup at bigsolevibes.com/drop
 
-Your job: produce a clear, data-driven weekly marketing report. Track subscriber growth by segment, identify what content is driving signups, give specific recommendations for improving list growth. You are accountable to numbers, not vibes. Growth that doesn't serve the standard described in the directive is noise.`
+Your job: produce a clear, data-driven weekly marketing report. Track subscriber growth by segment, identify what content is driving signups, give specific recommendations for improving list growth. You are accountable to numbers, not vibes. Growth that doesn't serve the standard described in the directive is noise.
+
+When a ## Growth Metrics section appears in the Brand Health Report context below, treat those numbers as ground truth for current audience size. Reference them explicitly when sizing opportunity, benchmarking growth rate, and forecasting.`
 
   const userPrompt = `Produce the BSV Weekly Marketing Report for ${today}.
 
+${brandHealth ? `## Brand Health Report (${brandHealth.filename}) — growth metrics and content quality\n${brandHealth.content.slice(0, 3000)}${brandHealth.content.length > 3000 ? '\n[truncated]' : ''}\n` : ''}
 ## Klaviyo Data
 
 ### The Lounge Segment
@@ -241,8 +266,7 @@ If current trends hold, where will each segment land in 30 days? What would need
 
   const stream = await client.messages.stream({
     model:      'claude-sonnet-4-6',
-    max_tokens: 4096,
-    thinking:   { type: 'adaptive' },
+    max_tokens: 6000,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
   })

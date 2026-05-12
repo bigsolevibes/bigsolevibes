@@ -9,6 +9,8 @@ const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'brand-manager.log')
 const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-brand-manager')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
+const KLAVIYO  = 'https://a.klaviyo.com/api'
+const IG_API   = 'https://graph.facebook.com/v21.0'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -16,6 +18,108 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Metrics helpers ──────────────────────────────────────────────────────────
+
+function klaviyoHeaders(apiKey) {
+  return {
+    'Authorization': `Klaviyo-API-Key ${apiKey}`,
+    'revision':      '2023-12-15',
+    'Content-Type':  'application/json',
+  }
+}
+
+async function getListProfiles(apiKey, listId) {
+  const profiles = []
+  let url = `${KLAVIYO}/lists/${listId}/profiles/?fields[profile]=email,created`
+  while (url) {
+    const res  = await fetch(url, { headers: klaviyoHeaders(apiKey) })
+    const data = await res.json()
+    if (!res.ok) throw new Error(`Klaviyo list profiles: ${JSON.stringify(data)}`)
+    profiles.push(...(data.data || []))
+    url = data.links?.next || null
+  }
+  return profiles
+}
+
+function summariseGrowth(profiles) {
+  const now     = new Date()
+  const cutoff7  = new Date(now - 7  * 86400000).toISOString()
+  const cutoff30 = new Date(now - 30 * 86400000).toISOString()
+  return {
+    total:  profiles.length,
+    last7:  profiles.filter(p => (p.attributes?.created || '') >= cutoff7).length,
+    last30: profiles.filter(p => (p.attributes?.created || '') >= cutoff30).length,
+  }
+}
+
+async function getInstagramMetrics() {
+  const token    = process.env.META_ACCESS_TOKEN
+  const igUserId = process.env.META_IG_ACCOUNT_ID
+  if (!token || !igUserId) return null
+  try {
+    const [profileRes, insightsRes] = await Promise.all([
+      fetch(`${IG_API}/${igUserId}?fields=followers_count,media_count&access_token=${token}`),
+      fetch(`${IG_API}/${igUserId}/insights?metric=reach,profile_views&period=week&access_token=${token}`),
+    ])
+    const profile  = await profileRes.json()
+    const insights = await insightsRes.json()
+    if (profile.error) throw new Error(profile.error.message)
+    const reach        = insights.data?.find(m => m.name === 'reach')?.values?.slice(-1)[0]?.value
+    const profileViews = insights.data?.find(m => m.name === 'profile_views')?.values?.slice(-1)[0]?.value
+    return {
+      followers:        profile.followers_count,
+      mediaCount:       profile.media_count,
+      reachWeek:        reach,
+      profileViewsWeek: profileViews,
+    }
+  } catch (err) {
+    log(`Instagram metrics error: ${err.message}`)
+    return null
+  }
+}
+
+async function getBlueskyMetrics() {
+  const handle = process.env.BLUESKY_HANDLE
+  if (!handle) return null
+  try {
+    const res  = await fetch(`https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Bluesky API error')
+    return { followers: data.followersCount, posts: data.postsCount }
+  } catch (err) {
+    log(`Bluesky metrics error: ${err.message}`)
+    return null
+  }
+}
+
+function buildMetricsBlock(ig, bsky, lounge, drop, date) {
+  const n = (v) => v !== undefined && v !== null ? v.toLocaleString() : '[unavailable]'
+  const lines = [`## Growth Metrics — ${date}`, '']
+
+  lines.push('### Social Channels')
+  if (ig) {
+    const insightsParts = []
+    if (ig.reachWeek        !== undefined) insightsParts.push(`reach (week): ${n(ig.reachWeek)}`)
+    if (ig.profileViewsWeek !== undefined) insightsParts.push(`profile views (week): ${n(ig.profileViewsWeek)}`)
+    const insightsStr = insightsParts.length ? ` | ${insightsParts.join(' | ')}` : ''
+    lines.push(`- Instagram: ${n(ig.followers)} followers | ${n(ig.mediaCount)} posts${insightsStr}`)
+  } else {
+    lines.push('- Instagram: [unavailable]')
+  }
+  lines.push(`- Bluesky: ${bsky ? `${n(bsky.followers)} followers` : '[unavailable]'}`)
+
+  lines.push('')
+  lines.push('### Email Lists (Klaviyo)')
+  lines.push(lounge
+    ? `- The Lounge: ${n(lounge.total)} subscribers (+${lounge.last7} this week, +${lounge.last30} this month)`
+    : '- The Lounge: [unavailable]')
+  lines.push(drop
+    ? `- The Drop: ${n(drop.total)} subscribers (+${drop.last7} this week, +${drop.last30} this month)`
+    : '- The Drop: [unavailable]')
+
+  return lines.join('\n')
 }
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
@@ -97,6 +201,35 @@ function getHandoff() {
   const today   = new Date().toISOString().slice(0, 10)
   const outFile = `brand-health-${today}.md`
 
+  log('Gathering growth metrics...')
+  const klaviyoKey   = process.env.KLAVIYO_API_KEY
+  const loungeListId = process.env.KLAVIYO_LOUNGE_LIST_ID
+  const dropListId   = process.env.KLAVIYO_DROP_LIST_ID
+
+  const [igMetrics, bskyMetrics] = await Promise.all([
+    getInstagramMetrics(),
+    getBlueskyMetrics(),
+  ])
+  if (igMetrics)   log(`Instagram: ${igMetrics.followers} followers`)
+  if (bskyMetrics) log(`Bluesky: ${bskyMetrics.followers} followers`)
+
+  let loungeGrowth = null
+  let dropGrowth   = null
+  if (klaviyoKey && loungeListId) {
+    try {
+      loungeGrowth = summariseGrowth(await getListProfiles(klaviyoKey, loungeListId))
+      log(`Lounge: ${loungeGrowth.total} total, +${loungeGrowth.last7} this week`)
+    } catch (err) { log(`Klaviyo Lounge error: ${err.message}`) }
+  }
+  if (klaviyoKey && dropListId) {
+    try {
+      dropGrowth = summariseGrowth(await getListProfiles(klaviyoKey, dropListId))
+      log(`Drop: ${dropGrowth.total} total, +${dropGrowth.last7} this week`)
+    } catch (err) { log(`Klaviyo Drop error: ${err.message}`) }
+  }
+
+  const metricsBlock = buildMetricsBlock(igMetrics, bskyMetrics, loungeGrowth, dropGrowth, today)
+
   log('Loading directive and collecting context...')
   const directive     = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
@@ -150,6 +283,8 @@ You output a Brand Health Report. Be direct and specific. Name what works and wh
 
   const userPrompt = `Review all BSV content posted in the last 7 days and produce a Brand Health Report.
 
+${metricsBlock}
+
 ## Content posted last 7 days
 ${postedContent}
 
@@ -196,8 +331,7 @@ Specific, actionable changes for next week. Not suggestions — directives.`
 
   const stream = await client.messages.stream({
     model:      'claude-sonnet-4-6',
-    max_tokens: 4096,
-    thinking:   { type: 'adaptive' },
+    max_tokens: 6000,
     system:     systemPrompt,
     messages:   originalMessages,
   })
@@ -232,8 +366,11 @@ Specific, actionable changes for next week. Not suggestions — directives.`
 
   if (!fullText.trim()) { log('ERROR: empty response'); process.exit(1) }
 
+  // Prepend live metrics block so downstream scripts can parse follower counts reliably
+  const reportContent = metricsBlock + '\n\n---\n\n' + fullText
+
   const localPath = path.join(TEMP_DIR, outFile)
-  fs.writeFileSync(localPath, fullText)
+  fs.writeFileSync(localPath, reportContent)
 
   try {
     execSync(`rclone copyto "${localPath}" "${REMOTE}/Reports/${outFile}"`, {
