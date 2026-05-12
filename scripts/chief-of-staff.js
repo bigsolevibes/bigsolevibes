@@ -21,6 +21,10 @@ const LOG_FILE = path.join(ROOT, 'logs', 'chief-of-staff.log')
 const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-chief-of-staff')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
 
+const DAILY_API_CEILING   = 2.00   // $ — hard daily limit Chief enforces
+const CLAUDE_INPUT_PER_M  = 3.00   // $ per 1M input tokens (Sonnet 4.x)
+const CLAUDE_OUTPUT_PER_M = 15.00  // $ per 1M output tokens
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -93,6 +97,77 @@ function getBriefFiles() {
       .filter(f => f.endsWith('-brief.txt'))
       .sort()
   } catch { return [] }
+}
+
+// ─── Token budget ────────────────────────────────────────────────────────────
+
+function buildTokenBudget() {
+  const now      = new Date()
+  const dayStart = new Date(now)
+  dayStart.setHours(0, 0, 0, 0)
+
+  const AGENT_LOGS = [
+    { name: 'eng-bot',             file: 'eng-bot.log' },
+    { name: 'social-listening',    file: 'social-listening.log' },
+    { name: 'media-director',      file: 'media-director.log' },
+    { name: 'brand-manager',       file: 'brand-manager.log' },
+    { name: 'marketing-manager',   file: 'marketing-manager.log' },
+    { name: 'product-development', file: 'product-development.log' },
+    { name: 'product-research',    file: 'product-research.log' },
+    { name: 'change-agent',        file: 'change-agent.log' },
+    { name: 'update-handoff',      file: 'update-handoff.log' },
+    { name: 'chief-of-staff',      file: 'chief-of-staff.log' },
+  ]
+
+  const agentBreakdown = []
+  for (const { name, file } of AGENT_LOGS) {
+    const logPath = path.join(ROOT, 'logs', file)
+    if (!fs.existsSync(logPath)) continue
+    let outputTokens = 0, calls = 0
+    try {
+      for (const line of fs.readFileSync(logPath, 'utf8').split('\n')) {
+        const tsMatch = line.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/)
+        if (!tsMatch || new Date(tsMatch[1]) < dayStart) continue
+        // Matches: "Done — N tokens", "Stand-up done — N tokens", "Continuation done — N output tokens"
+        const m = line.match(/done[^\d]*(\d+)\s*(?:output\s+)?tokens/i)
+        if (m) { outputTokens += parseInt(m[1], 10); calls++ }
+      }
+    } catch {}
+    if (calls === 0) continue
+    // Input not logged — estimate at 2× output (conservative for long system prompts)
+    const inputEst = outputTokens * 2
+    const cost = (inputEst / 1_000_000) * CLAUDE_INPUT_PER_M
+              + (outputTokens / 1_000_000) * CLAUDE_OUTPUT_PER_M
+    agentBreakdown.push({ name, calls, outputTokens, cost })
+  }
+  agentBreakdown.sort((a, b) => b.cost - a.cost)
+
+  const totalEstCost = agentBreakdown.reduce((s, r) => s + r.cost, 0)
+
+  // Pull today's official total from cost-report.log if cost-report ran today
+  let officialTotal = null
+  try {
+    const crLogPath = path.join(ROOT, 'logs', 'cost-report.log')
+    if (fs.existsSync(crLogPath)) {
+      const todayStr = now.toISOString().slice(0, 10)
+      for (const line of fs.readFileSync(crLogPath, 'utf8').split('\n').reverse()) {
+        if (!line.includes(todayStr)) continue
+        const m = line.match(/Today.*cost:\s*\$?([\d.]+)/i)
+        if (m) { officialTotal = parseFloat(m[1]); break }
+      }
+    }
+  } catch {}
+
+  const reportedTotal = officialTotal ?? totalEstCost
+  const pctOfCeiling  = (reportedTotal / DAILY_API_CEILING) * 100
+
+  return {
+    agentBreakdown,
+    totalEstCost,
+    officialTotal,
+    reportedTotal,
+    pctOfCeiling,
+  }
 }
 
 // ─── Drive state collectors ───────────────────────────────────────────────────
@@ -246,12 +321,18 @@ async function sendTelegram(token, chatId, text) {
   const client           = new Anthropic({ apiKey })
   const today            = new Date().toISOString().slice(0, 10)
   const dayName          = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+  const dayOfWeek        = new Date().getDay()   // 0=Sun, 1=Mon
+  const isMonday         = dayOfWeek === 1
+  const isMidWeekLate    = dayOfWeek >= 3 && dayOfWeek <= 5  // Wed–Fri
   const outFile          = `standup-${today}.md`
   const updateOrgChart   = process.argv.includes('--update-org-chart')
 
   // ── Collect context ──────────────────────────────────────────────────────────
 
   log('Collecting context...')
+
+  const tokenBudget = buildTokenBudget()
+  log(`Token budget: est $${tokenBudget.totalEstCost.toFixed(4)} today${tokenBudget.officialTotal != null ? `, official $${tokenBudget.officialTotal.toFixed(4)}` : ''} (${tokenBudget.pctOfCeiling.toFixed(1)}% of $${DAILY_API_CEILING} ceiling)`)
 
   const directive      = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
   const strategyState  = loadDriveFile(`${REMOTE}/BSV-Strategy-State.md`, TEMP_DIR)
@@ -261,6 +342,7 @@ async function sendTelegram(token, chatId, text) {
   const marketingReport = loadLatestReport('marketing')
   const productResearch    = loadLatestReport('research', 'Product Research')
   const productBrief       = loadLatestReport('product-brief', 'Product Development')
+  const costReport         = loadLatestReport('cost-report')
   const productDevState    = getProductDevState()
   const changeState        = getChangeState()
 
@@ -274,6 +356,7 @@ async function sendTelegram(token, chatId, text) {
   log(`Product brief: ${productBrief?.filename || 'none'}`)
   log(`Product dev state: ${productDevState ? `milestone="${productDevState.milestone}" action_needed=${productDevState.action_needed}` : 'none'}`)
   log(`Change state: ${changeState ? `open=${changeState.open_issues} action_needed=${changeState.action_needed}` : 'none'}`)
+  log(`Cost report: ${costReport?.filename || 'none'}`)
 
   const watchLog       = getRecentLog('watch-drive.log', 150)
   const socialLog      = getRecentLog('social-listening.log', 40)
@@ -467,12 +550,55 @@ RULE: Chief never updates autonomously. Always flags → waits for Big D → exe
 ## Tonight's Schedule
 What the pipeline will run tonight at 11:00PM. Which day's slots will be generated (tomorrow = [day name]).
 
+## Token Budget
+Render the daily API spend summary from the data provided. Format as:
+
+*Today's API spend:* $X.XX / $${DAILY_API_CEILING.toFixed(2)} ceiling (XX%)
+
+Per-agent breakdown (Claude calls only, heaviest first — omit agents with zero calls):
+- agent-name: N call(s), ~N,NNN output tokens est., ~$X.XXXX
+
+Flag wasted spend: if any agent shows calls in the logs but no visible output (errors without successful completion), call it out explicitly: "⚠️ [agent] made N call(s) but produced no output — potential wasted spend."
+
+Throttle recommendation: if today's spend is tracking over $1.50, name the specific non-essential agents to pause tomorrow. Essential daily agents are eng-bot, chief-of-staff, and watch-drive orchestration. Brand-manager and marketing-manager run weekly — they are never essential on a daily basis.
+
 ---
 
 <!-- TELEGRAM -->
 [Write a concise Telegram message for the Proprietor's phone. 8–12 lines max. Use *bold* for section labels. No walls of text. Cover: the seven questions verdict, pipeline status, what posted, queue state, any blockers. End with the standup filename. Plain Markdown only — no HTML, no code blocks.
 
-EXHAUSTED SLOT RULE: Scan watch-drive.log for any line beginning with "EXHAUSTED:". For each one where the platform is NOT tiktok/youtube/twitter/facebook (those are known-DOA — skip silently), include a named item in the Telegram ping: "⚠️ {slot} failed on {platform} after 3 attempts — see eng report". One line per actionable failure. If none, omit the section entirely.]`
+EXHAUSTED SLOT RULE: Scan watch-drive.log for any line beginning with "EXHAUSTED:". For each one where the platform is NOT tiktok/youtube/twitter/facebook (those are known-DOA — skip silently), include a named item in the Telegram ping: "⚠️ {slot} failed on {platform} after 3 attempts — see eng report". One line per actionable failure. If none, omit the section entirely.
+
+TOKEN BUDGET RULE: Always include a *💰 Budget* line — one line, no exceptions:
+- If reportedTotal > $${DAILY_API_CEILING.toFixed(2)}: "*💰 Budget:* ⚠️ Ceiling breached — $X.XX spent. Throttle non-essentials tomorrow."
+- If reportedTotal > $1.50: "*💰 Budget:* ⚡ $X.XX of $${DAILY_API_CEILING.toFixed(2)} ceiling (XX%) — watch today."
+- Otherwise: "*💰 Budget:* ✓ $X.XX today — runway clear."
+Use official total if available from cost-report, otherwise log estimate.
+
+PRO LIMIT RULE: Add a *📅 Pro* line ONLY when one of these conditions is true:
+- isMonday = true: "*📅 Pro:* Week reset — full Claude.ai capacity."
+- isMidWeekLate = true AND total API calls across all agents > 15 today: "*📅 Pro:* Heavy API day — pace Claude.ai sessions for tomorrow."
+Otherwise omit this line entirely.]`
+
+  // Format token budget for userPrompt injection
+  const fmtCost = (n) => `$${n.toFixed(4)}`
+  const tokenBudgetSection = [
+    `## Token Budget`,
+    ``,
+    `Daily ceiling: $${DAILY_API_CEILING.toFixed(2)}`,
+    `Today's spend: ${tokenBudget.officialTotal != null
+      ? `${fmtCost(tokenBudget.officialTotal)} (official — from cost-report.log)`
+      : `${fmtCost(tokenBudget.totalEstCost)} (log estimate — cost-report not yet run today)`}`,
+    `% of ceiling: ${tokenBudget.pctOfCeiling.toFixed(1)}%`,
+    `isMonday: ${isMonday}`,
+    `isMidWeekLate: ${isMidWeekLate}`,
+    ``,
+    tokenBudget.agentBreakdown.length
+      ? `Agent breakdown (Claude calls detected today, heaviest first):\n${tokenBudget.agentBreakdown.map(a =>
+          `- ${a.name}: ${a.calls} call(s), ~${a.outputTokens.toLocaleString()} output tokens, est. ${fmtCost(a.cost)}`
+        ).join('\n')}`
+      : `No Claude API calls detected in agent logs today.`,
+  ].join('\n')
 
   const userPrompt = `Today is ${dayName} ${today}. Produce the BSV daily stand-up.
 
@@ -579,7 +705,12 @@ Update mode (--update-org-chart): ${updateOrgChart ? 'YES' : 'no'}
 Org update result: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : 'n/a'}
 
 ## Current Handoff Doc (BSV-Handoff-v5.md)
-${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}`
+${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}
+
+${tokenBudgetSection}
+
+### Latest Cost Report (${costReport?.filename || 'none'})
+${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 1200 ? '\n[truncated]' : '') : '(not available — cost-report.js has not run today)'}`
 
   let fullText = ''
 
