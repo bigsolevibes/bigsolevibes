@@ -281,7 +281,7 @@ function processMedia(base, mediaFile, localPath) {
   }
 }
 
-function distribute(caption, platformsList) {
+function distribute(caption, platformsList, slot) {
   const platformsNote = platformsList ? ` [${platformsList.join(',')}]` : ''
   log(`  running distribute.js — caption: "${caption.slice(0, 60)}${caption.length > 60 ? '…' : ''}"${platformsNote}`)
   const spawnArgs = [
@@ -290,6 +290,7 @@ function distribute(caption, platformsList) {
     '--image-dir', OUTPUT_DIR,
   ]
   if (platformsList) spawnArgs.push('--platforms', platformsList.join(','))
+  if (slot) spawnArgs.push('--slot', slot)
   const result = spawnSync(process.execPath, spawnArgs, {
     stdio:    ['inherit', 'pipe', 'pipe'],
     encoding: 'utf8',
@@ -512,7 +513,7 @@ async function run() {
 
       let distributeOutput = ''
       try {
-        distributeOutput = distribute(caption_str, effectivePlatforms)
+        distributeOutput = distribute(caption_str, effectivePlatforms, base)
       } catch (err) {
         log(`${base}: ERROR during distribute: ${err.message}`)
         markAttemptedFailed(state, base, effectivePlatforms)

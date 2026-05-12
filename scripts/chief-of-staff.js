@@ -83,6 +83,32 @@ function getPostState() {
   } catch { return null }
 }
 
+function detectUnverifiedSlots(watchLogContent) {
+  if (!watchLogContent) return []
+
+  // Slots watch-drive archived (marked done + moved to Posted/)
+  const archivedSlots = new Set()
+  for (const line of watchLogContent.split('\n')) {
+    const m = line.match(/\] ([\w-]+): archived/)
+    if (m) archivedSlots.add(m[1])
+  }
+  if (!archivedSlots.size) return []
+
+  // Slots confirmed in post-state.json with at least one success entry
+  const confirmedSlots = new Set()
+  try {
+    const p = path.join(ROOT, 'logs', 'post-state.json')
+    if (fs.existsSync(p)) {
+      const entries = JSON.parse(fs.readFileSync(p, 'utf8'))
+      for (const e of entries) {
+        if (e.status === 'success') confirmedSlots.add(e.slot)
+      }
+    }
+  } catch {}
+
+  return [...archivedSlots].filter(s => !confirmedSlots.has(s))
+}
+
 function getOutputFiles() {
   try {
     return fs.readdirSync(path.join(ROOT, 'posts', 'output'))
@@ -359,6 +385,10 @@ async function sendTelegram(token, chatId, text) {
   log(`Cost report: ${costReport?.filename || 'none'}`)
 
   const watchLog       = getRecentLog('watch-drive.log', 150)
+  const unverifiedSlots = detectUnverifiedSlots(watchLog)
+  if (unverifiedSlots.length) {
+    log(`Unverified slots (archived in log but not in post-state.json): ${unverifiedSlots.join(', ')}`)
+  }
   const socialLog      = getRecentLog('social-listening.log', 40)
   const mediaLog       = getRecentLog('media-director.log', 40)
   const creativeLog    = getRecentLog('creative-agent.log', 40)
@@ -477,6 +507,7 @@ One line per agent that ran. Status: ✓ ran clean | ⚠ ran with issues | ✗ f
 
 ## What Posted
 What went out in the last 24 hours. Which platforms. Any failures. Source from post-state.json and watch-drive.log.
+⚠️ RULE: If a slot appears in the "Unverified Slots" list in the user prompt — that slot was marked archived by watch-drive but has NO confirmed entry in post-state.json. Report it as "⚠️ UNVERIFIED — no confirmed post ID" instead of distributed. Do not count it as a successful post.
 
 ## Queue Status
 What is currently in Ready to Post/. What briefs exist. What's ready to distribute tonight.
@@ -658,6 +689,12 @@ ${changeAgentLog || '(no log)'}
 \`\`\`json
 ${postState || '(no post-state.json)'}
 \`\`\`
+
+## Unverified Slots
+Slots archived in watch-drive.log with no confirmed success entry in post-state.json:
+${unverifiedSlots.length
+  ? unverifiedSlots.map(s => `- ${s}: ⚠️ UNVERIFIED — watch-drive archived this slot but no post ID was recorded`).join('\n')
+  : '(none — all archived slots have confirmed post-state.json entries)'}
 
 ## Local Files
 Output files in posts/output/: ${outputFiles.join(', ') || '(none)'}

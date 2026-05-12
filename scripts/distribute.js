@@ -1,13 +1,14 @@
 require('dotenv').config()
 const fs = require('fs')
 const path = require('path')
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const { TwitterApi } = require('twitter-api-v2')
 const { AtpAgent, RichText } = require('@atproto/api')
 const FormData = require('form-data')
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3')
 
-const RESULTS_FILE = path.join(__dirname, '..', 'logs', 'distribute-results.json')
+const RESULTS_FILE    = path.join(__dirname, '..', 'logs', 'distribute-results.json')
+const POST_STATE_FILE = path.join(__dirname, '..', 'logs', 'post-state.json')
 
 // Platforms temporarily paused (code stays intact; remove from array to re-enable)
 const PAUSED_PLATFORMS = ['twitter', 'facebook']
@@ -26,6 +27,7 @@ const baseUrl      = getArg('--base-url') || process.env.BASE_URL || null
 const isSetup      = args.includes('--setup')
 const isForce      = args.includes('--force')
 const captionFile  = getArg('--caption-file')
+const slot         = getArg('--slot') || null
 
 // ─── Caption file parsing ─────────────────────────────────────────────────────
 // When --caption-file is given, read the .md file and extract header fields
@@ -124,6 +126,29 @@ const youtubeVideo = (() => {
   } catch { return null }
 })()
 
+// ─── Post state ──────────────────────────────────────────────────────────────
+
+function appendPostState(platform, status, postId) {
+  if (!slot) return
+  try {
+    let entries = []
+    if (fs.existsSync(POST_STATE_FILE)) {
+      try { entries = JSON.parse(fs.readFileSync(POST_STATE_FILE, 'utf8')) } catch {}
+    }
+    entries.push({
+      slot,
+      platform: platform.toLowerCase(),
+      postId:   postId || null,
+      timestamp: new Date().toISOString(),
+      status,
+    })
+    fs.mkdirSync(path.dirname(POST_STATE_FILE), { recursive: true })
+    fs.writeFileSync(POST_STATE_FILE, JSON.stringify(entries, null, 2))
+  } catch (err) {
+    console.error(`WARNING: could not write post-state.json: ${err.message}`)
+  }
+}
+
 // ─── Results log ─────────────────────────────────────────────────────────────
 
 const results = []
@@ -165,9 +190,11 @@ async function postToX() {
     const mediaId = await client.v1.uploadMedia(images.twitter)
     const tweet = await client.v2.tweet({ text: caption, media: { media_ids: [mediaId] } })
     log('X', 'ok', `Posted — tweet ID ${tweet.data.id}`)
+    appendPostState('x', 'success', tweet.data.id)
   } catch (err) {
     const detail = err.data ? JSON.stringify(err.data) : err.errors ? JSON.stringify(err.errors) : err.message
     log('X', 'fail', detail)
+    appendPostState('x', 'fail', null)
   }
 }
 
@@ -212,8 +239,10 @@ async function postToBluesky() {
       },
     })
     log('Bluesky', 'ok', `Posted — ${post.uri}`)
+    appendPostState('bluesky', 'success', post.uri)
   } catch (err) {
     log('Bluesky', 'fail', err.message)
+    appendPostState('bluesky', 'fail', null)
   }
 }
 
@@ -267,8 +296,10 @@ async function postToFacebook() {
     console.log('  [debug] Facebook response:', JSON.stringify(data, null, 2))
     if (!res.ok || data.error) throw new Error(data.error?.message || `HTTP ${res.status}`)
     log('Facebook', 'ok', `Posted — photo ID ${data.id}`)
+    appendPostState('facebook', 'success', data.id)
   } catch (err) {
     log('Facebook', 'fail', err.message)
+    appendPostState('facebook', 'fail', null)
   }
 }
 
@@ -322,6 +353,7 @@ async function postToInstagram() {
     console.log(`  [debug] Uploaded to R2: ${imageUrl}`)
   } catch (err) {
     log('Instagram', 'fail', `R2 upload failed — ${err.message}`)
+    appendPostState('instagram', 'fail', null)
     return
   }
 
@@ -376,8 +408,10 @@ async function postToInstagram() {
     const publish = await publishRes.json()
     if (!publishRes.ok || publish.error) throw new Error(publish.error?.message || `HTTP ${publishRes.status}`)
     log('Instagram', 'ok', `Posted — media ID ${publish.id}`)
+    appendPostState('instagram', 'success', publish.id)
   } catch (err) {
     log('Instagram', 'fail', err.message)
+    appendPostState('instagram', 'fail', null)
   }
 }
 
@@ -393,18 +427,18 @@ async function postToYouTube() {
   if (!youtubeVideo) throw new Error(`No .mp4 found in ${imageDir} — video generation may have failed`)
 
   try {
-    const scriptPath  = path.join(__dirname, 'youtube-post.js')
-    const safeVideo   = youtubeVideo.replace(/"/g, '\\"')
-    const safeTitle   = 'Big Sole Vibes — The Standard'
-    const safeDesc    = caption.replace(/"/g, '\\"').replace(/\n/g, ' ')
-
-    execSync(
-      `node "${scriptPath}" --video "${safeVideo}" --title "${safeTitle}" --description "${safeDesc}"`,
-      { stdio: 'inherit' }
-    )
+    const result = spawnSync(process.execPath, [
+      path.join(__dirname, 'youtube-post.js'),
+      '--video',       youtubeVideo,
+      '--title',       'Big Sole Vibes — The Standard',
+      '--description', caption.replace(/\n/g, ' '),
+    ], { stdio: 'inherit', env: process.env })
+    if (result.status !== 0) throw new Error(`youtube-post.js exited with code ${result.status}`)
     log('YouTube', 'ok', `Video uploaded — ${path.basename(youtubeVideo)}`)
+    appendPostState('youtube', 'success', path.basename(youtubeVideo))
   } catch (err) {
     log('YouTube', 'fail', err.message)
+    appendPostState('youtube', 'fail', null)
   }
 }
 
