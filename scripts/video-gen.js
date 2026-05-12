@@ -14,6 +14,7 @@ const READY_TO_POST_FOLDER = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
 const VIDEO_MODEL   = 'veo-3.1-fast-generate-preview'
 const POLL_INTERVAL = 10_000 // ms
+const DRY_RUN       = process.argv.includes('--dry-run')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -130,12 +131,12 @@ async function generateVideo(ai, apiKey, prompt) {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
-  log('━━━ video-gen start ━━━')
+  log(`━━━ video-gen start${DRY_RUN ? ' [DRY RUN]' : ''} ━━━`)
 
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) { log('ERROR: GEMINI_API_KEY not set'); process.exit(1) }
 
-  const ai = new GoogleGenAI({ apiKey })
+  const ai = DRY_RUN ? null : new GoogleGenAI({ apiKey })
 
   syncFromDrive()
 
@@ -162,8 +163,14 @@ async function generateVideo(ai, apiKey, prompt) {
       continue
     }
 
-    log(`  ${slot}: generating video...`)
+    log(`  ${slot}: ${DRY_RUN ? '[DRY RUN] would generate video' : 'generating video...'}`)
     log(`    prompt: ${videoPrompt.slice(0, 120)}${videoPrompt.length > 120 ? '…' : ''}`)
+
+    if (DRY_RUN) {
+      log(`    [DRY RUN] would upload → ${outFilename}`)
+      generated++
+      continue
+    }
 
     try {
       const buf = await generateVideo(ai, apiKey, videoPrompt)
@@ -180,5 +187,5 @@ async function generateVideo(ai, apiKey, prompt) {
     }
   }
 
-  log(`━━━ video-gen complete — ${generated} generated, ${skipped} skipped, ${failed} failed ━━━\n`)
+  log(`━━━ video-gen complete${DRY_RUN ? ' [DRY RUN]' : ''} — ${generated} generated, ${skipped} skipped, ${failed} failed ━━━\n`)
 })()
