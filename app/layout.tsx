@@ -23,17 +23,16 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://bigsolevibes.com'),
   title: {
     template: '%s | Big Sole Vibes',
-    default: 'Big Sole Vibes',
+    default: 'Big Sole Vibes — For the Man Who Takes Himself Seriously',
   },
-  description: 'Your feet work hard. Start acting like it.',
+  description: 'The standard for the man who takes himself seriously — head to toe. The shelf is curated. Nothing here was easy to find.',
   icons: {
     icon: '/brand/bsv-favicon.png',
     apple: '/brand/bsv-favicon.png',
   },
   openGraph: {
-    title: 'Big Sole Vibes',
-    description:
-      'Premium foot care built for men who take care of their kicks — and themselves.',
+    title: 'Big Sole Vibes — For the Man Who Takes Himself Seriously',
+    description: 'The standard for the man who takes himself seriously — head to toe. The shelf is curated. Nothing here was easy to find.',
     url: 'https://bigsolevibes.com',
     siteName: 'Big Sole Vibes',
     images: [{ url: '/og-image.jpg', width: 1200, height: 630 }],
@@ -42,8 +41,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Big Sole Vibes',
-    description: 'Premium foot care built for men.',
+    title: 'Big Sole Vibes — For the Man Who Takes Himself Seriously',
+    description: 'The standard for the man who takes himself seriously — head to toe. The shelf is curated. Nothing here was easy to find.',
     images: ['/og-image.jpg'],
   },
 }
