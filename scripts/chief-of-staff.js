@@ -362,6 +362,7 @@ async function sendTelegram(token, chatId, text) {
 
   const directive      = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
   const strategyState  = loadDriveFile(`${REMOTE}/BSV-Strategy-State.md`, TEMP_DIR)
+  const memory         = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
   const handoff        = loadDriveFile(`${REMOTE}/Handoff/BSV-Handoff-v5.md`, TEMP_DIR)
   const socialReport   = loadLatestReport('social-report')
   const brandReport    = loadLatestReport('brand-health')
@@ -374,6 +375,7 @@ async function sendTelegram(token, chatId, text) {
 
   log(`Directive: ${directive ? 'loaded' : 'missing'}`)
   log(`Strategy state: ${strategyState ? 'loaded' : 'missing'}`)
+  log(`Memory: ${memory ? 'loaded' : 'missing'}`)
   log(`Handoff: ${handoff ? 'loaded' : 'missing'}`)
   log(`Social report: ${socialReport?.filename || 'none'}`)
   log(`Brand report: ${brandReport?.filename || 'none'}`)
@@ -441,7 +443,7 @@ async function sendTelegram(token, chatId, text) {
 
   log('Calling Claude API for stand-up...')
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${strategyState ? `${strategyState}\n\n---\n\n` : ''}You are the Chief of Staff for Big Sole Vibes — a premium men's foot care brand with a soul, a mission, and a machine built to grow it.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${strategyState ? `${strategyState}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the Chief of Staff for Big Sole Vibes — a premium men's foot care brand with a soul, a mission, and a machine built to grow it.
 
 You are not here to report what happened. You are here to tell the Proprietor what it means and what needs to happen next.
 
@@ -825,7 +827,7 @@ Write in Proprietor tone — direct, specific, no padding. This is an operationa
     const handoffMsg = await client.messages.create({
       model:      'claude-sonnet-4-6',
       max_tokens: 4096,
-      system:     directive ? `${directive}\n\n---\n\nYou are the BSV Chief of Staff updating the operational handoff document.` : 'You are the BSV Chief of Staff updating the operational handoff document.',
+      system:     [directive, memory].filter(Boolean).join('\n\n---\n\n') + '\n\n---\n\nYou are the BSV Chief of Staff updating the operational handoff document.',
       messages:   [{ role: 'user', content: handoffPrompt }],
     })
     handoffText = handoffMsg.content[0]?.text?.trim() || ''
@@ -843,6 +845,56 @@ Write in Proprietor tone — direct, specific, no padding. This is an operationa
     } catch (err) {
       log(`ERROR: handoff upload failed: ${err.message}`)
     }
+  }
+
+  // ── Memory update ─────────────────────────────────────────────────────────────
+  // Reads current BSV-Memory.md, incorporates decisions/signals/outcomes from
+  // today's stand-up, and writes the updated file back to Drive.
+
+  log('Updating BSV-Memory.md...')
+  const memoryUpdatePrompt = `You are the BSV Chief of Staff. Your job right now is to update BSV-Memory.md — the shared strategic memory file read by every agent at startup.
+
+## Current BSV-Memory.md
+${memory || '(not found — write fresh using the stand-up below)'}
+
+## Today's Stand-Up
+${standupMd}
+
+---
+
+Update BSV-Memory.md to reflect anything new from the past 24 hours. Preserve the exact section structure. Only change what has actually changed:
+
+- **What's Been Decided** — add any new decisions Big D made or confirmed. Include the why.
+- **What's Working** — update with any newly confirmed working systems. Remove things that have stopped working.
+- **What's Been Tried and Failed** — add any newly discovered failures. Keep old entries.
+- **Open Questions** — remove questions that were answered. Add new ones that surfaced today.
+- **Where We're Going** — update launch condition progress if there's new signal.
+- **Who We Are / Agent Rules** — change these only if something fundamentally shifted. These are stable.
+
+Do not add padding. Do not repeat information already in the file. Only add what's genuinely new and worth carrying forward. If nothing changed in a section, keep it exactly as-is.
+
+Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header.`
+
+  try {
+    const memoryMsg = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system:     'You are the BSV Chief of Staff maintaining the strategic memory file. Return only the complete updated BSV-Memory.md — no explanation, no commentary.',
+      messages:   [{ role: 'user', content: memoryUpdatePrompt }],
+    })
+    const updatedMemory = memoryMsg.content[0]?.text?.trim() || ''
+    log(`Memory update done — ${memoryMsg.usage?.output_tokens ?? '?'} tokens`)
+
+    if (updatedMemory.includes('# BSV-Memory.md')) {
+      const localMemory = path.join(TEMP_DIR, 'BSV-Memory.md')
+      fs.writeFileSync(localMemory, updatedMemory)
+      rcloneCopyTo(localMemory, `${REMOTE}/BSV-Memory.md`)
+      log(`Memory uploaded → ${REMOTE}/BSV-Memory.md`)
+    } else {
+      log('WARNING: memory update response did not contain expected header — skipping upload')
+    }
+  } catch (err) {
+    log(`ERROR: memory update failed: ${err.message}`)
   }
 
   // ── Telegram ping ─────────────────────────────────────────────────────────────

@@ -176,6 +176,14 @@ function loadDirective() {
   } catch { return null }
 }
 
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -233,11 +241,16 @@ function getHandoff() {
   log('Loading directive and collecting context...')
   const directive     = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
+  log('Loading memory...')
+  const memory        = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const postedContent = getPostedLastNDays(7)
   const handoff       = getHandoff()
   log(`Handoff: ${handoff ? handoff.length + ' chars' : 'not found'}`)
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
 
 Your role is quality control. You review everything that has gone out under the BSV name and hold it to a single standard: does this make a serious man respect the brand, or does it make him scroll past?
 

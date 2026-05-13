@@ -52,6 +52,14 @@ function loadDirective() {
   } catch { return null }
 }
 
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function loadLatestBrandHealth() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
@@ -110,13 +118,17 @@ function getPreviousReport() {
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const previous    = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
 
   const brandHealth = loadLatestBrandHealth()
   log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver signal, not noise.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver signal, not noise.
 
 You monitor conversations across men's lifestyle, grooming, sneaker culture, and the broader cultural moment. You produce a structured intelligence report that media-director and creative-agent read before generating any content. Your output is raw material — what's happening, what men are saying, what's gaining traction.
 

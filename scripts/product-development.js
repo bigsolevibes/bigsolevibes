@@ -52,6 +52,14 @@ function loadDirective() {
   } catch { return null }
 }
 
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 function getPreviousBrief() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Product Development"`, {
@@ -91,10 +99,14 @@ function getPreviousBrief() {
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const previous = getPreviousBrief()
   log(`Previous brief: ${previous ? previous.filename : 'none — starting fresh'}`)
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}You are the Product Development Director for Big Sole Vibes (BSV) — a premium men's foot care brand preparing to launch its first private label product: Proprietor's Foot Balm.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the Product Development Director for Big Sole Vibes (BSV) — a premium men's foot care brand preparing to launch its first private label product: Proprietor's Foot Balm.
 
 ## Ritual Positioning — The Foundation
 
