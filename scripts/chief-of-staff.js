@@ -747,28 +747,101 @@ ${tokenBudgetSection}
 ### Latest Cost Report (${costReport?.filename || 'none'})
 ${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 1200 ? '\n[truncated]' : '') : '(not available — cost-report.js has not run today)'}`
 
-  let fullText = ''
+  let fullText   = ''
+  let streamError = null
 
-  const stream = await client.messages.stream({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 8000,
-    system:     systemPrompt,
-    messages:   [{ role: 'user', content: userPrompt }],
-  })
+  try {
+    const stream = await client.messages.stream({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    })
 
-  process.stdout.write('Generating stand-up')
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-      fullText += event.delta.text
-      process.stdout.write('.')
+    process.stdout.write('Generating stand-up')
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        fullText += event.delta.text
+        process.stdout.write('.')
+      }
+    }
+    process.stdout.write('\n')
+
+    const finalMsg = await stream.finalMessage()
+    log(`Stand-up done — ${finalMsg.usage?.output_tokens ?? '?'} tokens, stop: ${finalMsg.stop_reason}`)
+  } catch (err) {
+    process.stdout.write('\n')
+    streamError = err
+    const detail = err.error?.error?.message || err.message
+    log(`ERROR: stand-up API call failed — ${err.status ? `HTTP ${err.status} ` : ''}${detail}`)
+  }
+
+  // ── Error recovery ────────────────────────────────────────────────────────────
+
+  if (streamError || !fullText.trim()) {
+    const isCredit = streamError?.error?.error?.message?.includes('credit') ||
+                     streamError?.message?.includes('credit') ||
+                     streamError?.status === 400
+    const reason = streamError
+      ? (isCredit
+          ? 'API credit balance exhausted — top up at console.anthropic.com → Plans & Billing'
+          : `API call failed: ${streamError.error?.error?.message || streamError.message}`)
+      : 'API returned empty response'
+
+    if (fullText.trim()) {
+      // Partial output — prepend warning and fall through to write what we have
+      log(`WARNING: partial stand-up (${fullText.length} chars) — writing with warning header`)
+      fullText = `> ⚠️ **PARTIAL STAND-UP** — API stream cut off mid-response. Content below is incomplete.\n> **Reason:** ${reason}\n\n` + fullText
+    } else {
+      // Nothing — write emergency brief, optionally ping Telegram, return cleanly
+      log('Writing emergency brief...')
+      const emergencyBrief = [
+        `# BSV Chief of Staff — Emergency Brief`,
+        `**${dayName} ${today} — Chief ran but stand-up failed**`,
+        ``,
+        `⚠️ **Reason:** ${reason}`,
+        ``,
+        `## Pipeline State at Time of Failure`,
+        `- Ready to Post: ${readyToPost}`,
+        `- Posted last 24h: ${postedLast24h}`,
+        `- Output files: ${outputFiles.join(', ') || 'none'}`,
+        `- Brief files: ${briefFiles.join(', ') || 'none'}`,
+        `- Product dev: ${productDevState?.milestone || 'unknown'} (action_needed: ${productDevState?.action_needed ?? 'unknown'})`,
+        `- Change state: ${changeState ? `${changeState.open_issues} open issues` : 'unknown'}`,
+        `- API spend est: $${tokenBudget.totalEstCost.toFixed(4)} today`,
+        ``,
+        `## Action Required`,
+        isCredit
+          ? `Top up API credits at console.anthropic.com → Plans & Billing.`
+          : `Check logs/chief-of-staff-error.log for the full stack trace.`,
+        `Re-run manually: \`node scripts/chief-of-staff.js\``,
+      ].join('\n')
+
+      const localEmergency = path.join(TEMP_DIR, outFile)
+      fs.writeFileSync(localEmergency, emergencyBrief)
+      try {
+        rcloneCopyTo(localEmergency, `${REMOTE}/Reports/${outFile}`)
+        log(`Emergency brief uploaded → ${REMOTE}/Reports/${outFile}`)
+      } catch (uploadErr) {
+        log(`ERROR: emergency brief upload failed: ${uploadErr.message}`)
+      }
+
+      const tToken  = process.env.TELEGRAM_BOT_TOKEN
+      const tChatId = process.env.TELEGRAM_CHAT_ID
+      if (tToken && tChatId) {
+        try {
+          await sendTelegram(tToken, tChatId,
+            `⚠️ *BSV Chief of Staff — ${today}*\n\nStand-up failed.\n*Reason:* ${reason}\n\nEmergency brief uploaded to Drive.\nRe-run: \`node scripts/chief-of-staff.js\``)
+          log('Telegram emergency ping sent ✓')
+        } catch (tgErr) {
+          log(`ERROR: Telegram emergency ping failed: ${tgErr.message}`)
+        }
+      }
+
+      log('━━━ chief-of-staff complete (emergency mode) ━━━\n')
+      return
     }
   }
-  process.stdout.write('\n')
-
-  const finalMsg = await stream.finalMessage()
-  log(`Stand-up done — ${finalMsg.usage?.output_tokens ?? '?'} tokens, stop: ${finalMsg.stop_reason}`)
-
-  if (!fullText.trim()) { log('ERROR: empty stand-up response'); process.exit(1) }
 
   // Split stand-up body from Telegram ping
   const telegramDelimiter = '<!-- TELEGRAM -->'
