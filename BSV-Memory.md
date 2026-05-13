@@ -1,5 +1,9 @@
 # BSV-Memory.md — Strategic Memory
 
+**Every agent exists to build the lounge — ten thousand men who hold the standard — so the Proprietor's Foot Balm earns its launch. Until that's done, the pipeline has one job: growth.**
+
+---
+
 This file is the living strategic record of Big Sole Vibes. It is distinct from the Directive (which is timeless) and the Handoff (which is operational). Memory is what we've learned, decided, tried, and are still figuring out. Every agent reads it. Chief of Staff updates it every morning.
 
 ---
