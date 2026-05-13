@@ -424,7 +424,7 @@ async function postToYouTube() {
     log('YouTube', 'fail', 'Missing YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN')
     return
   }
-  if (!youtubeVideo) throw new Error(`No .mp4 found in ${imageDir} — video generation may have failed`)
+  if (!youtubeVideo) { log('YouTube', 'fail', `No .mp4 found in ${imageDir} — video generation may have failed`); appendPostState('youtube', 'fail', null); return }
 
   try {
     const result = spawnSync(process.execPath, [
