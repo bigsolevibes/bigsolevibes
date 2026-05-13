@@ -323,14 +323,22 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
 // ─── Telegram ─────────────────────────────────────────────────────────────────
 
 async function sendTelegram(token, chatId, text) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(`Telegram error: ${JSON.stringify(data)}`)
-  return data
+  // Try Markdown first; if Telegram rejects it as malformed, retry as plain text
+  for (const parse_mode of ['Markdown', null]) {
+    const body = { chat_id: chatId, text }
+    if (parse_mode) body.parse_mode = parse_mode
+    const res  = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (res.ok) return data
+    const isParseError = data.description?.toLowerCase().includes('parse') ||
+                         data.description?.toLowerCase().includes('entity')
+    if (parse_mode && isParseError) continue   // retry without formatting
+    throw new Error(`Telegram error: ${JSON.stringify(data)}`)
+  }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -844,7 +852,7 @@ ${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 
       if (tToken && tChatId) {
         try {
           await sendTelegram(tToken, tChatId,
-            `⚠️ *BSV Chief of Staff — ${today}*\n\nStand-up failed.\n*Reason:* ${reason}\n\nEmergency brief uploaded to Drive.\nRe-run: \`node scripts/chief-of-staff.js\``)
+            `⚠️ *BSV Chief of Staff — ${today}*\n\nStand-up failed.\n*Reason:* ${reason}\n\nEmergency brief uploaded to Drive.\nRe-run: node scripts/chief-of-staff.js`)
           log('Telegram emergency ping sent ✓')
         } catch (tgErr) {
           log(`ERROR: Telegram emergency ping failed: ${tgErr.message}`)
