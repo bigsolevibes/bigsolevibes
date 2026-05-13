@@ -353,6 +353,10 @@ async function sendTelegram(token, chatId, text) {
   const outFile          = `standup-${today}.md`
   const updateOrgChart   = process.argv.includes('--update-org-chart')
 
+  // Step-level failure tracking — accumulated into the final summary line
+  const failures = []
+  let standupUploaded = false
+
   // ── Collect context ──────────────────────────────────────────────────────────
 
   log('Collecting context...')
@@ -417,8 +421,13 @@ async function sendTelegram(token, chatId, text) {
   log('Running org chart gap detection...')
   const orgChartSvg    = loadOrgChart()
   const knownAgents    = orgChartSvg ? parseOrgChartAgents(orgChartSvg) : []
-  const scriptFiles    = fs.readdirSync(path.join(ROOT, 'scripts'))
-    .filter(f => f.endsWith('.js')).sort()
+  let scriptFiles = []
+  try {
+    scriptFiles = fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort()
+  } catch (err) {
+    log(`ERROR [scripts-dir]: ${err.message}`)
+    failures.push(`scripts-dir: ${err.message}`)
+  }
   const inactiveAgents = checkLogActivity(knownAgents, 7)
   const newScripts     = scriptFiles.filter(s => !knownAgents.includes(s))
   const orgHasGaps     = newScripts.length > 0 || inactiveAgents.length > 0
@@ -818,12 +827,16 @@ ${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 
       ].join('\n')
 
       const localEmergency = path.join(TEMP_DIR, outFile)
-      fs.writeFileSync(localEmergency, emergencyBrief)
       try {
-        rcloneCopyTo(localEmergency, `${REMOTE}/Reports/${outFile}`)
-        log(`Emergency brief uploaded → ${REMOTE}/Reports/${outFile}`)
-      } catch (uploadErr) {
-        log(`ERROR: emergency brief upload failed: ${uploadErr.message}`)
+        fs.writeFileSync(localEmergency, emergencyBrief)
+        try {
+          rcloneCopyTo(localEmergency, `${REMOTE}/Reports/${outFile}`)
+          log(`Emergency brief uploaded → ${REMOTE}/Reports/${outFile}`)
+        } catch (uploadErr) {
+          log(`ERROR [emergency-upload]: ${uploadErr.message}`)
+        }
+      } catch (writeErr) {
+        log(`ERROR [emergency-write]: ${writeErr.message}`)
       }
 
       const tToken  = process.env.TELEGRAM_BOT_TOKEN
@@ -852,14 +865,20 @@ ${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 
   // ── Save stand-up locally and upload to Drive ─────────────────────────────────
 
   const localStandup = path.join(TEMP_DIR, outFile)
-  fs.writeFileSync(localStandup, standupMd)
-  log(`Stand-up saved locally: ${localStandup}`)
-
   try {
-    rcloneCopyTo(localStandup, `${REMOTE}/Reports/${outFile}`)
-    log(`Stand-up uploaded → ${REMOTE}/Reports/${outFile}`)
-  } catch (err) {
-    log(`ERROR: stand-up upload failed: ${err.message}`)
+    fs.writeFileSync(localStandup, standupMd)
+    log(`Stand-up saved locally: ${localStandup}`)
+    try {
+      rcloneCopyTo(localStandup, `${REMOTE}/Reports/${outFile}`)
+      log(`Stand-up uploaded → ${REMOTE}/Reports/${outFile}`)
+      standupUploaded = true
+    } catch (uploadErr) {
+      log(`ERROR [standup-upload]: ${uploadErr.message}`)
+      failures.push(`standup-upload: ${uploadErr.message}`)
+    }
+  } catch (writeErr) {
+    log(`ERROR [standup-write]: ${writeErr.message}`)
+    failures.push(`standup-write: ${writeErr.message}`)
   }
 
   // ── Handoff update ────────────────────────────────────────────────────────────
@@ -902,17 +921,24 @@ Write in Proprietor tone — direct, specific, no padding. This is an operationa
     handoffText = handoffMsg.content[0]?.text?.trim() || ''
     log(`Handoff done — ${handoffMsg.usage?.output_tokens ?? '?'} tokens`)
   } catch (err) {
-    log(`ERROR: handoff generation failed: ${err.message}`)
+    log(`ERROR [handoff-api]: ${err.message}`)
+    failures.push(`handoff-api: ${err.message}`)
   }
 
   if (handoffText) {
     const localHandoff = path.join(TEMP_DIR, 'BSV-Handoff-v5.md')
-    fs.writeFileSync(localHandoff, handoffText)
     try {
-      rcloneCopyTo(localHandoff, `${REMOTE}/Handoff/BSV-Handoff-v5.md`)
-      log(`Handoff uploaded → ${REMOTE}/Handoff/BSV-Handoff-v5.md`)
-    } catch (err) {
-      log(`ERROR: handoff upload failed: ${err.message}`)
+      fs.writeFileSync(localHandoff, handoffText)
+      try {
+        rcloneCopyTo(localHandoff, `${REMOTE}/Handoff/BSV-Handoff-v5.md`)
+        log(`Handoff uploaded → ${REMOTE}/Handoff/BSV-Handoff-v5.md`)
+      } catch (uploadErr) {
+        log(`ERROR [handoff-upload]: ${uploadErr.message}`)
+        failures.push(`handoff-upload: ${uploadErr.message}`)
+      }
+    } catch (writeErr) {
+      log(`ERROR [handoff-write]: ${writeErr.message}`)
+      failures.push(`handoff-write: ${writeErr.message}`)
     }
   }
 
@@ -956,14 +982,25 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
 
     if (updatedMemory.includes('# BSV-Memory.md')) {
       const localMemory = path.join(TEMP_DIR, 'BSV-Memory.md')
-      fs.writeFileSync(localMemory, updatedMemory)
-      rcloneCopyTo(localMemory, `${REMOTE}/BSV-Memory.md`)
-      log(`Memory uploaded → ${REMOTE}/BSV-Memory.md`)
+      try {
+        fs.writeFileSync(localMemory, updatedMemory)
+        try {
+          rcloneCopyTo(localMemory, `${REMOTE}/BSV-Memory.md`)
+          log(`Memory uploaded → ${REMOTE}/BSV-Memory.md`)
+        } catch (uploadErr) {
+          log(`ERROR [memory-upload]: ${uploadErr.message}`)
+          failures.push(`memory-upload: ${uploadErr.message}`)
+        }
+      } catch (writeErr) {
+        log(`ERROR [memory-write]: ${writeErr.message}`)
+        failures.push(`memory-write: ${writeErr.message}`)
+      }
     } else {
       log('WARNING: memory update response did not contain expected header — skipping upload')
     }
   } catch (err) {
-    log(`ERROR: memory update failed: ${err.message}`)
+    log(`ERROR [memory-api]: ${err.message}`)
+    failures.push(`memory-api: ${err.message}`)
   }
 
   // ── Telegram ping ─────────────────────────────────────────────────────────────
@@ -987,5 +1024,13 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
     log('WARNING: no Telegram section found in stand-up output — ping skipped')
   }
 
+  // ── Final summary ─────────────────────────────────────────────────────────────
+  if (standupUploaded && failures.length === 0) {
+    log(`Chief complete — standup uploaded to Drive ✓`)
+  } else if (standupUploaded) {
+    log(`Chief complete — standup uploaded to Drive ✓ | secondary failures: ${failures.join(' | ')}`)
+  } else {
+    log(`Chief failed — standup NOT uploaded | ${failures.length ? failures.join(' | ') : 'unknown error'}`)
+  }
   log('━━━ chief-of-staff complete ━━━\n')
 })()
