@@ -93,6 +93,21 @@ function buildCaptionMd(fields) {
   return `${header}# ${slot} — ${theme}\n\n## instagram\n${ig}\n\n## twitter\n${tw}\n\n## facebook\n${fb}\n`
 }
 
+// ─── BSV visual preamble ──────────────────────────────────────────────────────
+// Prepended to every image and video prompt before it reaches Gemini.
+// Establishes the creative standard so individual briefs don't need to repeat it.
+
+const BSV_VISUAL_PREAMBLE = `Big Sole Vibes visual standard: premium men's lifestyle brand. Every image must contain a specific person in a specific moment with a specific emotional hook. No empty rooms. No objects without a human subject. No stock photo compositions. Reject any prompt that does not name a person and a story.
+
+Three core scenes — every brief draws from one:
+(1) THE SUIT: End of day. Still sharp. The day shows on him. The hook is what held up all day except what was inside those shoes. Dark office or dimly lit room. Jacket on the chair. Man seated, composed, reaching down.
+(2) THE INTIMATE MOMENT: Shoes come off. Everything looks right except one thing. Foot care is the gap between his standard and reality. Private space — bedroom, locker room, low light. The man is still — the moment is the admission.
+(3) THE ATHLETE: Soccer, basketball, baseball — he did all of this on his feet today. Post-game, post-practice. The body is done; the standard isn't. Cinematic, honest, earned.
+
+Visual language: dark wood, warm amber light (#C17D2E), deep navy (#0D1B2A), cinematic grain, masculine restraint. No product placement. No logos in generated image. The man is the product.
+
+`
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -143,7 +158,7 @@ function buildCaptionMd(fields) {
     const imagePrompt = fields.image_brief
     if (imagePrompt) {
       const promptLocal = path.join(TEMP_DIR, `${slug}-prompt.txt`)
-      fs.writeFileSync(promptLocal, imagePrompt)
+      fs.writeFileSync(promptLocal, BSV_VISUAL_PREAMBLE + imagePrompt)
       try {
         uploadFile(promptLocal, `${REMOTE}/Ready to Post/${slug}-prompt.txt`)
         log(`    ✓ uploaded → Ready to Post/${slug}-prompt.txt`)
@@ -158,7 +173,7 @@ function buildCaptionMd(fields) {
     const videoPrompt = fields.video_brief
     if (videoPrompt) {
       const flowLocal = path.join(TEMP_DIR, `${slug}-flow-prompt.txt`)
-      fs.writeFileSync(flowLocal, videoPrompt)
+      fs.writeFileSync(flowLocal, BSV_VISUAL_PREAMBLE + videoPrompt)
       try {
         uploadFile(flowLocal, `${REMOTE}/Ready to Post/${slug}-flow-prompt.txt`)
         log(`    ✓ uploaded → Ready to Post/${slug}-flow-prompt.txt`)
