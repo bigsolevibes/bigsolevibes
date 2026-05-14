@@ -225,7 +225,19 @@ ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${pro
 
     const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
 
-Focus: the shelf tells a head-to-toe story anchored at the foot — that is what makes BSV distinct. Start at the foundation and work up. Premium foot soaks, nail and skin tools, lower-leg and calf recovery, then up through body care and grooming. The man who buys Proprietor's Foot Balm also owns these. Every product must connect, directly or by ritual, to the care of the body from the ground up. Not medicated. Not problem-solving. Not findable on the first page of any generic search. This is the shelf the Proprietor built — it starts where most men never think to look and rises from there.
+Focus: premium men's products anchored at the foot and working up. Search these specific categories:
+
+1. **Premium foot soaks and recovery tools** at the intersection of athletics and ritual — the kind used by serious athletes but chosen by discerning men for the quality of the experience, not the problem they solve. Think magnesium-based soaks, cold/heat recovery tools, elevated versions of what a trainer recommends.
+
+2. **Caldera + Lab style brands** — clean, intentional positioning, serious ingredient decks, no noise. Brands that earn the man's trust through what they don't say as much as what they do. Sparse design, premium actives, direct-to-consumer with a following earned not bought.
+
+3. **Leg and foot recovery products** — compression tools, circulation devices, percussive tools for calves and soles, recovery sleeves. Must be premium tier — not drugstore, not mass market, not loud branding. The kind a strength coach or physio would use on themselves.
+
+4. **Products with serious ingredient credentials and understated packaging** — nothing medicinal-looking, nothing bright or loud, nothing that screams "foot problem." Think apothecary-register, dark glass, minimal copy, ingredients you'd recognize from a dermatology source.
+
+The Proprietor's Audit test: would the BSV man reach for this without needing to explain it to anyone? If he'd have to justify it at the checkout, it fails.
+
+Hard exclusions: medicated, antifungal, problem-positioned, first-page Google results for any foot-related search, loud branding, juvenile packaging, anything that feels clinical or corrective rather than intentional.
 
 ${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
