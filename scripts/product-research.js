@@ -225,7 +225,7 @@ ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${pro
 
     const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
 
-Focus: foot and lower-leg care products that belong in a serious man's grooming rotation. Think balms, salves, scrubs, soaks, recovery tools, and premium nail care. Exclude anything medical, medicated, or problem-focused.
+Focus: the full BSV man — head to toe. Skincare, grooming, recovery, body, foot care, and tools. This is not a foot care account; it is a men's standard-of-living brand. Find products across the entire ritual: face, skin, hair, body, recovery, and foot care. Think serums, grooming tools, body treatments, recovery gear, premium soaps, and anything a man who takes himself seriously would add to his rotation. Exclude anything medical, medicated, problem-positioned, or findable on the first page of any generic search.
 
 ${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
@@ -317,7 +317,7 @@ Return a JSON array with this exact shape:
 [
   {
     "name": "Product Name",
-    "category": "Foot Serums | Foot Creams | Foot Powders | Foot Grooming Tools | Foot Soaks & Recovery | Nail Care | Full Kits",
+    "category": "Skincare | Grooming Tools | Body Care | Hair Care | Recovery | Foot Care | Nail Care | Full Kits",
     "asin": "B00XXXXXXX",
     "price": "$XX",
     "score": "82/100",
@@ -330,7 +330,7 @@ Rules:
 - Pick the 12 highest-scoring products from The Shelf section
 - description: 1 sentence, BSV voice — factual, confident, no exclamation marks
 - reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize
-- category must exactly match one of the seven values above
+- category must exactly match one of the eight values above
 - score must be "XX/100" format
 - If a product has no ASIN, use its brand direct or specialty retailer URL in the asin field
 
