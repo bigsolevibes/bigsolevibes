@@ -342,11 +342,18 @@ ${fullText}`,
   const jsonText = extractResponse.content.filter(b => b.type === 'text').map(b => b.text).join('')
   let picks
   try {
-    const cleaned = jsonText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-    picks = JSON.parse(cleaned)
+    // Strip markdown fences, then extract from first '[' to last ']' to
+    // handle any trailing text or commentary the model appended after the array
+    const stripped = jsonText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const start = stripped.indexOf('[')
+    const end   = stripped.lastIndexOf(']')
+    if (start === -1 || end === -1 || end <= start) throw new Error('no JSON array found in response')
+    picks = JSON.parse(stripped.slice(start, end + 1))
     if (!Array.isArray(picks)) throw new Error('expected array')
+    log(`Extracted ${picks.length} picks from JSON`)
   } catch (err) {
-    log(`WARNING: JSON parse failed — ${err.message} — skipping sheet update`)
+    log(`WARNING: JSON parse failed — ${err.message}`)
+    log(`Raw response (first 500 chars): ${jsonText.slice(0, 500)}`)
     log('━━━ product-research complete ━━━\n')
     return
   }
