@@ -223,21 +223,44 @@ Specifically:
 Product-research and product-development are teammates — one curates the shelf today, the other builds what owns the shelf tomorrow. They do not work against each other.
 ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}`
 
-    const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
+    const userPrompt = `You are a product curator searching for items that belong on the BSV shelf. You are not searching for what most men would find — you are searching for what a man who takes himself seriously would find if he actually went looking.
 
-Focus: premium men's products anchored at the foot and working up. Search these specific categories:
+## Exact search queries to run — use these verbatim
 
-1. **Premium foot soaks and recovery tools** at the intersection of athletics and ritual — the kind used by serious athletes but chosen by discerning men for the quality of the experience, not the problem they solve. Think magnesium-based soaks, cold/heat recovery tools, elevated versions of what a trainer recommends.
+Run each of the following searches and dig into the results. Do not summarize. Find actual products with names, prices, and purchase URLs.
 
-2. **Caldera + Lab style brands** — clean, intentional positioning, serious ingredient decks, no noise. Brands that earn the man's trust through what they don't say as much as what they do. Sparse design, premium actives, direct-to-consumer with a following earned not bought.
+**Discovery searches:**
+- "luxury men's foot ritual UK"
+- "professional grade men's foot treatment"
+- "high end men's pedicure products"
+- "men's foot care sold at Gilt Barneys Nordstrom"
+- "spa quality men's foot soak men"
+- "men's grooming independent brands not Amazon"
+- "men's lower leg recovery tool premium"
+- "magnesium foot soak athletic recovery ritual"
+- "apothecary men's foot care understated"
+- "men's grooming Huckberry exclusive"
 
-3. **Leg and foot recovery products** — compression tools, circulation devices, percussive tools for calves and soles, recovery sleeves. Must be premium tier — not drugstore, not mass market, not loud branding. The kind a strength coach or physio would use on themselves.
+**Search these specific retailer sites directly** — look at their men's grooming and recovery sections:
+- site:huckberry.com men's grooming OR foot OR recovery
+- site:groominglounge.com foot OR leg OR recovery
+- site:artofshaving.com foot OR body
+- site:gilt.com men's grooming
+- site:nordstrom.com men's foot care OR body care OR grooming tools
 
-4. **Products with serious ingredient credentials and understated packaging** — nothing medicinal-looking, nothing bright or loud, nothing that screams "foot problem." Think apothecary-register, dark glass, minimal copy, ingredients you'd recognize from a dermatology source.
+**Niche and independent brand searches:**
+- "men's grooming cult brand UK apothecary"
+- "men's foot soak DTC brand intentional packaging"
+- "premium calf compression men's recovery"
+- "men's skin care dermatologist formulated understated"
 
-The Proprietor's Audit test: would the BSV man reach for this without needing to explain it to anyone? If he'd have to justify it at the checkout, it fails.
+## What you are looking for
 
-Hard exclusions: medicated, antifungal, problem-positioned, first-page Google results for any foot-related search, loud branding, juvenile packaging, anything that feels clinical or corrective rather than intentional.
+Products anchored at the foot and working up. The man who buys Proprietor's Foot Balm also owns these. Every pick must pass the checkout test: would the BSV man reach for it without needing to explain it to anyone?
+
+Categories: premium foot soaks, lower-leg and calf recovery tools, compression and circulation products, clean-positioning grooming brands (Caldera + Lab register), understated body treatments with serious ingredient decks.
+
+Hard exclusions: medicated, antifungal, problem-positioned, first-page generic Google results, loud or juvenile packaging, anything clinical-looking, anything you'd find in a drugstore.
 
 ${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
