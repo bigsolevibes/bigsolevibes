@@ -391,8 +391,6 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     return
   }
 
-  // Use → not ✗ here — log() writes to stdout which launchd pipes into watch-drive.log,
-  // and ✗ would trigger extractFailures on the next run, creating a prefix snowball.
   failures.forEach(f => log(`  → [${f.source}] ${f.platform}: ${f.message}`))
 
   // Classify failures: new (never seen), active (baselined but recurring after baseline), or old (skip)

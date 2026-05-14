@@ -577,11 +577,13 @@ async function run() {
   log('━━━ poll end ━━━\n')
 
   // Run eng-bot after every poll so it catches errors while the log is fresh.
-  // Inherits env so ANTHROPIC_API_KEY and ZOHO_SMTP_* are available.
+  // stdio:'pipe' keeps eng-bot output out of watch-drive.log (eng-bot writes its
+  // own log to logs/eng-bot.log — piping it here causes a recursive feedback loop
+  // where eng-bot's own output lines get re-read as new failures on the next poll).
   spawnSync(process.execPath, [path.join(__dirname, 'eng-bot.js')], {
     cwd:   ROOT,
     env:   process.env,
-    stdio: 'inherit',
+    stdio: 'pipe',
   })
 
   // Check product queue — triggers sync-shop.js on any approval or rejection change.
