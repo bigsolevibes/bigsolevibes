@@ -30,6 +30,7 @@ export const metadata: Metadata = {
     icon: '/brand/bsv-favicon.png',
     apple: '/brand/bsv-favicon.png',
   },
+
   openGraph: {
     title: 'Big Sole Vibes — For the Man Who Takes Himself Seriously',
     description: 'The standard for the man who takes himself seriously — head to toe. The shelf is curated. Nothing here was easy to find.',

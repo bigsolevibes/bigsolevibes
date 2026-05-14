@@ -143,6 +143,7 @@ export default function ComingSoonPage() {
 
       </main>
 
+
     </div>
       <Footer />
     </>
