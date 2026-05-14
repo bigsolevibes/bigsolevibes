@@ -31,7 +31,6 @@ const LABELS = ['approved', 'monitoring', 'stable', 'flagged', 'rolled-back']
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
-  console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
 }
 
@@ -119,19 +118,27 @@ function ensureLabels() {
 }
 
 function openIssue(title, body, label) {
-  try {
-    const bodyFile = path.join(TEMP_DIR, 'issue-body.md')
-    fs.writeFileSync(bodyFile, body)
-    const out = execSync(
-      `gh issue create --repo ${GH_REPO} --title ${JSON.stringify(title)} --body-file "${bodyFile}" --label "${label}"`,
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
-    ).trim()
-    const m = out.match(/\/issues\/(\d+)/)
-    return m ? parseInt(m[1]) : null
-  } catch (err) {
-    log(`WARNING: gh issue create failed: ${err.message?.split('\n')[0]}`)
-    return null
+  const bodyFile = path.join(TEMP_DIR, 'issue-body.md')
+  fs.writeFileSync(bodyFile, body)
+  const cmd = `gh issue create --repo ${GH_REPO} --title ${JSON.stringify(title)} --body-file "${bodyFile}" --label "${label}"`
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const out = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim()
+      const m = out.match(/\/issues\/(\d+)/)
+      return m ? parseInt(m[1]) : null
+    } catch (err) {
+      const firstLine = err.message?.split('\n')[0] || ''
+      if (attempt === 1 && /422|429|rate.limit|secondary/i.test(firstLine)) {
+        log(`  rate-limited — retrying in 5s (${title.slice(0, 60)}…)`)
+        execSync('sleep 5')
+      } else {
+        log(`WARNING: gh issue create failed: ${firstLine}`)
+        return null
+      }
+    }
   }
+  return null
 }
 
 function updateIssueLabel(num, addLabel, removeLabel) {
@@ -276,6 +283,16 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   for (const commit of newCommits) {
     if (state.tracked_issues?.[commit.hash]) {
       log(`  ${commit.hash.slice(0, 7)} already tracked — skipping`)
+      continue
+    }
+
+    // Skip routine automated commits — track them in state so they're never revisited,
+    // but don't open an issue (post output, chores, and other pipeline noise).
+    const SKIP_PREFIXES = /^(auto:|chore:|Auto:|Chore:)/
+    if (SKIP_PREFIXES.test(commit.subject)) {
+      log(`  ${commit.hash.slice(0, 7)} skipped (automated commit): ${commit.subject.slice(0, 60)}`)
+      state.tracked_issues = state.tracked_issues || {}
+      state.tracked_issues[commit.hash] = 'skipped'
       continue
     }
 

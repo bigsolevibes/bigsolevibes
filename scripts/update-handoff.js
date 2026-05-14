@@ -58,11 +58,12 @@ async function checkMetaTokenExpiry() {
   } catch { return null }
 }
 
-function getRecentLogs(n = 60) {
+function getRecentLogs(n = 30) {
   try {
     const content = fs.readFileSync(path.join(ROOT, 'logs', 'watch-drive.log'), 'utf8')
     const lines = content.trim().split('\n')
-    return lines.slice(-n).join('\n')
+    // Cap each line to 200 chars to guard against log flooding artifacts
+    return lines.slice(-n).map(l => l.slice(0, 200)).join('\n')
   } catch { return '(no log file found)' }
 }
 
@@ -165,7 +166,7 @@ function getExistingHandoff() {
   // Collect state
   log('Collecting project state...')
   const envKeys       = getEnvKeyNames()
-  const recentLogs    = getRecentLogs(80)
+  const recentLogs    = getRecentLogs(30)
   const pipelineState = getPipelineState()
   const outputFiles   = getOutputFiles()
   const contentFiles  = getContentFiles()
@@ -204,7 +205,7 @@ ${tokenExpiryLine}
 ## Configured Environment Variables (key names only)
 ${envKeys.join('\n')}
 
-## Recent Pipeline Activity (last 80 log lines)
+## Recent Pipeline Activity (last 30 log lines)
 \`\`\`
 ${recentLogs}
 \`\`\`
@@ -283,7 +284,7 @@ Do not invent or fabricate information not present in the context.`
   try {
     const stream = await client.messages.stream({
       model:      'claude-opus-4-7',
-      max_tokens: 8192,
+      max_tokens: 16384,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     })

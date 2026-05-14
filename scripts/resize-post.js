@@ -122,9 +122,11 @@ const ext = path.extname(inputPath).toLowerCase()
     if (!status) {
       console.log('\ngit: nothing new to commit')
     } else {
-      execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'inherit' })
-      execSync('git push origin HEAD:main', { cwd: root, stdio: 'inherit' })
-      console.log('→ deployed to Cloudflare Pages')
+      execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'pipe' })
+      // Push to main so Cloudflare Pages auto-deploy fires.
+      // preview/full-site is always a superset of origin/main so this is a fast-forward.
+      execSync('git push origin HEAD:main', { cwd: root, stdio: 'pipe' })
+      console.log('→ pushed to main (Cloudflare deploy triggered)')
     }
   } catch (err) {
     console.warn(`⚠ git deploy failed: ${err.message}`)
