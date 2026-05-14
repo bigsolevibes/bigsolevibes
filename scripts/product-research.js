@@ -225,7 +225,7 @@ ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${pro
 
     const userPrompt = `Find products that belong on the BSV shelf. Search professional and specialty sources first — podiatrist recommendations, athletic trainer protocols, high-end grooming retailers, barber community. Amazon is your last stop, not your first.
 
-Focus: the full BSV man — head to toe. Skincare, grooming, recovery, body, foot care, and tools. This is not a foot care account; it is a men's standard-of-living brand. Find products across the entire ritual: face, skin, hair, body, recovery, and foot care. Think serums, grooming tools, body treatments, recovery gear, premium soaps, and anything a man who takes himself seriously would add to his rotation. Exclude anything medical, medicated, problem-positioned, or findable on the first page of any generic search.
+Focus: the shelf tells a head-to-toe story anchored at the foot — that is what makes BSV distinct. Start at the foundation and work up. Premium foot soaks, nail and skin tools, lower-leg and calf recovery, then up through body care and grooming. The man who buys Proprietor's Foot Balm also owns these. Every product must connect, directly or by ritual, to the care of the body from the ground up. Not medicated. Not problem-solving. Not findable on the first page of any generic search. This is the shelf the Proprietor built — it starts where most men never think to look and rises from there.
 
 ${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
