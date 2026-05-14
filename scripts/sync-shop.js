@@ -804,8 +804,8 @@ function gitPush() {
 
     const msg = `chore: sync shop — ${new Date().toISOString().slice(0,10)}`
     execSync(`git commit -m "${msg}"`, { cwd, stdio: 'pipe' })
-    execSync('git push', { cwd, stdio: 'pipe' })
-    log('Git: pushed → Cloudflare Pages deploy triggered')
+    execSync('git push origin HEAD:main', { cwd, stdio: 'pipe' })
+    log('Git: pushed → main → Cloudflare Pages deploy triggered')
     return true
   } catch (err) {
     log(`ERROR: git push failed — ${err.stderr?.toString().trim() || err.message}`)
