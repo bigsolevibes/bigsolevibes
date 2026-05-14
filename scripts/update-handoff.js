@@ -9,7 +9,10 @@ const ROOT        = path.join(__dirname, '..')
 const LOG_FILE    = path.join(ROOT, 'logs', 'update-handoff.log')
 const TEMP_DIR    = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'
-const HANDOFF_FILE   = 'BSV-Handoff-v5.md'
+
+const today = new Date()
+const dateStamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+const HANDOFF_FILE = `BSV-Handoff-${dateStamp}.md`
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -130,8 +133,16 @@ function getLatestBrandHealth() {
 function getExistingHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
-    execSync(`rclone copy "${REMOTE_HANDOFF}/${HANDOFF_FILE}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
-    const localPath = path.join(TEMP_DIR, HANDOFF_FILE)
+    // Find the most recent dated handoff on Drive
+    const listing = execSync(`rclone ls "${REMOTE_HANDOFF}"`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+    const files = listing.trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^BSV-Handoff-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE_HANDOFF}/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
+    const localPath = path.join(TEMP_DIR, latest)
     if (fs.existsSync(localPath)) return fs.readFileSync(localPath, 'utf8')
   } catch {}
   return null

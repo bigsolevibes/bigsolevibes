@@ -21,6 +21,25 @@ const LOG_FILE = path.join(ROOT, 'logs', 'chief-of-staff.log')
 const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-chief-of-staff')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
 
+const _today = new Date()
+const DATE_STAMP = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`
+const HANDOFF_FILENAME = `BSV-Handoff-${DATE_STAMP}.md`
+
+function loadLatestHandoff() {
+  try {
+    const listing = execSync(`rclone ls "${REMOTE}/Handoff"`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+    const files = listing.trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^BSV-Handoff-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    const localPath = path.join(TEMP_DIR, latest)
+    execSync(`rclone copy "${REMOTE}/Handoff/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
+    return fs.existsSync(localPath) ? fs.readFileSync(localPath, 'utf8') : null
+  } catch { return null }
+}
+
 const DAILY_API_CEILING   = 2.00   // $ — hard daily limit Chief enforces
 const CLAUDE_INPUT_PER_M  = 3.00   // $ per 1M input tokens (Sonnet 4.x)
 const CLAUDE_OUTPUT_PER_M = 15.00  // $ per 1M output tokens
@@ -375,7 +394,7 @@ async function sendTelegram(token, chatId, text) {
   const directive      = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
   const strategyState  = loadDriveFile(`${REMOTE}/BSV-Strategy-State.md`, TEMP_DIR)
   const memory         = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
-  const handoff        = loadDriveFile(`${REMOTE}/Handoff/BSV-Handoff-v5.md`, TEMP_DIR)
+  const handoff        = loadLatestHandoff()
   const socialReport   = loadLatestReport('social-report')
   const brandReport    = loadLatestReport('brand-health')
   const marketingReport = loadLatestReport('marketing')
@@ -756,7 +775,7 @@ Gaps detected: ${orgHasGaps ? 'YES' : 'no'}
 Update mode (--update-org-chart): ${updateOrgChart ? 'YES' : 'no'}
 Org update result: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : 'n/a'}
 
-## Current Handoff Doc (BSV-Handoff-v5.md)
+## Current Handoff Doc (${HANDOFF_FILENAME})
 ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}
 
 ${tokenBudgetSection}
@@ -892,7 +911,7 @@ ${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 
   // ── Handoff update ────────────────────────────────────────────────────────────
 
   log('Generating updated handoff doc...')
-  const handoffPrompt = `You have just produced today's BSV daily stand-up (below). Now write the updated BSV-Handoff-v5.md.
+  const handoffPrompt = `You have just produced today's BSV daily stand-up (below). Now write the updated ${HANDOFF_FILENAME}.
 
 The handoff is the living state document that every agent reads before executing. It must reflect current reality — not last week's state, not aspirations. What is true right now.
 
@@ -904,7 +923,7 @@ ${handoff ? handoff.slice(0, 3000) + (handoff.length > 3000 ? '\n[truncated]' : 
 
 ---
 
-Write the complete BSV-Handoff-v5.md. Cover:
+Write the complete ${HANDOFF_FILENAME}. Cover:
 
 1. **What BSV Is** — one paragraph, the mission and the feeling (from directive, never changes)
 2. **Current Pipeline State** — what's working, what's broken, what needs attention
@@ -934,12 +953,12 @@ Write in Proprietor tone — direct, specific, no padding. This is an operationa
   }
 
   if (handoffText) {
-    const localHandoff = path.join(TEMP_DIR, 'BSV-Handoff-v5.md')
+    const localHandoff = path.join(TEMP_DIR, HANDOFF_FILENAME)
     try {
       fs.writeFileSync(localHandoff, handoffText)
       try {
-        rcloneCopyTo(localHandoff, `${REMOTE}/Handoff/BSV-Handoff-v5.md`)
-        log(`Handoff uploaded → ${REMOTE}/Handoff/BSV-Handoff-v5.md`)
+        rcloneCopyTo(localHandoff, `${REMOTE}/Handoff/${HANDOFF_FILENAME}`)
+        log(`Handoff uploaded → ${REMOTE}/Handoff/${HANDOFF_FILENAME}`)
       } catch (uploadErr) {
         log(`ERROR [handoff-upload]: ${uploadErr.message}`)
         failures.push(`handoff-upload: ${uploadErr.message}`)
