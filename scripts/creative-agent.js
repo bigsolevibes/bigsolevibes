@@ -63,16 +63,22 @@ function loadLatestSocialReport() {
   // Parse args
   const slotArg  = process.argv.indexOf('--slot')
   const themeArg = process.argv.indexOf('--theme')
+  const voiceArg = process.argv.indexOf('--voice')
   const slot     = slotArg  !== -1 ? process.argv[slotArg  + 1] : null
   const theme    = themeArg !== -1 ? process.argv[themeArg + 1] : null
+  const voice    = voiceArg !== -1 ? process.argv[voiceArg + 1] : 'lounge'
 
   if (!slot || !theme) {
     log('ERROR: --slot and --theme are required')
-    log('Usage: creative-agent.js --slot mon-am --theme "The Standard"')
+    log('Usage: creative-agent.js --slot mon-am --theme "The Standard" --voice lounge|drop')
+    process.exit(1)
+  }
+  if (!['lounge', 'drop'].includes(voice)) {
+    log(`ERROR: --voice must be "lounge" or "drop", got "${voice}"`)
     process.exit(1)
   }
 
-  log(`━━━ creative-agent: ${slot} / ${theme} ━━━`)
+  log(`━━━ creative-agent: ${slot} / ${theme} / voice:${voice} ━━━`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -95,16 +101,43 @@ function loadLatestSocialReport() {
     ? 'Morning. The man before the world starts.'
     : 'Evening. The man who made it through.'
 
+  // ── Voice-specific rules ────────────────────────────────────────────────────
+  const VOICE_RULES = {
+    lounge: `## Voice: THE LOUNGE
+The man is already in the room. He holds the standard without announcing it. BSV is confirmation, not introduction — he already knows why foot care matters. He reached for it because everything else in his life runs at that level.
+
+Tone: Deadpan, confident, slightly amused. Statements, never questions. Understated. The Proprietor does not explain himself. The caption is not trying to convince anyone — it assumes the man reading it already gets it and is inviting him to catch up. Quiet authority. The joke is always on the man who missed it.
+
+Caption register: Minimal, knowing. Like something overheard at the end of a long day. Not advertising — more like the last line of a good paragraph.`,
+
+    drop: `## Voice: THE DROP
+The man is at the door. He works hard, takes himself seriously, and holds everything in his life to a standard — but nobody has talked to him about his feet yet. BSV is the introduction. Sneaker culture, locker room talk, job site, kitchen, court. He understands quality. He just hasn't connected the dots downward yet.
+
+Tone: Sharper, more direct, culturally fluent. Still confident — not educational, not preachy. Speaks to him where he is. The caption earns the stop — it names something true about his life that he hasn't heard named before. Direct address is fine. Energy is higher than Lounge but never hype.
+
+Caption register: The Callout. The recognition. The "yeah, exactly." Something he sends to the group chat.`,
+  }
+
+  // ── Four confirmed visual scenes ────────────────────────────────────────────
+  const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
+(1) THE TRANSITION: suit, leather chair, whiskey or rocks glass, city skyline visible, one shoe coming off. End of day. Still composed. The hook is what held up all day except what was inside those shoes.
+(2) THE ATHLETE'S TOLL: post-game locker room. Dirty uniforms. Cleats off on the bench. Brotherhood around him — teammates in background. He's looking at his feet or wrapping something. He did all of this on those today.
+(3) THE CHEF: still in whites after a long service. Recliner or beat-up couch backstage. Shoes on the floor beside him, feet finally up. The kitchen is done. He's not.
+(4) THE INTIMATE MOMENT: couple close on a couch, evening. Shoes coming off. Everything about him is right except one thing. Foot care is the gap between his standard and reality. The moment is honest, not embarrassing.`
+
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
-## Proprietor Voice Rules
+## Standing Rules (apply to every brief regardless of voice)
 
-- Speaks in statements, never questions
-- Deadpan, confident, slightly amused
-- Never preachy, never explains itself
-- The Lounge is the feeling, not the location
-- Feet are evidence of the standard, not the subject
-- The man is already arrived — BSV is what he reaches for, not what saves him
+- Feet appear as evidence of the standard — never the subject
+- No empty rooms. No objects without a person. No stock photo compositions. No generic lifestyle.
+- Every image has a person, a story, a specific moment
+- Four hashtag cap — #BigSoleVibes counts as one
+- Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
+
+${VOICE_RULES[voice]}
+
+${SCENE_BLOCK}
 
 ## Brief Format
 
@@ -112,23 +145,25 @@ Output EXACTLY this structure. No deviations, no additions, no commentary before
 
 SLOT: [slot]
 THEME: [theme]
+VOICE: ${voice}
 POST_TIME: [post time]
 ---
-IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. No product placement. MANDATORY: name the scene type (THE TRANSITION / THE SOCIAL RISK / THE ATHLETE'S TOLL), name the setting, name the time of day, name what the man is doing, name what he's feeling. The brief must read like a film still description — specific enough that a DP could light it. THE TRANSITION: charcoal suit, one shoe off, amber loft light, 7PM, deadpan acknowledgment of the unsung hero of his day. THE SOCIAL RISK: couple close on a couch, shoes coming off, the gap between his external standard and one thing he hasn't closed. THE ATHLETE'S TOLL: post-game, locker room or field, uniform still on, looking at what carried him through. REJECTED without appeal if: no human subject, empty room, floating objects, boardroom without a person, stock photo energy, generic lifestyle.]
+IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. No product placement. MANDATORY: name the scene (THE TRANSITION / THE ATHLETE'S TOLL / THE CHEF / THE INTIMATE MOMENT), name the setting, time of day, what the man is doing, what he's feeling. Film still specificity — a DP could light it from this description alone. REJECTED without appeal if: no human subject, empty room, floating objects, stock photo energy.]
 VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood as image. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 ON-IMAGE COPY:
   Line 1 (Cream, Playfair Display): [short declarative statement — 4–8 words, no punctuation]
   Line 2 (Bourbon, Bebas Neue italic): [secondary line — 3–6 words, no punctuation]
-INSTAGRAM: [Full caption. Proprietor voice. 3–5 sentences. One idea. No throat-clearing. #BigSoleVibes + 2–3 specific hashtags at end.]
+INSTAGRAM: [Full caption. ${voice === 'lounge' ? 'Understated, knowing. The man already gets it — confirm him.' : 'Direct, culturally fluent. Name something true about his life he hasn\'t heard named yet.'} 3–5 sentences. One idea. No throat-clearing. Max 4 hashtags including #BigSoleVibes.]
 BLUESKY: [2–3 punchy lines. No hashtags. Direct address. Reads like the Proprietor sent it personally.]
 YOUTUBE: [Community post. 3–4 sentences. Slightly warmer, direct address. Ends with a reason to follow — not a generic CTA.]
-TIKTOK: [Hook line for typewriter effect on screen. Then 1–2 line caption. 1–2 hashtags max. Hook should create a 3-second stop.]
+TIKTOK: [Hook line for typewriter effect on screen. Then 1–2 line caption. Max 2 hashtags. Hook creates a 3-second stop — names something specific, not a question.]
 ---`
 
   const userPrompt = `Write the BSV content brief.
 
 SLOT: ${slot}
 THEME: ${theme}
+VOICE: ${voice}
 POST TIME: ${postTime}
 DAY ENERGY: ${dayEnergy}
 
@@ -139,7 +174,7 @@ Write the brief. The image brief should make a creative director say yes. The ca
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({
-    model:      'claude-sonnet-4-20250514',
+    model:      'claude-sonnet-4-6',
     max_tokens: 2048,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],

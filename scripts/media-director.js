@@ -30,6 +30,20 @@ const THEME_CALENDAR = {
   sun: { am: 'The Standard',   pm: 'The Invite' },
 }
 
+// ─── Voice cadence ────────────────────────────────────────────────────────────
+// Lounge (~40%): man already in the room — confirmation, not introduction.
+// Drop  (~60%): man at the door — sharper, culturally fluent, introduction.
+
+const VOICE_CADENCE = {
+  mon: { am: 'lounge', pm: 'drop' },
+  tue: { am: 'drop',   pm: 'drop' },
+  wed: { am: 'lounge', pm: 'drop' },
+  thu: { am: 'drop',   pm: 'drop' },
+  fri: { am: 'lounge', pm: 'drop' },
+  sat: { am: 'drop',   pm: 'drop' },
+  sun: { am: 'lounge', pm: 'drop' },
+}
+
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
@@ -59,16 +73,18 @@ const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
   }
 
   const themes = THEME_CALENDAR[targetDay]
-  log(`Themes — AM: "${themes.am}"  PM: "${themes.pm}"`)
+  const voices = VOICE_CADENCE[targetDay]
+  log(`Themes — AM: "${themes.am}" [${voices.am}]  PM: "${themes.pm}" [${voices.pm}]`)
 
-  // Call creative-agent for each slot
+  // Call creative-agent for each slot with theme + voice
   for (const period of ['am', 'pm']) {
     const slug  = `${targetDay}-${period}`
     const theme = themes[period]
-    log(`Spawning creative-agent --slot ${slug} --theme "${theme}"...`)
+    const voice = voices[period]
+    log(`Spawning creative-agent --slot ${slug} --theme "${theme}" --voice ${voice}...`)
     const result = spawnSync(
       process.execPath,
-      [path.join(__dirname, 'creative-agent.js'), '--slot', slug, '--theme', theme],
+      [path.join(__dirname, 'creative-agent.js'), '--slot', slug, '--theme', theme, '--voice', voice],
       { stdio: 'inherit', env: process.env }
     )
     if (result.status !== 0) log(`ERROR: creative-agent exited ${result.status} for ${slug}`)
