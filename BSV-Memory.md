@@ -144,6 +144,24 @@ Change Agent never promotes to Tier 1 unilaterally. Recommends only.
 
 ---
 
+## Competitive Landscape
+
+BSV sits in the luxury men's grooming tier. The taste level to reference:
+
+**Peer brands:** Margaret Dabbs (professional-grade foot care, sold at Liberty London and high-end spas), Cowshed, Grown Alchemist, Malin+Goetz, Caldera + Lab. These brands share BSV's register: serious ingredients, understated packaging, no explanation required.
+
+**Retail context:** The BSV man shops at Gilt, Huckberry, Grooming Lounge, Art of Shaving, Nordstrom Men's. He does not find his grooming products on the first page of Google. He finds them through trusted sources, curated shelves, and word of mouth from men who pay attention.
+
+**What this means for every agent:**
+- Product decisions: if it wouldn't sell at Grooming Lounge or Huckberry, it doesn't belong on the BSV shelf
+- Content decisions: if Margaret Dabbs wouldn't post it, reconsider the tone
+- Brand voice: the register is luxury without announcement — the Proprietor does not explain himself
+- Research: use Gilt, Huckberry, Grooming Lounge, and Art of Shaving as discovery sources before touching Amazon or generic search results
+
+This is not aspirational positioning. This is the tier BSV operates in. Every decision should reflect that.
+
+---
+
 ## Agent Rules
 
 **What agents can do autonomously (Tier 1 behaviors):**
