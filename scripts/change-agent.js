@@ -272,6 +272,74 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   log('Ensuring GitHub labels...')
   ensureLabels()
 
+  // ── Rogue main-push detection ─────────────────────────────────────────────────
+  // Any commit reachable from origin/main but NOT from origin/preview/full-site
+  // means something pushed directly to main without Big D's approval. Flag Tier 1.
+
+  log('Checking for rogue pushes to origin/main...')
+  const rogueMainPushes = (() => {
+    try {
+      execSync('git fetch origin main preview/full-site --quiet', { cwd: ROOT, stdio: 'pipe' })
+      const raw = execSync(
+        'git log origin/main --not origin/preview/full-site --format=%H|%s|%an',
+        { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }
+      ).trim()
+      if (!raw) return []
+      return raw.split('\n').filter(Boolean).map(line => {
+        const [hash, subject, author] = line.split('|')
+        return { hash, subject, author }
+      })
+    } catch (err) {
+      log(`WARNING: rogue main push check failed: ${err.message}`)
+      return []
+    }
+  })()
+
+  if (rogueMainPushes.length) {
+    log(`TIER 1 ALERT: ${rogueMainPushes.length} commit(s) found on origin/main not in origin/preview/full-site`)
+    const { sendTelegramAlert } = require('./git-push-guard')
+    for (const c of rogueMainPushes) {
+      const shortHash = c.hash.slice(0, 7)
+      if (state.tracked_issues?.[`main-rogue-${shortHash}`]) {
+        log(`  ${shortHash} already tracked — skipping`)
+        continue
+      }
+      log(`  ROGUE: ${shortHash} "${c.subject}" by ${c.author}`)
+      const issueTitle = `[flagged] ROGUE MAIN PUSH — ${c.subject.slice(0, 60)}`
+      const issueBody  = [
+        `## TIER 1 — Direct Push to main Detected`,
+        `A commit landed on \`origin/main\` that is NOT in \`origin/preview/full-site\`.`,
+        `This means something bypassed the pipeline branch discipline.`,
+        ``,
+        `**Commit:** [\`${shortHash}\`](https://github.com/${GH_REPO}/commit/${c.hash})`,
+        `**Subject:** ${c.subject}`,
+        `**Author:** ${c.author}`,
+        ``,
+        `## Action Required`,
+        `Big D must review this commit and determine whether it was an intentional promotion or a pipeline misconfiguration.`,
+        ``,
+        `If unintentional, revert with:`,
+        `\`\`\``,
+        `git revert ${c.hash}`,
+        `git push origin HEAD:main`,
+        `\`\`\``,
+      ].join('\n')
+      const issueNum = openIssue(issueTitle, issueBody, 'flagged')
+      if (issueNum) {
+        state.tracked_issues = state.tracked_issues || {}
+        state.tracked_issues[`main-rogue-${shortHash}`] = issueNum
+        log(`  #${issueNum} opened (Tier 1 flagged)`)
+      }
+      sendTelegramAlert(
+        `🚨 *BSV — Tier 1 Alert*\n\nRogue push to \`main\` detected.\n\n` +
+        `Commit: \`${shortHash}\`\nSubject: ${c.subject}\nAuthor: ${c.author}\n\n` +
+        `GitHub Issue #${issueNum || '?'} opened. Review immediately.`
+      )
+    }
+  } else {
+    log('origin/main is clean — no unexpected commits')
+  }
+
   // ── Get new commits ───────────────────────────────────────────────────────────
 
   log(`Scanning commits since: ${state.last_commit_hash ? state.last_commit_hash.slice(0, 7) : '7 days ago'}`)
