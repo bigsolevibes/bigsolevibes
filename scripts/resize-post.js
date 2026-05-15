@@ -123,8 +123,6 @@ const ext = path.extname(inputPath).toLowerCase()
       console.log('\ngit: nothing new to commit')
     } else {
       execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'pipe' })
-      // Push to main so Cloudflare Pages auto-deploy fires.
-      // preview/full-site is always a superset of origin/main so this is a fast-forward.
       require('./git-push-guard').safePushToPreview(root, console.log)
     }
   } catch (err) {
