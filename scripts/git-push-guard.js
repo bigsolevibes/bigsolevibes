@@ -51,8 +51,6 @@ function assertNotMain(targetRef) {
 
 // The one sanctioned pipeline push. All scripts must call this instead of raw execSync.
 function safePushToPreview(cwd, log) {
-  assertNotMain('main') // defensive: refuse if somehow called with main context
-
   const logFn = log || console.log
   try {
     execSync(`git push origin HEAD:${TARGET}`, { cwd, stdio: 'pipe' })
