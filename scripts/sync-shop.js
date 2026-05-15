@@ -19,30 +19,68 @@ function log(msg) {
 // ─── Category → locker number map ────────────────────────────────────────────
 // Deterministic order so locker numbers don't shuffle on every deploy.
 const CATEGORY_ORDER = [
+  // Legacy internal names (existing sheet rows)
   'Foot Files',
   'Foot Serums',
   'Foot Creams',
+  'Foot Care',
   'Foot Soaks',
   'Foot Soaks & Recovery',
   'Foot Powders',
   'Foot Grooming Tools',
   'Nail Care',
+  'Body Care',
   'Men\'s Grooming Kits',
   'Full Kits',
+  // BSV display names (new sheet rows written by product-research)
+  'Fast-Absorbing Treatments',
+  'Athletic Recovery',
+  'Precision German Podiatry Hardware',
+  'Head to Toe Ritual',
 ]
+
+// ─── SEO-aligned display names ────────────────────────────────────────────────
+// Internal category names (from sheet) stay unchanged for grouping/slugs.
+// Display names match how the BSV man actually searches.
+const CATEGORY_DISPLAY = {
+  // Legacy internal → BSV display name
+  'Nail Care':             'Precision German Podiatry Hardware',
+  'Foot Grooming Tools':   'Precision German Podiatry Hardware',
+  'Foot Care':             'Fast-Absorbing Treatments',
+  'Foot Creams':           'Fast-Absorbing Treatments',
+  'Foot Serums':           'Fast-Absorbing Treatments',
+  'Body Care':             'Head to Toe Ritual',
+  'Foot Soaks':            'Athletic Recovery',
+  'Foot Soaks & Recovery': 'Athletic Recovery',
+  // New BSV names — identity (already correct, no remapping needed)
+  'Fast-Absorbing Treatments':          'Fast-Absorbing Treatments',
+  'Athletic Recovery':                  'Athletic Recovery',
+  'Precision German Podiatry Hardware': 'Precision German Podiatry Hardware',
+  'Head to Toe Ritual':                 'Head to Toe Ritual',
+}
+
+function displayCategory(cat) {
+  return CATEGORY_DISPLAY[cat] || cat
+}
 
 function categoryIcon(cat) {
   const map = {
-    'Foot Files':            'ti-sparkles',
-    'Foot Serums':           'ti-droplet-filled',
-    'Foot Creams':           'ti-droplet',
-    'Foot Soaks':            'ti-ripple',
-    'Foot Soaks & Recovery': 'ti-ripple',
-    'Foot Powders':          'ti-wind',
-    'Foot Grooming Tools':   'ti-tool',
-    'Nail Care':             'ti-scissors',
-    'Men\'s Grooming Kits':  'ti-briefcase',
-    'Full Kits':             'ti-package',
+    'Foot Files':                       'ti-sparkles',
+    'Foot Serums':                      'ti-droplet-filled',
+    'Foot Creams':                      'ti-droplet',
+    'Foot Care':                        'ti-droplet',
+    'Fast-Absorbing Treatments':        'ti-droplet',
+    'Foot Soaks':                       'ti-ripple',
+    'Foot Soaks & Recovery':            'ti-ripple',
+    'Athletic Recovery':                'ti-ripple',
+    'Foot Powders':                     'ti-wind',
+    'Foot Grooming Tools':              'ti-tool',
+    'Nail Care':                        'ti-scissors',
+    'Precision German Podiatry Hardware': 'ti-scissors',
+    'Body Care':                        'ti-sparkles',
+    'Head to Toe Ritual':               'ti-sparkles',
+    'Men\'s Grooming Kits':             'ti-briefcase',
+    'Full Kits':                        'ti-package',
   }
   return map[cat] || 'ti-star'
 }
@@ -60,11 +98,26 @@ const C = {
 }
 
 function buildProductCard(product) {
-  const asin       = product['ASIN'] || ''
+  const asinOrUrl  = (product['ASIN'] || '').trim()
   const tag        = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
-  const amazonUrl  = asin
-    ? `https://www.amazon.com/dp/${asin}?tag=${tag}`
-    : `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
+
+  let amazonUrl
+  if (/^https?:\/\//i.test(asinOrUrl)) {
+    // Full URL in the ASIN column — use as-is, append affiliate tag only for Amazon links
+    if (asinOrUrl.includes('amazon.com')) {
+      const sep = asinOrUrl.includes('?') ? '&' : '?'
+      amazonUrl = `${asinOrUrl}${sep}tag=${tag}`
+    } else {
+      amazonUrl = asinOrUrl
+    }
+  } else if (asinOrUrl) {
+    // Bare ASIN
+    amazonUrl = `https://www.amazon.com/dp/${asinOrUrl}?tag=${tag}`
+  } else {
+    // No ASIN — search fallback
+    amazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
+  }
+  const isAmazon = amazonUrl.includes('amazon.com')
   const imageUrl   = (product['Locker Image'] || '').trim()
   const score      = product['Score']       ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
   const audit      = product['Reasoning']   ? `<p class="card-audit">${escapeHtml(product['Reasoning'])}</p>` : ''
@@ -86,7 +139,7 @@ function buildProductCard(product) {
               <div class="card-actions">
                 ${price}
                 <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                  SHOP ON AMAZON ↗
+                  ${isAmazon ? 'SHOP ON AMAZON ↗' : 'SHOP NOW ↗'}
                 </a>
               </div>
             </div>
@@ -94,75 +147,19 @@ function buildProductCard(product) {
         </article>`
 }
 
-function buildLockerBayHeaderSVG() {
-  const lockerW = 144
-  const totalW  = 1440
-  const h       = 200
-  const lockers = Array.from({ length: 10 }, (_, i) => {
-    const x   = i * lockerW
-    const cx  = x + lockerW / 2
-    const num = String(i + 1).padStart(2, '0')
-    return `
-      <rect x="${x}" y="0" width="${lockerW}" height="${h}" fill="#1e2535" stroke="#253044" stroke-width="2"/>
-      <rect x="${x+4}" y="18" width="5" height="14" fill="#253044" rx="1"/>
-      <rect x="${x+4}" y="158" width="5" height="14" fill="#253044" rx="1"/>
-      <rect x="${x+32}" y="40" width="80" height="3" fill="#253044" rx="1"/>
-      <rect x="${x+32}" y="52" width="80" height="3" fill="#253044" rx="1"/>
-      <rect x="${x+32}" y="64" width="80" height="3" fill="#253044" rx="1"/>
-      <rect x="${x+32}" y="76" width="80" height="3" fill="#253044" rx="1"/>
-      <rect x="${x+32}" y="88" width="80" height="3" fill="#253044" rx="1"/>
-      <rect x="${cx-3}" y="112" width="6" height="22" fill="#253044" rx="2"/>
-      <rect x="${cx-9}" y="110" width="18" height="4" fill="#253044" rx="1"/>
-      <rect x="${cx-18}" y="160" width="36" height="22" fill="none" stroke="#C17D2E" stroke-width="1" opacity="0.6"/>
-      <text x="${cx}" y="175" font-family="Courier New, monospace" font-size="12" font-weight="bold" fill="#C17D2E" text-anchor="middle" opacity="0.8">${num}</text>`
-  }).join('')
-
-  return `<svg viewBox="0 0 ${totalW} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style="display:block;width:100%;height:auto;">${lockers}
-    <rect x="0" y="${h-8}" width="${totalW}" height="8" fill="#162233"/>
-  </svg>`
-}
-
-function buildLockerSection(category, products, lockerNum) {
-  const numStr  = String(lockerNum).padStart(2, '0')
-  const catSlug = category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-  const cards   = products.map(buildProductCard).join('\n')
-
+function buildLockerSection(category, products) {
+  const catSlug     = category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const cards       = products.map(buildProductCard).join('\n')
+  const displayName = displayCategory(category)
   return `
-      <!-- Locker ${numStr}: ${escapeHtml(category)} -->
       <section class="locker-bay" id="${catSlug}">
-
-        <!-- Left: steel door frame -->
-        <div class="locker-door">
-          <svg class="door-vents-svg" viewBox="0 0 52 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="0" y="0" width="52" height="80" fill="#1e2535"/>
-            <rect x="8" y="8"  width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="19" width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="30" width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="41" width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="52" width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="63" width="36" height="3" fill="#253044" rx="1"/>
-            <rect x="8" y="74" width="36" height="3" fill="#253044" rx="1"/>
-          </svg>
-          <div class="door-number">${numStr}</div>
+        <div class="locker-label-area">
+          <span class="locker-cat-name">${escapeHtml(displayName.toUpperCase())}</span>
         </div>
-
-        <!-- Right: locker interior -->
-        <div class="locker-interior">
-          <div class="interior-vent-band" aria-hidden="true">
-            <svg width="100%" height="20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="0" y="4"  width="100%" height="3" fill="#253044" rx="1"/>
-              <rect x="0" y="12" width="100%" height="3" fill="#253044" rx="1"/>
-            </svg>
-          </div>
-          <div class="locker-label-area">
-            <span class="locker-cat-name">${escapeHtml(category.toUpperCase())}</span>
-          </div>
-          <div class="locker-shelf-bar"></div>
-          <div class="locker-stack">
-            ${cards}
-          </div>
+        <div class="locker-shelf-bar"></div>
+        <div class="locker-stack">
+          ${cards}
         </div>
-
       </section>`
 }
 
@@ -175,24 +172,21 @@ function buildShopPage(approvedProducts) {
     grouped[cat].push(p)
   }
 
-  let lockerNum    = 0
   let sectionsHtml = ''
   for (const cat of CATEGORY_ORDER) {
     if (!grouped[cat]?.length) continue
-    lockerNum++
-    sectionsHtml += buildLockerSection(cat, grouped[cat], lockerNum)
+    sectionsHtml += buildLockerSection(cat, grouped[cat])
   }
   for (const [cat, products] of Object.entries(grouped)) {
     if (!CATEGORY_ORDER.includes(cat) && products.length) {
-      lockerNum++
-      sectionsHtml += buildLockerSection(cat, products, lockerNum)
+      sectionsHtml += buildLockerSection(cat, products)
     }
   }
 
   // Jump nav links for populated categories
   const jumpLinks = CATEGORY_ORDER
     .filter(cat => grouped[cat]?.length)
-    .map(cat => `<a href="#${cat.toLowerCase().replace(/[^a-z0-9]+/g, '-')}" class="jump-link">${escapeHtml(cat.toUpperCase())}</a>`)
+    .map(cat => `<a href="#${cat.toLowerCase().replace(/[^a-z0-9]+/g, '-')}" class="jump-link">${escapeHtml(displayCategory(cat).toUpperCase())}</a>`)
     .join('\n            ')
 
   const totalProducts = approvedProducts.length
@@ -349,9 +343,6 @@ function buildShopPage(approvedProducts) {
     }
     .jump-link:hover { color: var(--amber); }
 
-    /* ── Locker bay header illustration ── */
-    .locker-bay-header { width:100%; background:var(--bg); border-bottom:3px solid #1e2535; overflow:hidden; line-height:0; }
-
     /* ── Locker room container ── */
     .locker-room {
       max-width: 1100px;
@@ -362,53 +353,12 @@ function buildShopPage(approvedProducts) {
       gap: 3rem;
     }
 
-    /* ── Open locker = category section ── */
+    /* ── Category section ── */
     .locker-bay {
-      display: flex;
+      background: var(--card);
       border: 1px solid #1e2535;
       border-radius: 2px;
       overflow: hidden;
-    }
-
-    .locker-door {
-      width: 72px;
-      flex-shrink: 0;
-      background: #1e2535;
-      border-right: 2px solid #253044;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 0.75rem 0 1rem;
-    }
-
-    .door-vents-svg { width: 52px; }
-
-    .door-number {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 1.25rem;
-      font-weight: bold;
-      color: var(--amber);
-      letter-spacing: 0.05em;
-      border: 1px solid rgba(193,125,46,0.35);
-      padding: 3px 7px;
-      line-height: 1;
-      margin-top: auto;
-      opacity: 0.9;
-    }
-
-    .locker-interior {
-      flex: 1;
-      background: var(--card);
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .interior-vent-band {
-      background: #1e2535;
-      padding: 0.5rem 1.25rem;
-      border-bottom: 1px solid #253044;
-      line-height: 0;
     }
 
     .locker-label-area { padding: 0.875rem 1.25rem 0.625rem; }
@@ -705,9 +655,6 @@ function buildShopPage(approvedProducts) {
     <p class="hero-count">${isEmpty ? 'More lockers opening soon.' : `${totalProducts} approved picks`}</p>
   </header>
 
-  <!-- Locker bay header illustration -->
-  <div class="locker-bay-header">${buildLockerBayHeaderSVG()}</div>
-
   ${isEmpty ? `
   <!-- Coming soon floor -->
   <main class="locker-coming-soon">
@@ -750,7 +697,7 @@ function buildShopPage(approvedProducts) {
     <div class="footer-inner">
       <div>
         <a href="/" class="footer-brand-name">BIG SOLE VIBES</a>
-        <p class="footer-tagline">Step Up. Feel Good. Own It.</p>
+        <p class="footer-tagline">We found what you were looking for.</p>
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
@@ -804,8 +751,7 @@ function gitPush() {
 
     const msg = `chore: sync shop — ${new Date().toISOString().slice(0,10)}`
     execSync(`git commit -m "${msg}"`, { cwd, stdio: 'pipe' })
-    execSync('git push origin HEAD:main', { cwd, stdio: 'pipe' })
-    log('Git: pushed → main → Cloudflare Pages deploy triggered')
+    require('./git-push-guard').safePushToPreview(cwd, log)
     return true
   } catch (err) {
     log(`ERROR: git push failed — ${err.stderr?.toString().trim() || err.message}`)
