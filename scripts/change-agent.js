@@ -13,7 +13,7 @@ require('dotenv').config()
 // GitHub Issues: uses gh CLI (already authenticated at bigsolevibes/bigsolevibes)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -280,17 +280,24 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   const rogueMainPushes = (() => {
     try {
       execSync('git fetch origin main preview/full-site --quiet', { cwd: ROOT, stdio: 'pipe' })
-      const raw = execSync(
-        'git log origin/main --not origin/preview/full-site --format=%H|%s|%an',
-        { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }
-      ).trim()
+      // spawnSync avoids shell interpretation of | in the --format string
+      const result = spawnSync('git', [
+        'log', 'origin/main', '--not', 'origin/preview/full-site',
+        '--format=%H\t%s\t%aN', '--',
+      ], { cwd: ROOT, encoding: 'utf8' })
+      if (result.error) throw result.error
+      if (result.status !== 0) throw new Error(result.stderr || 'git log failed')
+      const raw = (result.stdout || '').trim()
       if (!raw) return []
       return raw.split('\n').filter(Boolean).map(line => {
-        const [hash, subject, author] = line.split('|')
-        return { hash, subject, author }
-      })
+        const [hash, subject, author] = line.split('\t')
+        return { hash: (hash || '').trim(), subject: (subject || '').trim(), author: (author || '').trim() }
+      }).filter(c => c.hash.length === 40)
     } catch (err) {
-      log(`WARNING: rogue main push check failed: ${err.message}`)
+      const { sendTelegramAlert } = require('./git-push-guard')
+      const msg = `⚠️ *BSV — change-agent failure*\n\nRogue main-push check threw an error and could not run.\n\nError: ${err.message.slice(0, 200)}\n\nInvestigate immediately.`
+      sendTelegramAlert(msg)
+      log(`ERROR: rogue main push check failed: ${err.message}`)
       return []
     }
   })()
@@ -523,6 +530,7 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
 
   const nextState = {
     last_run:         today,
+    last_heartbeat:   new Date().toISOString(),
     last_commit_hash: newCommits.length ? newCommits[0].hash : state.last_commit_hash,
     open_issues:      openMonitoring.length + openFlagged.length,
     monitoring:       openMonitoring.map(i => i.title.replace('[monitoring] ', '').slice(0, 50)),

@@ -160,6 +160,7 @@ function buildTokenBudget() {
     { name: 'product-development', file: 'product-development.log' },
     { name: 'product-research',    file: 'product-research.log' },
     { name: 'change-agent',        file: 'change-agent.log' },
+    { name: 'blog-agent',          file: 'blog-agent.log' },
     { name: 'update-handoff',      file: 'update-handoff.log' },
     { name: 'chief-of-staff',      file: 'chief-of-staff.log' },
   ]
@@ -431,6 +432,7 @@ async function sendTelegram(token, chatId, text) {
   const engBotLog      = getRecentLog('eng-bot.log', 30)
   const productDevLog  = getRecentLog('product-development.log', 30)
   const changeAgentLog = getRecentLog('change-agent.log', 30)
+  const blogAgentLog   = getRecentLog('blog-agent.log', 30)
 
   const postState      = getPostState()
   const outputFiles    = getOutputFiles()
@@ -520,6 +522,7 @@ Change Agent recommends tier. Big D decides. Change Agent never promotes to Tier
 - **marketing-manager.js** — Weekly. The scoreboard: Lounge and Drop subscriber counts, growth rate, trajectory.
 - **product-research.js** — Weekly. Sources affiliate products for the shelf.
 - **product-development.js** — Sundays 10PM. Building the Foot Balm brief, milestone by milestone.
+- **blog-agent.js** — Sundays 11:30PM. Reads Drive context + approved shelf products. Writes Proprietor-voice hub post as static HTML to public/blog/. Pushes to main. Chief reads its output Monday morning.
 - **eng-bot.js** — After every watch-drive poll. Your early warning system.
 - **change-agent.js** — 8:30AM daily + post-commit hook. Tracks commits, owns the known-fix library, writes change-state.json.
 - **update-handoff.js** — 11:00PM. Rewrites the operational handoff so the next agent starts with current reality.
@@ -717,6 +720,11 @@ ${productDevLog || '(no log)'}
 ### change-agent.log
 \`\`\`
 ${changeAgentLog || '(no log)'}
+\`\`\`
+
+### blog-agent.log
+\`\`\`
+${blogAgentLog || '(no log)'}
 \`\`\`
 
 ## Post State (post-state.json)
@@ -1030,10 +1038,41 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
     failures.push(`memory-api: ${err.message}`)
   }
 
-  // ── Telegram ping ─────────────────────────────────────────────────────────────
+  // ── change-agent heartbeat watchdog ──────────────────────────────────────────
+  // If change-agent hasn't written a heartbeat in the last 25 hours, it silently
+  // failed. That is a Tier 1 event — fire immediately, don't wait for stand-up.
 
   const telegramToken  = process.env.TELEGRAM_BOT_TOKEN
   const telegramChatId = process.env.TELEGRAM_CHAT_ID
+
+  try {
+    const changeStatePath = path.join(ROOT, 'logs', 'change-state.json')
+    if (!fs.existsSync(changeStatePath)) {
+      log('WATCHDOG: change-state.json missing — change-agent has never run')
+      if (telegramToken && telegramChatId) {
+        await sendTelegram(telegramToken, telegramChatId,
+          `🚨 *BSV — Tier 1: change-agent never ran*\n\nchange-state.json does not exist. change-agent has never successfully completed a run.\n\nRun manually: node scripts/change-agent.js`)
+      }
+    } else {
+      const cs = JSON.parse(fs.readFileSync(changeStatePath, 'utf8'))
+      const heartbeat = cs.last_heartbeat ? new Date(cs.last_heartbeat) : null
+      const hoursSince = heartbeat ? (Date.now() - heartbeat.getTime()) / 3600000 : Infinity
+      if (hoursSince > 25) {
+        const sinceStr = heartbeat ? `${Math.round(hoursSince)} hours ago` : 'never'
+        log(`WATCHDOG: change-agent last heartbeat: ${sinceStr} — TIER 1`)
+        if (telegramToken && telegramChatId) {
+          await sendTelegram(telegramToken, telegramChatId,
+            `🚨 *BSV — Tier 1: change-agent silent*\n\nLast heartbeat: ${sinceStr}\nExpected: every 24h\n\nChange monitoring is down. Rogue pushes to main will go undetected.\n\nRun manually: node scripts/change-agent.js`)
+        }
+      } else {
+        log(`WATCHDOG: change-agent heartbeat OK — ${Math.round(hoursSince)}h ago`)
+      }
+    }
+  } catch (wdErr) {
+    log(`WATCHDOG: error checking change-agent heartbeat: ${wdErr.message}`)
+  }
+
+  // ── Telegram ping ─────────────────────────────────────────────────────────────
 
   if (!telegramToken || !telegramChatId) {
     log('WARNING: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping Telegram ping')
