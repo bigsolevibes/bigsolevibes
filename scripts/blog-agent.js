@@ -24,6 +24,39 @@ const REMOTE    = 'big sole vibes:Big Sole Vibes'
 const AFFILIATE = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
 const SITE_URL  = 'https://bigsolevibes.com'
 
+// ─── Content Calendar ─────────────────────────────────────────────────────────
+// Ordered list of queued Sole Report pieces. blog-agent checks the manifest for
+// published slugs and injects the first unwritten entry into the userPrompt.
+// After all entries are published, the agent falls back to hub article direction.
+const CONTENT_CALENDAR = [
+  {
+    // Piece 1 — already published; slug match excludes it from queue
+    slug: 'the-standard-doesnt-stop-at-the-ankle',
+    title: 'The Standard Doesn\'t Stop at the Ankle',
+  },
+  {
+    // Piece 2 — Hammer & Nails validation
+    slugPattern: /hammer.*nails|29-days|barberspa/i,
+    titleDirection: 'Concept-first. The concept is the gap between visits. Working titles: "29 Days: What the Man Does Between Appointments" or "The BarberSpa That Finally Gets It: What Happens After You Leave." The concept leads — H&N is the proof it matters, not the subject.',
+    voice: 'Validation, not competition. Warm and knowing. The tone of a man who respects H&N\'s in-person standard and is quietly filling the gap they leave open. Never critical of H&N — they built something worth referencing. BSV is what happens after the chair.',
+    contentDirection: [
+      'Open by acknowledging what H&N actually built — the in-person premium standard that men didn\'t know they were missing until they walked in.',
+      'Name the gap: they nail the appointment. What they don\'t do is send him home with anything. The experience ends at the door.',
+      'Introduce the 29 days: the chair is one day. The other 29 are his. What carries him between visits is the at-home ritual.',
+      'Bring in the shelf naturally: Gehwol as the clinic-grade daily maintenance, Kneipp as the recovery soak, Men and Nails as the tool kit that extends professional results at home. Frame each as evidence of the standard, not as products.',
+      'Close with a quiet CTA box: "The ritual doesn\'t end when you leave the chair. The Locker Room has what you need next." Link to /shop.',
+    ],
+    ctaBox: {
+      text: 'The ritual doesn\'t end when you leave the chair.',
+      subtext: 'The Locker Room has what you need next.',
+      linkHref: '/shop',
+      linkText: 'Visit The Locker Room',
+    },
+    seoTargets: ['luxury apothecary foot balm', 'premium foot care men', 'non greasy absorbent foot lotion men'],
+    lengthWords: '1,000–1,300',
+  },
+]
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -627,6 +660,43 @@ Every post must:
   "imageBrief": "One paragraph. Scene name (The Transition / The Athlete's Toll / The Chef / The Intimate Moment), then: the specific light, what the man is wearing, the exact moment being captured, the emotional register. The product is never in the frame. The feeling always is."
 }`
 
+  // ─── Check content calendar for queued pieces ─────────────────────────────
+  const earlyManifestPath = path.join(BLOG_DIR, 'manifest.json')
+  let earlyManifest = []
+  if (fs.existsSync(earlyManifestPath)) {
+    try { earlyManifest = JSON.parse(fs.readFileSync(earlyManifestPath, 'utf8')) } catch {}
+  }
+  const publishedSlugs = new Set(earlyManifest.map(m => m.slug))
+
+  const nextCalendarEntry = CONTENT_CALENDAR.find(entry => {
+    if (entry.slugPattern) return !Array.from(publishedSlugs).some(s => entry.slugPattern.test(s))
+    return !publishedSlugs.has(entry.slug) && entry.titleDirection
+  })
+
+  const postRequirementsBlock = nextCalendarEntry
+    ? `## Queued piece — write this specific post (calendar directive, overrides hub article direction)
+Title direction: ${nextCalendarEntry.titleDirection}
+Voice: ${nextCalendarEntry.voice}
+Content direction:
+${nextCalendarEntry.contentDirection.map((b, i) => `${i + 1}. ${b}`).join('\n')}
+CTA box: "${nextCalendarEntry.ctaBox.text}" / "${nextCalendarEntry.ctaBox.subtext}" — link href="${nextCalendarEntry.ctaBox.linkHref}" text="${nextCalendarEntry.ctaBox.linkText}"
+SEO targets: ${nextCalendarEntry.seoTargets.join(', ')}
+Length: ${nextCalendarEntry.lengthWords} words`
+    : `## Post requirements
+- Voice: Proprietor — statements, deadpan, confident. Never preachy.
+- Target: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium foot care men"
+- Structure: Hub article. Establish authority, define the premium lifestyle angle, introduce the BSV shelf as the curation the BSV man didn't know existed
+- Frame: Written for the man who already treats his face well and hasn't thought about what's been carrying him all day
+- Shelf products: reference Gehwol, Kneipp, and others naturally — as evidence of the standard, not as ads
+- Internal link to /shop at least once
+- Length: 1,000–1,400 words`
+
+  if (nextCalendarEntry) {
+    log(`Calendar: queuing "${nextCalendarEntry.titleDirection.slice(0, 60)}..."`)
+  } else {
+    log('Calendar: no queued pieces — falling back to hub article direction')
+  }
+
   const userPrompt = `Write the BSV blog post for this week.
 
 ## Week context
@@ -641,14 +711,7 @@ ${socialReport ? socialReport.content.slice(0, 600) : 'No social report availabl
 ## Approved shelf products — reference these naturally with their URLs as affiliate links
 ${shelfBlock}
 
-## Post requirements
-- Voice: Proprietor — statements, deadpan, confident. Never preachy.
-- Target: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium foot care men"
-- Structure: Hub article. Establish authority, define the premium lifestyle angle, introduce the BSV shelf as the curation the BSV man didn't know existed
-- Frame: Written for the man who already treats his face well and hasn't thought about what's been carrying him all day
-- Shelf products: reference Gehwol, Kneipp, and others naturally — as evidence of the standard, not as ads
-- Internal link to /shop at least once
-- Length: 1,000–1,400 words
+${postRequirementsBlock}
 
 Return ONLY the JSON object. No preamble, no explanation.`
 
