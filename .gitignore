@@ -27,3 +27,6 @@ yarn-error.log*
 
 # Generated brief files (local pipeline artifacts)
 posts/briefs/*.txt
+
+# Pipeline logs (local only — never commit)
+logs/
