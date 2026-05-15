@@ -277,7 +277,7 @@ If current trends hold, where will each segment land in 30 days? What would need
   let fullText = ''
 
   const stream = await client.messages.stream({
-    model:      'claude-sonnet-4-6',
+    model:      'claude-haiku-4-5-20251001',
     max_tokens: 6000,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],

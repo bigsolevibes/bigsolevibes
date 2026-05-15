@@ -948,7 +948,7 @@ Write in Proprietor tone — direct, specific, no padding. This is an operationa
   let handoffText = ''
   try {
     const handoffMsg = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 4096,
       system:     [directive, memory].filter(Boolean).join('\n\n---\n\n') + '\n\n---\n\nYou are the BSV Chief of Staff updating the operational handoff document.',
       messages:   [{ role: 'user', content: handoffPrompt }],
@@ -1007,7 +1007,7 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
 
   try {
     const memoryMsg = await client.messages.create({
-      model:      'claude-sonnet-4-6',
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 4096,
       system:     'You are the BSV Chief of Staff maintaining the strategic memory file. Return only the complete updated BSV-Memory.md — no explanation, no commentary.',
       messages:   [{ role: 'user', content: memoryUpdatePrompt }],

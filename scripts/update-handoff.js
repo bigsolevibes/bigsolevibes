@@ -283,7 +283,7 @@ Do not invent or fabricate information not present in the context.`
 
   try {
     const stream = await client.messages.stream({
-      model:      'claude-opus-4-7',
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 16384,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
