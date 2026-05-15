@@ -17,7 +17,10 @@ const IMAGEN_PER_IMAGE    = 0.020  // $ per image
 const VEO_PER_SECOND      = 0.35   // $ per second of generated video
 const VEO_CLIP_SECONDS    = 7      // default clip length
 
-const MONTHLY_BUDGET = 10.00
+const MONTHLY_BUDGET    = 10.00
+const COST_STATE_FILE   = path.join(ROOT, 'logs', 'cost-state.json')
+const RUNWAY_WARN_HOURS   = 48
+const RUNWAY_URGENT_HOURS = 24
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +139,54 @@ async function fetchAnthropicUsage(startDate, endDate) {
     log(`  Anthropic Usage API error: ${err.message} — falling back to log parsing`)
     return null
   }
+}
+
+// Fetch per-day Claude costs for the last N completed days (not today).
+async function fetchBurnHistory(days) {
+  const results = []
+  for (let i = days; i >= 1; i--) {
+    const d    = new Date(); d.setDate(d.getDate() - i)
+    const next = new Date(d); next.setDate(next.getDate() + 1)
+    const dateStr = isoDate(d)
+    const usage = await fetchAnthropicUsage(dateStr, isoDate(next))
+    if (usage) {
+      results.push({ date: dateStr, cost: claudeCost(usage.inputTokens, usage.outputTokens) })
+    }
+  }
+  return results
+}
+
+// Returns credit balance in dollars. Anthropic has no public balance endpoint —
+// reads ANTHROPIC_CREDIT_BALANCE from .env (set manually after each top-up).
+function fetchAnthropicBalance() {
+  const raw = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
+  return (!isNaN(raw) && raw >= 0) ? raw : null
+}
+
+// Sends a Telegram message using the project-standard credentials.
+async function sendTelegramMessage(text) {
+  const token  = process.env.TELEGRAM_BOT_TOKEN
+  const chatId = process.env.TELEGRAM_CHAT_ID
+  if (!token || !chatId) {
+    log('WARNING: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — skipping runway alert')
+    return false
+  }
+  for (const parse_mode of ['Markdown', null]) {
+    const body = Object.assign({ chat_id: chatId, text }, parse_mode ? { parse_mode } : {})
+    try {
+      const res  = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (res.ok) return true
+      if (parse_mode && (data.description?.toLowerCase().includes('parse') || data.description?.toLowerCase().includes('entity'))) continue
+      throw new Error(JSON.stringify(data))
+    } catch (err) {
+      log(`ERROR: Telegram send failed: ${err.message}`)
+      return false
+    }
+  }
+  return false
 }
 
 // ─── Cost calculations ────────────────────────────────────────────────────────
@@ -284,6 +335,67 @@ function buildReport(today, week, month, reportDate) {
   log(`Today  — Claude: ${todayData.claudeCalls} calls, Imagen: ${todayData.images}, Veo: ${todayData.videos}, cost: ${fmt(todayData.total)}`)
   log(`Week   — Claude: ${weekData.claudeCalls} calls, Imagen: ${weekData.images}, Veo: ${weekData.videos}, cost: ${fmt(weekData.total)}`)
   log(`Month  — Claude: ${monthData.claudeCalls} calls, Imagen: ${monthData.images}, Veo: ${monthData.videos}, cost: ${fmt(monthData.total)}`)
+
+  // ── Runway check ────────────────────────────────────────────────────────────
+
+  const burnHistory  = await fetchBurnHistory(3)
+  const avgDailyBurn = burnHistory.length
+    ? burnHistory.reduce((s, d) => s + d.cost, 0) / burnHistory.length
+    : todayData.total   // single-day fallback if history unavailable
+
+  const balance     = fetchAnthropicBalance()
+  const runwayHours = (balance !== null && avgDailyBurn > 0)
+    ? (balance / avgDailyBurn) * 24
+    : null
+
+  log(`Burn history (${burnHistory.length}d): ${burnHistory.map(d => `${d.date}=${fmt(d.cost)}`).join(', ') || 'unavailable'}`)
+  log(`Avg daily burn: ${fmt(avgDailyBurn)} (${burnHistory.length || 1}-day basis)`)
+  if (balance !== null)  log(`Credit balance: $${balance.toFixed(4)}`)
+  else                   log('Credit balance: unknown — add ANTHROPIC_CREDIT_BALANCE=$X.XX to .env after top-ups')
+  if (runwayHours !== null) log(`Projected runway: ${runwayHours.toFixed(1)} hours`)
+
+  // Write cost-state.json so chief-of-staff can read runway into the stand-up
+  const costState = {
+    date:           reportDate,
+    today_cost:     todayData.total,
+    avg_daily_burn: avgDailyBurn,
+    burn_days:      burnHistory.length,
+    balance:        balance,
+    runway_hours:   runwayHours,
+    burn_history:   burnHistory,
+  }
+  try {
+    fs.writeFileSync(COST_STATE_FILE, JSON.stringify(costState, null, 2))
+    log('Cost state written → logs/cost-state.json')
+  } catch (err) {
+    log(`ERROR: cost state write failed: ${err.message}`)
+  }
+
+  // Telegram runway alerts — fire before report upload so alert lands even on upload failure
+  if (runwayHours !== null) {
+    if (runwayHours < RUNWAY_URGENT_HOURS) {
+      const msg =
+        `🚨 *BSV — URGENT: API Credits Critical*\n\n` +
+        `Estimated balance: *$${balance.toFixed(2)}*\n` +
+        `Avg daily burn (${burnHistory.length}d): *${fmt(avgDailyBurn)}*\n` +
+        `Projected runway: *${runwayHours.toFixed(1)} hours*\n\n` +
+        `Pipeline goes dark in under 24h without a top-up.\n\n` +
+        `Top up: https://console.anthropic.com`
+      const sent = await sendTelegramMessage(msg)
+      log(`Telegram URGENT runway alert: ${sent ? 'sent ✓' : 'failed'}`)
+    } else if (runwayHours < RUNWAY_WARN_HOURS) {
+      const msg =
+        `⚠️ *BSV — API Credits Low*\n\n` +
+        `Estimated balance: *$${balance.toFixed(2)}*\n` +
+        `Avg daily burn (${burnHistory.length}d): *${fmt(avgDailyBurn)}*\n` +
+        `Projected runway: *${runwayHours.toFixed(1)} hours*\n\n` +
+        `Top up soon: https://console.anthropic.com`
+      const sent = await sendTelegramMessage(msg)
+      log(`Telegram low-runway alert: ${sent ? 'sent ✓' : 'failed'}`)
+    } else {
+      log(`Runway OK: ${runwayHours.toFixed(1)}h — no alert needed`)
+    }
+  }
 
   const report   = buildReport(todayData, weekData, monthData, reportDate)
   const filename = `cost-report-${reportDate}.md`

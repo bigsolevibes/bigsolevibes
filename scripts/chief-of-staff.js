@@ -269,6 +269,13 @@ function getChangeState() {
   } catch { return null }
 }
 
+function getCostState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'cost-state.json')
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  } catch { return null }
+}
+
 // ─── Org chart helpers ────────────────────────────────────────────────────────
 
 function loadOrgChart() {
@@ -404,6 +411,7 @@ async function sendTelegram(token, chatId, text) {
   const costReport         = loadLatestReport('cost-report')
   const productDevState    = getProductDevState()
   const changeState        = getChangeState()
+  const costState          = getCostState()
 
   log(`Directive: ${directive ? 'loaded' : 'missing'}`)
   log(`Strategy state: ${strategyState ? 'loaded' : 'missing'}`)
@@ -417,6 +425,7 @@ async function sendTelegram(token, chatId, text) {
   log(`Product dev state: ${productDevState ? `milestone="${productDevState.milestone}" action_needed=${productDevState.action_needed}` : 'none'}`)
   log(`Change state: ${changeState ? `open=${changeState.open_issues} action_needed=${changeState.action_needed}` : 'none'}`)
   log(`Cost report: ${costReport?.filename || 'none'}`)
+  log(`Cost state: ${costState ? `runway=${costState.runway_hours != null ? costState.runway_hours.toFixed(1) + 'h' : 'unknown'} avg_burn=$${costState.avg_daily_burn?.toFixed(4)}` : 'none'}`)
 
   const watchLog       = getRecentLog('watch-drive.log', 150)
   const unverifiedSlots = detectUnverifiedSlots(watchLog)
@@ -789,7 +798,15 @@ ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : 
 ${tokenBudgetSection}
 
 ### Latest Cost Report (${costReport?.filename || 'none'})
-${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 1200 ? '\n[truncated]' : '') : '(not available — cost-report.js has not run today)'}`
+${costReport ? costReport.content.slice(0, 1200) + (costReport.content.length > 1200 ? '\n[truncated]' : '') : '(not available — cost-report.js has not run today)'}
+
+### Credit Runway (cost-state.json)
+${costState ? `Date: ${costState.date}
+Today cost: $${costState.today_cost?.toFixed(4) ?? 'unknown'}
+Avg daily burn (${costState.burn_days}-day basis): $${costState.avg_daily_burn?.toFixed(4) ?? 'unknown'}
+Credit balance: ${costState.balance != null ? '$' + costState.balance.toFixed(2) : 'unknown — ANTHROPIC_CREDIT_BALANCE not set in .env'}
+Projected runway: ${costState.runway_hours != null ? costState.runway_hours.toFixed(1) + ' hours' : 'unknown'}
+Burn history: ${(costState.burn_history ?? []).map(d => `${d.date}=$${d.cost.toFixed(4)}`).join(', ') || 'none'}` : '(cost-report.js has not run yet today — no runway data)'}`
 
   let fullText   = ''
   let streamError = null
