@@ -63,7 +63,7 @@ export default function ComingSoonPage() {
           BIG SOLE VIBES
         </span>
         <span className="font-body text-sm sm:text-base italic" style={{ color: AMBER }}>
-          Men&apos;s Foot Care &amp; Accessories
+          We found what you were looking for.
         </span>
         <div className="mt-2 w-16 h-px" style={{ backgroundColor: AMBER }} />
       </header>

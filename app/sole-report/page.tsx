@@ -5,11 +5,11 @@ import Footer from '@/components/Footer'
 import { getAllPosts } from '@/lib/mdx'
 
 export const metadata: Metadata = {
-  title: 'Blog',
-  description: "Real talk about men's foot care. Tips, guides, and product breakdowns — no fluff.",
+  title: 'The Sole Report',
+  description: 'The Proprietor\'s take on foot care, grooming, and the standard. No filler.',
 }
 
-export default function BlogPage() {
+export default function SoleReportPage() {
   const posts = getAllPosts()
 
   return (
@@ -19,11 +19,12 @@ export default function BlogPage() {
         {/* Header */}
         <section className="py-20 bg-bsv-card border-b border-white/5">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">THE SOLE REPORT</p>
             <h1 className="font-heading text-6xl sm:text-7xl text-bsv-white tracking-wide mb-4">
-              THE <span className="text-bsv-orange">BLOG</span>
+              THE <span className="text-bsv-orange">SOLE REPORT</span>
             </h1>
-            <p className="text-bsv-muted text-lg max-w-xl mx-auto">
-              Real talk about foot care. No gatekeeping, no filler.
+            <p className="text-bsv-muted text-lg max-w-xl mx-auto italic">
+              The Proprietor&apos;s take. No gatekeeping, no filler.
             </p>
           </div>
         </section>
@@ -37,7 +38,6 @@ export default function BlogPage() {
                   key={post.slug}
                   className="bg-bsv-card border border-white/5 hover:border-bsv-orange/30 transition-colors p-8"
                 >
-                  {/* Tags */}
                   {post.tags && post.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {post.tags.map((tag) => (
@@ -63,7 +63,7 @@ export default function BlogPage() {
                   <p className="text-bsv-muted leading-relaxed mb-6">{post.excerpt}</p>
 
                   <Link
-                    href={`/blog/${post.slug}`}
+                    href={`/sole-report/${post.slug}`}
                     className="text-bsv-orange hover:text-orange-400 font-heading tracking-widest text-sm transition-colors inline-flex items-center gap-2"
                   >
                     READ MORE

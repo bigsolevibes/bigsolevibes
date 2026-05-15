@@ -1,0 +1,739 @@
+require('dotenv').config()
+// ─────────────────────────────────────────────────────────────────────────────
+// blog-agent.js — weekly blog post generator
+//
+// Runs Sunday 11:30PM via launchd, after brand-manager completes.
+// Reads Plans, Brand, social-listening from Drive + approved shelf products
+// from Google Sheets. Calls Claude to generate a Proprietor-voice post
+// targeting BSV SEO terms. Outputs static HTML to public/sole-report/.
+// Chief reads blog-agent.log in the Monday morning stand-up.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Anthropic = require('@anthropic-ai/sdk').default
+const { execSync } = require('child_process')
+const path = require('path')
+const fs   = require('fs')
+const os   = require('os')
+const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+
+const ROOT      = path.join(__dirname, '..')
+const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
+const BLOG_DIR  = path.join(ROOT, 'public', 'sole-report')
+const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-blog-agent')
+const REMOTE    = 'big sole vibes:Big Sole Vibes'
+const AFFILIATE = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+const SITE_URL  = 'https://bigsolevibes.com'
+
+// ─── Logging ──────────────────────────────────────────────────────────────────
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`
+  console.log(line)
+  fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Drive helpers ────────────────────────────────────────────────────────────
+
+function loadLatestDriveFile(folder, pattern) {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/${folder}"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => pattern ? pattern.test(f) : f.endsWith('.md'))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/${folder}/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, path.basename(latest))
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
+function loadDriveFile(filename) {
+  try {
+    execSync(`rclone copy "${REMOTE}/${filename}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, path.basename(filename))
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+// ─── Affiliate URL builder — same logic as sync-shop.js ───────────────────────
+
+function buildProductUrl(product) {
+  const raw = (product['ASIN'] || '').trim()
+  if (/^https?:\/\//i.test(raw)) {
+    if (raw.includes('amazon.com')) {
+      const sep = raw.includes('?') ? '&' : '?'
+      return `${raw}${sep}tag=${AFFILIATE}`
+    }
+    return raw
+  }
+  if (raw) return `https://www.amazon.com/dp/${raw}?tag=${AFFILIATE}`
+  return `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${AFFILIATE}`
+}
+
+// ─── HTML builder ─────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function buildPostHtml(post, dateStr) {
+  const canonicalUrl = `${SITE_URL}/sole-report/${post.slug}.html`
+  const wordCount    = (post.openingHtml + post.sections.map(s => s.html).join('') + post.closingHtml)
+    .replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length
+  const readMinutes  = Math.max(1, Math.ceil(wordCount / 200))
+  const publishDate  = new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  const sectionsHtml = post.sections.map(s => {
+    let html = `\n        <h2>${escapeHtml(s.heading)}</h2>\n        ${s.html}`
+    if (s.ctaBox?.complaint) {
+      html += `
+        <div class="balm-cta">
+          <p>Tired of foot balms that ${escapeHtml(s.ctaBox.complaint)}? A fast-absorbing, sandalwood-infused alternative is currently being engineered.</p>
+          <a href="/lounge" class="balm-cta-btn">GET ON THE LIST →</a>
+          <span class="balm-cta-sub">Founding member pricing.</span>
+        </div>`
+    }
+    return html
+  }).join('\n')
+
+  const schemaJson = JSON.stringify({
+    '@context':         'https://schema.org',
+    '@type':            'Article',
+    headline:           post.title,
+    description:        post.metaDescription,
+    url:                canonicalUrl,
+    datePublished:      dateStr,
+    publisher: {
+      '@type': 'Organization',
+      name:    'Big Sole Vibes',
+      url:     SITE_URL,
+    },
+    author: {
+      '@type': 'Person',
+      name:    'The Proprietor',
+    },
+    keywords: (post.keywords || []).join(', '),
+  })
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(post.title)} — Big Sole Vibes</title>
+  <meta name="description" content="${escapeHtml(post.metaDescription)}">
+  <link rel="canonical" href="${canonicalUrl}">
+
+  <!-- Open Graph -->
+  <meta property="og:type"             content="article">
+  <meta property="og:title"            content="${escapeHtml(post.title)}">
+  <meta property="og:description"      content="${escapeHtml(post.metaDescription)}">
+  <meta property="og:url"              content="${canonicalUrl}">
+  <meta property="og:site_name"        content="Big Sole Vibes">
+  <meta property="article:published_time" content="${dateStr}">
+  <meta name="twitter:card"            content="summary_large_image">
+  <meta name="twitter:title"           content="${escapeHtml(post.title)}">
+  <meta name="twitter:description"     content="${escapeHtml(post.metaDescription)}">
+
+  <!-- Article schema -->
+  <script type="application/ld+json">${schemaJson}</script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0D1B2A;
+      --card:    #162233;
+      --surface: #1C2E42;
+      --amber:   #C17D2E;
+      --cream:   #F5ECD7;
+      --muted:   #4A6380;
+      --font-bebas:    'Bebas Neue', sans-serif;
+      --font-playfair: 'Playfair Display', Georgia, serif;
+    }
+
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--cream); font-family: var(--font-playfair); -webkit-font-smoothing: antialiased; }
+    a { color: var(--amber); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    .site-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: rgba(13,27,42,0.95); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.10); height: 64px; }
+    .nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { font-family: var(--font-bebas); font-size: 1.5rem; letter-spacing: 0.08em; color: var(--amber); text-decoration: none; }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+    .nav-links a { font-size: 0.875rem; color: var(--muted); transition: color 0.15s; text-decoration: none; }
+    .nav-links a:hover { color: var(--cream); }
+    .nav-links a.active { color: var(--amber); }
+    @media (max-width: 640px) { .nav-links { display: none; } }
+
+    /* ── Article hero ── */
+    .post-hero { padding: 8rem 1.5rem 4rem; background: var(--card); border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .post-hero-inner { max-width: 720px; margin: 0 auto; }
+    .back-link { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 2rem; text-decoration: none; }
+    .back-link:hover { color: var(--amber); }
+    .post-meta { display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 1.25rem; }
+    .post-meta-sep { color: rgba(255,255,255,0.2); }
+    .post-h1 { font-family: var(--font-playfair); font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 700; color: var(--cream); line-height: 1.15; letter-spacing: -0.01em; }
+
+    /* ── Article body ── */
+    .post-body { padding: 4rem 1.5rem 6rem; }
+    .post-body-inner { max-width: 720px; margin: 0 auto; }
+
+    .post-body p { font-size: 1.0625rem; line-height: 1.8; color: rgba(245,236,215,0.82); margin-bottom: 1.5rem; }
+    .post-body h2 { font-family: var(--font-bebas); font-size: 1.6rem; letter-spacing: 0.08em; color: var(--amber); margin: 3rem 0 1.25rem; }
+    .post-body h3 { font-family: var(--font-playfair); font-size: 1.2rem; font-weight: 600; color: var(--cream); margin: 2rem 0 0.75rem; }
+    .post-body strong { color: var(--cream); font-weight: 600; }
+    .post-body em { font-style: italic; }
+    .post-body a { color: var(--amber); border-bottom: 1px solid rgba(193,125,46,0.3); padding-bottom: 1px; transition: border-color 0.15s; }
+    .post-body a:hover { border-color: var(--amber); text-decoration: none; }
+    .post-body blockquote { border-left: 3px solid var(--amber); padding: 0.25rem 0 0.25rem 1.5rem; margin: 2rem 0; }
+    .post-body blockquote p { color: var(--muted); font-style: italic; }
+    .post-body hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 3rem 0; }
+
+    /* ── Shelf link (product CTA inline) ── */
+    .shelf-link { display: inline-block; background: rgba(193,125,46,0.12); border: 1px solid rgba(193,125,46,0.3); color: var(--amber); font-family: var(--font-bebas); font-size: 0.7rem; letter-spacing: 0.1em; padding: 0.25rem 0.6rem; margin-left: 0.4rem; vertical-align: middle; text-decoration: none; transition: background 0.15s; }
+    .shelf-link:hover { background: rgba(193,125,46,0.22); border-color: var(--amber); text-decoration: none; }
+
+    /* ── Balm CTA box ── */
+    .balm-cta { background: rgba(193,125,46,0.07); border: 1px solid rgba(193,125,46,0.22); border-left: 3px solid var(--amber); padding: 1.5rem 1.75rem; margin: 2.5rem 0; }
+    .balm-cta p { font-size: 0.9375rem; line-height: 1.75; color: rgba(245,236,215,0.88); margin-bottom: 1.125rem; font-style: italic; }
+    .balm-cta-btn { display: inline-block; font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.12em; border: 1px solid var(--amber); color: var(--amber); padding: 0.625rem 1.5rem; transition: background 0.15s, color 0.15s; text-decoration: none; }
+    .balm-cta-btn:hover { background: var(--amber); color: var(--bg); text-decoration: none; border-color: var(--amber); }
+    .balm-cta-sub { display: block; font-size: 0.6875rem; color: var(--muted); margin-top: 0.625rem; letter-spacing: 0.04em; }
+
+    /* ── FTC disclosure ── */
+    .ftc-disclosure { font-size: 0.6875rem; color: var(--muted); background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); padding: 0.6rem 1rem; margin-top: 1.75rem; line-height: 1.5; }
+
+    /* ── Post footer ── */
+    .post-footer { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding-top: 3rem; margin-top: 3rem; border-top: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
+    .shop-cta-btn { font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.1em; border: 1px solid var(--amber); color: var(--amber); padding: 0.875rem 2rem; transition: background 0.15s, color 0.15s; }
+    .shop-cta-btn:hover { background: var(--amber); color: var(--bg); text-decoration: none; }
+    .blog-link { font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.1em; color: var(--muted); }
+    .blog-link:hover { color: var(--amber); }
+
+    /* ── Site footer ── */
+    .site-footer { background: var(--card); border-top: 1px solid rgba(255,255,255,0.1); padding: 4rem 1.5rem; }
+    .footer-inner { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2rem; }
+    @media (min-width: 768px) { .footer-inner { flex-direction: row; align-items: flex-start; justify-content: space-between; } }
+    .footer-brand-name { font-family: var(--font-bebas); font-size: 1.875rem; letter-spacing: 0.08em; color: var(--amber); display: block; margin-bottom: 0.5rem; text-decoration: none; }
+    .footer-tagline { font-size: 0.875rem; color: var(--muted); }
+    .footer-nav { display: flex; gap: 2rem; list-style: none; }
+    .footer-nav a { font-size: 0.875rem; color: var(--muted); transition: color 0.15s; text-decoration: none; }
+    .footer-nav a:hover { color: var(--cream); }
+    .footer-copy { max-width: 1280px; margin: 3rem auto 0; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); text-align: center; font-size: 0.75rem; color: var(--muted); }
+    .affiliate-note { font-size: 0.6875rem; color: rgba(255,255,255,0.3); text-align: center; padding: 0.5rem 1.5rem 0; font-family: var(--font-playfair); }
+  </style>
+</head>
+<body>
+
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-brand">BIG SOLE VIBES</a>
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/shop">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <header class="post-hero">
+    <div class="post-hero-inner">
+      <a href="/sole-report/index.html" class="back-link">← THE SOLE REPORT</a>
+      <div class="post-meta">
+        <span>${publishDate}</span>
+        <span class="post-meta-sep">·</span>
+        <span>${readMinutes} min read</span>
+      </div>
+      <h1 class="post-h1">${escapeHtml(post.title)}</h1>
+      <aside class="ftc-disclosure">Disclosure: As an Amazon Associate, Big Sole Vibes earns from qualifying purchases.</aside>
+    </div>
+  </header>
+
+  <article class="post-body">
+    <div class="post-body-inner">
+
+      ${post.openingHtml}
+
+      ${sectionsHtml}
+
+      ${post.closingHtml}
+
+      <div class="post-footer">
+        <a href="/shop" class="shop-cta-btn">THE LOCKER ROOM →</a>
+        <a href="/sole-report/index.html" class="blog-link">← The Sole Report</a>
+      </div>
+    </div>
+  </article>
+
+  <p class="affiliate-note">BSV participates in the Amazon Associates Program. Links on this page are affiliate links — we may earn a commission at no cost to you.</p>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <a href="/" class="footer-brand-name">BIG SOLE VIBES</a>
+        <p class="footer-tagline">We found what you were looking for.</p>
+      </div>
+      <ul class="footer-nav">
+        <li><a href="/">Home</a></li>
+        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/shop">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
+      </ul>
+    </div>
+    <div class="footer-copy">
+      <p>© ${new Date().getFullYear()} Big Sole Vibes. All rights reserved.</p>
+    </div>
+  </footer>
+
+</body>
+</html>`
+}
+
+function buildIndexHtml(posts) {
+  const year = new Date().getFullYear()
+  const postCards = posts.map(p => {
+    const d = new Date(p.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    return `
+          <article class="post-card">
+            <div class="post-card-meta">${escapeHtml(d)}</div>
+            <h2 class="post-card-title">
+              <a href="/sole-report/${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>
+            </h2>
+            <p class="post-card-excerpt">${escapeHtml(p.excerpt)}</p>
+            <a href="/sole-report/${escapeHtml(p.slug)}.html" class="post-card-link">READ MORE →</a>
+          </article>`
+  }).join('\n')
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Sole Report — Big Sole Vibes</title>
+  <meta name="description" content="Proprietor-approved writing on men's grooming, foot care, and the standard. No fluff. No problem-solving. The practice, documented.">
+  <link rel="canonical" href="${SITE_URL}/sole-report/index.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0D1B2A; --card: #162233; --amber: #C17D2E; --cream: #F5ECD7; --muted: #4A6380; --font-bebas: 'Bebas Neue', sans-serif; --font-playfair: 'Playfair Display', Georgia, serif; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--cream); font-family: var(--font-playfair); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    .site-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: rgba(13,27,42,0.95); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.10); height: 64px; }
+    .nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { font-family: var(--font-bebas); font-size: 1.5rem; letter-spacing: 0.08em; color: var(--amber); }
+    .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+    .nav-links a { font-size: 0.875rem; color: var(--muted); transition: color 0.15s; }
+    .nav-links a:hover, .nav-links a.active { color: var(--cream); }
+    .nav-links a.active { color: var(--amber); }
+    @media (max-width: 640px) { .nav-links { display: none; } }
+    .blog-hero { padding: 8rem 1.5rem 4rem; background: var(--card); border-bottom: 1px solid rgba(255,255,255,0.05); text-align: center; }
+    .hero-eyebrow { font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.1em; color: var(--amber); margin-bottom: 1rem; }
+    .hero-title { font-family: var(--font-playfair); font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 700; line-height: 1.1; }
+    .hero-sub { font-style: italic; font-size: 1rem; color: var(--muted); margin-top: 1rem; }
+    .post-list { max-width: 760px; margin: 0 auto; padding: 4rem 1.5rem 6rem; display: flex; flex-direction: column; gap: 3rem; }
+    .post-card { border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 3rem; }
+    .post-card-meta { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.04em; margin-bottom: 0.75rem; }
+    .post-card-title { font-family: var(--font-playfair); font-size: 1.75rem; font-weight: 700; line-height: 1.2; margin-bottom: 0.75rem; }
+    .post-card-title a { color: var(--cream); transition: color 0.15s; }
+    .post-card-title a:hover { color: var(--amber); }
+    .post-card-excerpt { font-size: 0.9375rem; line-height: 1.75; color: rgba(245,236,215,0.65); margin-bottom: 1.25rem; }
+    .post-card-link { font-family: var(--font-bebas); font-size: 0.75rem; letter-spacing: 0.1em; color: var(--amber); transition: opacity 0.15s; }
+    .post-card-link:hover { opacity: 0.75; }
+    .site-footer { background: var(--card); border-top: 1px solid rgba(255,255,255,0.1); padding: 4rem 1.5rem; }
+    .footer-inner { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2rem; }
+    @media (min-width: 768px) { .footer-inner { flex-direction: row; align-items: flex-start; justify-content: space-between; } }
+    .footer-brand-name { font-family: var(--font-bebas); font-size: 1.875rem; letter-spacing: 0.08em; color: var(--amber); display: block; margin-bottom: 0.5rem; }
+    .footer-tagline { font-size: 0.875rem; color: var(--muted); }
+    .footer-nav { display: flex; gap: 2rem; list-style: none; }
+    .footer-nav a { font-size: 0.875rem; color: var(--muted); transition: color 0.15s; }
+    .footer-nav a:hover { color: var(--cream); }
+    .footer-copy { max-width: 1280px; margin: 3rem auto 0; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); text-align: center; font-size: 0.75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-brand">BIG SOLE VIBES</a>
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/shop">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <header class="blog-hero">
+    <p class="hero-eyebrow">THE PROPRIETOR'S DESK</p>
+    <h1 class="hero-title">The Sole Report</h1>
+    <p class="hero-sub">The practice, documented. No problem-solving. No padding. The standard, in writing.</p>
+  </header>
+
+  <main class="post-list">
+    ${postCards}
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <a href="/" class="footer-brand-name">BIG SOLE VIBES</a>
+        <p class="footer-tagline">We found what you were looking for.</p>
+      </div>
+      <ul class="footer-nav">
+        <li><a href="/">Home</a></li>
+        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/shop">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
+      </ul>
+    </div>
+    <div class="footer-copy">
+      <p>© ${year} Big Sole Vibes. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>`
+}
+
+// ─── Git push ─────────────────────────────────────────────────────────────────
+
+function gitPush(files) {
+  try {
+    const fileArgs = files.map(f => `"${f}"`).join(' ')
+    execSync(`git add ${fileArgs}`, { cwd: ROOT, stdio: 'pipe' })
+    const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }).trim()
+    if (!status) { log('Git: no changes — skipping push'); return false }
+    const msg = `chore: blog-agent — ${files.length} file(s) updated ${new Date().toISOString().slice(0, 10)}`
+    execSync(`git commit -m "${msg}"`, { cwd: ROOT, stdio: 'pipe' })
+    require('./git-push-guard').safePushToPreview(ROOT, log)
+    return true
+  } catch (err) {
+    log(`ERROR: git push failed — ${err.stderr?.toString().trim() || err.message}`)
+    return false
+  }
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+;(async function run() {
+  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+  fs.mkdirSync(TEMP_DIR,  { recursive: true })
+  fs.mkdirSync(BLOG_DIR,  { recursive: true })
+
+  const dryRun = process.argv.includes('--dry-run')
+  log(`━━━ blog-agent start ━━━${dryRun ? ' [dry-run]' : ''}`)
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
+
+  const today   = new Date().toISOString().slice(0, 10)
+  const dateObj = new Date()
+
+  // ─── Load Drive context ───────────────────────────────────────────────────
+  log('Loading Drive context...')
+
+  const weeklyPlan    = loadLatestDriveFile('Plans')
+  const brandReport   = loadLatestDriveFile('Brand')
+  const socialReport  = loadLatestDriveFile('Reports', /^social-report-\d{4}-\d{2}-\d{2}\.md$/)
+  const memory        = loadDriveFile('BSV-Memory.md')
+
+  // Load latest dated handoff
+  let handoff = null
+  try {
+    const handoffFiles = execSync(`rclone ls "${REMOTE}/Handoff"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^BSV-Handoff-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (handoffFiles.length) {
+      const latest = handoffFiles[handoffFiles.length - 1]
+      execSync(`rclone copy "${REMOTE}/Handoff/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const p = path.join(TEMP_DIR, latest)
+      if (fs.existsSync(p)) handoff = fs.readFileSync(p, 'utf8')
+    }
+  } catch {}
+
+  log(`Weekly plan:    ${weeklyPlan    ? weeklyPlan.filename    : 'none'}`)
+  log(`Brand report:   ${brandReport   ? brandReport.filename   : 'none'}`)
+  log(`Social report:  ${socialReport  ? socialReport.filename  : 'none'}`)
+  log(`Memory:         ${memory ? memory.length + ' chars' : 'none'}`)
+  log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
+
+  // ─── Load approved shelf products ─────────────────────────────────────────
+  log('Loading approved shelf products from Google Sheets...')
+  let shelfProducts = []
+  try {
+    const conn = await connect()
+    await ensureHeaders(conn)
+    const rows = await readAllRows(conn)
+    shelfProducts = rows
+      .filter(r => (r['Status'] || '').trim().toLowerCase() === 'approved')
+      .map(r => ({
+        name:            r['Product Name']      || '',
+        category:        r['Category']          || '',
+        description:     r['Description']       || '',
+        reasoning:       r['Reasoning']         || '',
+        price:           r['Price']             || '',
+        proprietorsNotes: r["Proprietor's Notes"] || '',
+        url:             buildProductUrl(r),
+        isAmazon:        buildProductUrl(r).includes('amazon.com'),
+      }))
+    log(`Approved products: ${shelfProducts.length}`)
+  } catch (err) {
+    log(`WARNING: could not load sheet — ${err.message}`)
+  }
+
+  // ─── Build prompt context ─────────────────────────────────────────────────
+  const shelfBlock = shelfProducts.length
+    ? shelfProducts.map((p, i) => [
+        `${i + 1}. **${p.name}** (${p.category})`,
+        `   URL: ${p.url}`,
+        `   Price: ${p.price}`,
+        `   Description: ${p.description}`,
+        p.proprietorsNotes ? `   Proprietor's Notes (review complaint patterns — use for CTA box): ${p.proprietorsNotes}` : '',
+      ].filter(Boolean).join('\n')).join('\n\n')
+    : 'No approved products on shelf yet.'
+
+  const systemPrompt = `${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+
+## Tone — this supersedes "Proprietor voice" for blog posts
+Inviting, not judgmental. Confident, not preachy. There is a quiet knowing smile behind every sentence — like the man who already figured this out and is holding the door open for you without making a big deal of it.
+
+The edge is this: his face gets moisturizer every morning. His shoes get cedar shoe trees. His suits get pressed. And his feet — the thing that carried all of that through a 12-hour day — get nothing. That is not a character flaw. That is just a blind spot nobody pointed out yet. BSV is pointing it out. Without judgment. With a slight raise of the eyebrow.
+
+The feeling is: the door is open, the room is warm, the drink is already poured. Come in or don't. But he will want to come in.
+
+**Never:**
+- Shames the reader
+- Says "you've been neglecting your feet" or any variant
+- Uses the word "pamper"
+- Sounds like a spa brochure
+- Lectures
+
+**Always:**
+- Makes the reader feel like this is obvious once you see it
+- Makes foot care feel like the natural extension of the standard he already holds
+- Makes the shelf feel like it was curated for him specifically
+- Leaves him feeling like he is already the kind of man who does this — he just needed the right products
+
+**Craft:**
+- Statements, never questions
+- Minimal throat-clearing — open on something that matters
+- Short paragraphs, room to breathe
+- Never explains the brand — assumes the reader already belongs here
+
+## What every post is not
+- A listicle
+- A problem-solver or medical article
+- Anything that would appear in a Walgreens circular
+- Generic lifestyle content
+- Anything that explains what BSV is
+
+## Affiliate link anchor text rule
+Every shelf product reference must link to its URL using context-rich anchor text that describes the product's specific quality or mechanism. The link is a natural extension of the sentence — never an ad placement.
+
+Good: <a href="URL" rel="sponsored">Gehwol's fast-acting formula</a>
+Good: <a href="URL" rel="sponsored">FootLogix's zero-residue mousse</a>
+Good: <a href="URL" rel="sponsored">Niegeloh's Solingen steel set</a>
+Never: "click here", "buy now", "check price", "shop now", or any generic anchor text.
+
+## CTA box rule
+Whenever a section references a shelf product that has Proprietor's Notes, include a ctaBox field in that section's JSON. The complaint value must be a short, specific phrase drawn directly from that product's Proprietor's Notes — the real complaint pattern, not a generic one. It completes the sentence: Tired of foot balms that [complaint].
+
+Example complaint values from actual notes:
+- "leave a greasy film an hour after application"
+- "smell like a pharmacy"
+- "come in packaging that signals the medicine cabinet, not the shelf"
+
+If a section references multiple products, use the complaint from the one most central to that section. Omit ctaBox entirely on sections where no referenced product has Proprietor's Notes.
+
+## Image brief — one per post, required
+
+Every post ends with an imageBrief field. This is a scene direction for Gemini image generation. The product is never in the frame. The feeling always is.
+
+Choose exactly one of the four BSV visual scenes that fits the post's argument, then write a one-paragraph brief describing the scene, the mood, the light, and what the man in the frame looks like.
+
+The four scenes:
+
+1. **The Transition** — A man in a suit. Leather chair. Glass of whiskey or bourbon on a side table. City skyline through the window, dusk or night. One shoe is coming off. He is not looking at the camera. The moment between the day and whatever comes next. Mood: earned stillness. Light: warm amber interior against cool blue outside.
+
+2. **The Athlete's Toll** — Post-game or post-training locker room. Dirty uniform or kit visible. Cleats or athletic shoes pulled off. The man is alone, or nearly. He is not celebrating — he is accounting. Mood: quiet after effort. Light: institutional overhead with pockets of shadow. The weight of the day is on him and he is fine with it.
+
+3. **The Chef** — Still in chef's whites or a cook's apron, end of service. Recliner or battered sofa. Shoes on the floor beside him, feet up. Eyes possibly closed. He has fed other people for twelve hours. Mood: the specific exhaustion that comes from craft. Light: a single lamp, warm, late. The room is quiet for the first time all day.
+
+4. **The Intimate Moment** — Two people, close. A couple at the end of the day. Shoes off, feet visible. The scene is private without being explicit. The foot care gap is the unspoken thing in the frame — not a problem, just the next thing. Mood: quiet domesticity, warmth without sentimentality. Light: soft, natural or candlelit. The moment feels earned.
+
+The brief must specify: which scene, the specific light quality, what the man is wearing, the exact moment being captured, and the emotional register. One paragraph. Cinematographer's eye. No product in frame.
+
+## Legal compliance — non-negotiable, every post
+
+1. FTC disclosure: Already injected into the HTML template near the post title — do not add it again in the post body.
+
+2. Image rules: Never reference downloaded Amazon product images. Never instruct use of right-click-saved images. Acceptable sources only: Amazon SiteStripe embedded links (images served from Amazon's servers), original BSV photography. When referencing a product, describe it in words.
+
+3. Truthful comparisons: Complaint language in ctaBox must come only from actual mined Amazon reviews passed in Proprietor's Notes — never invented. Never imply any brand is partnering with or endorsing BSV. Frame all product assessments as the Proprietor's independent assessment.
+
+4. Title structure: Never title a post as a product review. The concept or argument always leads. The product is evidence for the argument, never the argument itself.
+   Good: "The Texture Audit: Why Fast-Absorbing Mousse is Replacing Slimy Lotions in Elite Grooming Routines" (then cover FootLogix inside)
+   Good: "The Standard Doesn't Stop at the Ankle" (then introduce the shelf)
+   Never: "FootLogix Review: Is This the Best Foot Mousse for Men?"
+
+## SEO requirements (weave in naturally — no keyword stuffing)
+Primary targets: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium pedicure tools Solingen steel", "fast absorbing foot treatment men", "dry cracked heel treatment athletes", "luxury shoe friction prevention balm", "premium foot care men"
+
+Every post must:
+- Open with something that stops the scroll — no "welcome to the blog" energy
+- Have h2 subheadings that target secondary keywords
+- Reference approved shelf products with their exact affiliate URLs — naturally, as evidence, not as ads
+- Include an internal link to /shop
+- Close with a statement, not a call to action
+
+## JSON output format — return ONLY this JSON, no markdown fences, no commentary
+
+{
+  "title": "Concept-first title — the argument or insight leads, primary keyword embedded naturally. Never a product review title. The product is evidence inside the post, never the subject of the title.",
+  "slug": "url-slug-lowercase-hyphens",
+  "metaDescription": "Under 160 characters. Primary keyword. Written for the man, not the algorithm.",
+  "excerpt": "2–3 sentences for the post listing. Reads like the Proprietor wrote it — not a summary.",
+  "keywords": ["primary kw", "secondary kw", "tertiary kw"],
+  "openingHtml": "<p>...</p><p>...</p>  (3–5 paragraphs, no h2, no intro heading — just opens strong)",
+  "sections": [
+    {
+      "heading": "Section Heading Targeting Secondary Keyword",
+      "html": "<p>...</p><p>...</p>",
+      "ctaBox": { "complaint": "specific complaint phrase from Proprietor's Notes — omit key entirely if no notes exist for referenced product" }
+    }
+  ],
+  "closingHtml": "<p>Final statement. Not a CTA. Not a summary. The Proprietor's last word on it.</p>",
+  "imageBrief": "One paragraph. Scene name (The Transition / The Athlete's Toll / The Chef / The Intimate Moment), then: the specific light, what the man is wearing, the exact moment being captured, the emotional register. The product is never in the frame. The feeling always is."
+}`
+
+  const userPrompt = `Write the BSV blog post for this week.
+
+## Week context
+${weeklyPlan ? `Weekly content plan (${weeklyPlan.filename}):\n${weeklyPlan.content.slice(0, 1500)}` : 'No weekly plan available — write a hub post on the premium foot care standard.'}
+
+## Brand signals
+${brandReport ? brandReport.content.slice(0, 800) : 'No brand report available.'}
+
+## Social intelligence
+${socialReport ? socialReport.content.slice(0, 600) : 'No social report available.'}
+
+## Approved shelf products — reference these naturally with their URLs as affiliate links
+${shelfBlock}
+
+## Post requirements
+- Voice: Proprietor — statements, deadpan, confident. Never preachy.
+- Target: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium foot care men"
+- Structure: Hub article. Establish authority, define the premium lifestyle angle, introduce the BSV shelf as the curation the BSV man didn't know existed
+- Frame: Written for the man who already treats his face well and hasn't thought about what's been carrying him all day
+- Shelf products: reference Gehwol, Kneipp, and others naturally — as evidence of the standard, not as ads
+- Internal link to /shop at least once
+- Length: 1,000–1,400 words
+
+Return ONLY the JSON object. No preamble, no explanation.`
+
+  // ─── Call Claude ──────────────────────────────────────────────────────────
+  log('Calling Claude API to generate blog post...')
+  const client   = new Anthropic({ apiKey })
+  const response = await client.messages.create({
+    model:      'claude-sonnet-4-6',
+    max_tokens: 6000,
+    system:     systemPrompt,
+    messages:   [{ role: 'user', content: userPrompt }],
+  })
+
+  const rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+  log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+
+  // ─── Parse JSON ───────────────────────────────────────────────────────────
+  let post
+  try {
+    const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const start = stripped.indexOf('{')
+    const end   = stripped.lastIndexOf('}')
+    if (start === -1 || end === -1) throw new Error('no JSON object found')
+    post = JSON.parse(stripped.slice(start, end + 1))
+    if (!post.title || !post.slug || !post.openingHtml) throw new Error('missing required fields')
+    log(`Post: "${post.title}" → /${post.slug}`)
+    if (post.imageBrief) log(`Image brief: ${post.imageBrief}`)
+    else log('WARNING: no imageBrief in response')
+  } catch (err) {
+    log(`ERROR: JSON parse failed — ${err.message}`)
+    log(`Raw (first 500): ${rawText.slice(0, 500)}`)
+    process.exit(1)
+  }
+
+  // ─── Build and write HTML ─────────────────────────────────────────────────
+  const filename  = `${today}-${post.slug}.html`
+  const postPath  = path.join(BLOG_DIR, filename)
+  const indexPath = path.join(BLOG_DIR, 'index.html')
+  const manifestPath = path.join(BLOG_DIR, 'manifest.json')
+
+  const postHtml = buildPostHtml(post, today)
+
+  // Load or init manifest
+  let manifest = []
+  if (fs.existsSync(manifestPath)) {
+    try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) } catch {}
+  }
+
+  // Prepend new post (dedup by slug)
+  manifest = manifest.filter(m => m.slug !== post.slug)
+  manifest.unshift({
+    slug:        post.slug,
+    title:       post.title,
+    date:        today,
+    excerpt:     post.excerpt,
+    filename,
+    imageBrief:  post.imageBrief || '',
+    imageStatus: 'pending',
+  })
+
+  const indexHtml = buildIndexHtml(manifest)
+
+  if (dryRun) {
+    const preview = path.join(ROOT, 'logs', 'blog-preview.html')
+    fs.writeFileSync(preview, postHtml)
+    log(`[dry-run] Post HTML written to logs/blog-preview.html`)
+    log(`[dry-run] Manifest would have ${manifest.length} posts`)
+    log('━━━ blog-agent complete ━━━\n')
+    return
+  }
+
+  fs.writeFileSync(postPath,    postHtml)
+  fs.writeFileSync(indexPath,   indexHtml)
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+  log(`Written: ${filename}`)
+  log(`Written: index.html (${manifest.length} total post(s))`)
+  log(`Written: manifest.json`)
+
+  // Push all three files to main
+  const pushed = gitPush([
+    path.join('public', 'sole-report', filename),
+    path.join('public', 'sole-report', 'index.html'),
+    path.join('public', 'sole-report', 'manifest.json'),
+  ])
+
+  log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)
+  log(`━━━ blog-agent complete — "${post.title}" ━━━\n`)
+})()

@@ -2,11 +2,9 @@ import Link from 'next/link'
 
 const navLinks = [
   { label: 'Home',            href: '/' },
-  { label: 'Lounge',          href: '/lounge' },
-  { label: 'The Kick Off',    href: '/kickoff' },
-  { label: 'Audits',          href: '/audits' },
-  { label: 'Brief',           href: '/brief' },
+  { label: 'The Sole Report', href: '/sole-report' },
   { label: 'The Locker Room', href: '/shop' },
+  { label: 'The Lounge',      href: '/lounge' },
 ]
 
 const socialLinks = [
@@ -68,7 +66,7 @@ export default function Footer() {
             <Link href="/" className="font-heading text-3xl text-bsv-amber tracking-wider">
               BIG SOLE VIBES
             </Link>
-            <p className="text-bsv-muted text-sm mt-2">Step Up. Feel Good. Own It.</p>
+            <p className="text-bsv-muted text-sm mt-2">We found what you were looking for.</p>
           </div>
 
           {/* Nav */}

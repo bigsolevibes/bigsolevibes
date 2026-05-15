@@ -635,11 +635,9 @@ function buildShopPage(approvedProducts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/lounge">Lounge</a></li>
-        <li><a href="/kickoff">The Kick Off</a></li>
-        <li><a href="/audits">Audits</a></li>
-        <li><a href="/brief">Brief</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop" class="active">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
@@ -662,7 +660,7 @@ function buildShopPage(approvedProducts) {
       <div class="coming-soon-rule"></div>
       <p class="coming-soon-heading">More lockers opening soon.</p>
       <p class="coming-soon-sub">The proprietor is still pulling product. Only the best earns a spot on these shelves.</p>
-      <a href="/audits" class="shop-cta-btn">READ THE AUDITS →</a>
+      <a href="/sole-report" class="shop-cta-btn">READ THE SOLE REPORT →</a>
     </div>
   </main>
   ` : `
@@ -688,7 +686,7 @@ function buildShopPage(approvedProducts) {
     <div class="shop-cta-rule"></div>
     <p class="shop-cta-heading">Want the full breakdown before you buy?</p>
     <p class="shop-cta-sub">The Sole Audits go deeper — every pick tested, ranked, and given a verdict.</p>
-    <a href="/audits" class="shop-cta-btn">READ THE AUDITS →</a>
+    <a href="/sole-report" class="shop-cta-btn">READ THE SOLE REPORT →</a>
   </section>
   `}
 
@@ -701,11 +699,9 @@ function buildShopPage(approvedProducts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/lounge">Lounge</a></li>
-        <li><a href="/kickoff">The Kick Off</a></li>
-        <li><a href="/audits">Audits</a></li>
-        <li><a href="/brief">Brief</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
+        <li><a href="/lounge">The Lounge</a></li>
       </ul>
       <div class="footer-socials">
         <a href="https://instagram.com/bigsolevibes" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
