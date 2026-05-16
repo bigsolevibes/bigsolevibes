@@ -101,26 +101,39 @@ const ext = path.extname(inputPath).toLowerCase()
         process.exit(1)
       }
 
-      const publicPath = path.join(publicDir, fileName)
-      fs.copyFileSync(outputPath, desktopPath)
-      fs.copyFileSync(outputPath, publicPath)
       console.log(`${platform.name}: ${outputPath}`)
-      console.log(`  → copied to ${desktopPath}`)
-      console.log(`  → copied to ${publicPath}`)
       copyToGDrive(outputPath)
     }
 
-    // Apply BSV branding overlay to all output images before committing
+    // Brand all output images first, then copy branded versions to publicDir and desktopDir
     execSync(`node "${path.join(__dirname, 'brand-image.js')}" --dir "${outputDir}"`, { stdio: 'inherit' })
+
+    for (const platform of targets) {
+      const outExt = platform.format === 'jpeg' ? '.jpg' : ext
+      const fileName = `${baseName}-${platform.name}${outExt}`
+      const outputPath  = path.join(outputDir,  fileName)
+      const publicPath  = path.join(publicDir,  fileName)
+      const desktopPath = path.join(desktopDir, fileName)
+      fs.copyFileSync(outputPath, publicPath)
+      fs.copyFileSync(outputPath, desktopPath)
+      console.log(`  → copied to ${publicPath}`)
+      console.log(`  → copied to ${desktopPath}`)
+    }
   }
 
   // Deploy to Cloudflare Pages — public/posts/output/ is served at /posts/output/
   const root = path.join(__dirname, '..')
   try {
     execSync('git add posts/output/ public/posts/output/', { cwd: root, stdio: 'pipe' })
-    const status = execSync('git status --porcelain posts/output/ public/posts/output/', { cwd: root, encoding: 'utf8' }).trim()
-    if (!status) {
-      console.log('\ngit: nothing new to commit')
+    let changed = true
+    try {
+      execSync('git diff --cached --quiet posts/output/ public/posts/output/', { cwd: root, stdio: 'pipe' })
+      changed = false
+    } catch { /* non-zero exit = there are staged changes */ }
+
+    if (!changed) {
+      execSync('git reset HEAD -- posts/output/ public/posts/output/', { cwd: root, stdio: 'pipe' })
+      console.log('\ngit: output unchanged — skipping commit')
     } else {
       execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'pipe' })
       require('./git-push-guard').safePushToPreview(root, console.log)
