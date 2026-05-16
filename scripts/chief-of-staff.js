@@ -161,6 +161,7 @@ function buildTokenBudget() {
     { name: 'product-research',    file: 'product-research.log' },
     { name: 'change-agent',        file: 'change-agent.log' },
     { name: 'blog-agent',          file: 'blog-agent.log' },
+    { name: 'reddit-agent',        file: 'reddit-agent.log' },
     { name: 'update-handoff',      file: 'update-handoff.log' },
     { name: 'chief-of-staff',      file: 'chief-of-staff.log' },
   ]
@@ -441,7 +442,14 @@ async function sendTelegram(token, chatId, text) {
   const engBotLog      = getRecentLog('eng-bot.log', 30)
   const productDevLog  = getRecentLog('product-development.log', 30)
   const changeAgentLog = getRecentLog('change-agent.log', 30)
-  const blogAgentLog   = getRecentLog('blog-agent.log', 30)
+  const blogAgentLog    = getRecentLog('blog-agent.log', 30)
+  const redditAgentLog  = getRecentLog('reddit-agent.log', 20)
+  const redditState     = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'reddit-state.json')
+      return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+    } catch { return null }
+  })()
 
   const postState      = getPostState()
   const outputFiles    = getOutputFiles()
@@ -735,6 +743,17 @@ ${changeAgentLog || '(no log)'}
 \`\`\`
 ${blogAgentLog || '(no log)'}
 \`\`\`
+
+### reddit-agent.log
+\`\`\`
+${redditAgentLog || '(no log)'}
+\`\`\`
+
+## Reddit State (reddit-state.json)
+Last post: ${redditState?.posts?.[0]
+  ? `"${redditState.posts[0].title}" — ${redditState.posts[0].url} (${redditState.posts[0].date})`
+  : '(none recorded)'}
+Total posts tracked: ${redditState?.posts?.length ?? 0}
 
 ## Post State (post-state.json)
 \`\`\`json
