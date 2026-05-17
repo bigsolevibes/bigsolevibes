@@ -148,8 +148,18 @@ async function generateImage(apiKey, prompt) {
     log(`  ${slot}: generating image...`)
     log(`    prompt: ${visualPrompt.slice(0, 120)}${visualPrompt.length > 120 ? '…' : ''}`)
 
+    const finalPrompt = [
+      'PHOTOGRAPHY RULES — STRICT:',
+      'ONE image. ONE person. ONE location. ONE moment in time.',
+      'This is a single full-bleed photograph, not a composite.',
+      'FORBIDDEN: collage, grid, 2x2 panel, split-screen, mood board, multiple frames, multiple poses, multiple outfits, multiple settings, before/after, side-by-side.',
+      'If you are about to generate more than one frame or panel, STOP. Generate only the primary scene.',
+      'Style: dark cinematic editorial photography. Shot on 35mm. One consistent color grade.',
+      'Subject: ' + visualPrompt,
+    ].join('\n')
+
     try {
-      const buf = await generateImage(apiKey, visualPrompt)
+      const buf = await generateImage(apiKey, finalPrompt)
       fs.writeFileSync(localPath, buf)
       execSync(
         `rclone copyto "${localPath}" "${GDRIVE_REMOTE}:${outFilename}" --drive-root-folder-id ${READY_TO_POST_FOLDER}`,
