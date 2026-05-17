@@ -136,7 +136,7 @@ const ext = path.extname(inputPath).toLowerCase()
       console.log('\ngit: output unchanged — skipping commit')
     } else {
       execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'pipe' })
-      require('./git-push-guard').safePushToPreview(root, console.log)
+      require('./git-push-guard').safePushToPipeline(root, console.log)
     }
   } catch (err) {
     console.warn(`⚠ git deploy failed: ${err.message}`)

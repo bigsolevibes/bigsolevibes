@@ -1,14 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // git-push-guard.js — hard stop for rogue main pushes
 //
-// safePushToPreview(cwd, log) — the only sanctioned pipeline push.
-//   Asserts the current HEAD is not targeting main, then pushes to
-//   preview/full-site. If something attempts to push to main, it sends
-//   a Telegram alert to Big D and throws — the calling script aborts.
+// safePushToPreview(cwd, log) — push site content to preview/full-site.
+//   Used by blog-agent, sync-shop, fetch-reddit. Triggers Cloudflare preview.
 //
-// Usage:
-//   const { safePushToPreview } = require('./git-push-guard')
-//   await safePushToPreview(ROOT, log)
+// safePushToPipeline(cwd, log) — push processed media to pipeline/media.
+//   Used by resize-post only. Never triggers a Cloudflare Pages build.
+//
+// If something attempts to push to main, a Telegram alert fires and the
+// calling script aborts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 require('dotenv').config()
@@ -63,4 +63,19 @@ function safePushToPreview(cwd, log) {
   }
 }
 
-module.exports = { safePushToPreview, assertNotMain, sendTelegramAlert }
+// Pipeline-only push — processed media goes here, never triggers Cloudflare.
+const PIPELINE_TARGET = 'pipeline/media'
+function safePushToPipeline(cwd, log) {
+  const logFn = log || console.log
+  try {
+    execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
+    return true
+  } catch (err) {
+    const msg = err.stderr?.toString().trim() || err.message
+    logFn(`ERROR: git push failed — ${msg}`)
+    return false
+  }
+}
+
+module.exports = { safePushToPreview, safePushToPipeline, assertNotMain, sendTelegramAlert }
