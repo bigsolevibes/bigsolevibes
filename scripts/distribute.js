@@ -166,6 +166,21 @@ function isPaused(platform) {
   return PAUSED_PLATFORMS.includes(platform.toLowerCase())
 }
 
+// ─── Bluesky helpers ─────────────────────────────────────────────────────────
+
+// Keep only the first `max` hashtags; remove the rest. Cleans up trailing whitespace.
+function trimBskyHashtags(text, max = 2) {
+  const tagPattern = /#[\w-￿]+/g
+  const matches = [...text.matchAll(tagPattern)]
+  if (matches.length <= max) return text
+  const toRemove = matches.slice(max).reverse()
+  let result = text
+  for (const m of toRemove) {
+    result = result.slice(0, m.index) + result.slice(m.index + m[0].length)
+  }
+  return result.replace(/[^\S\n]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 // ─── X (Twitter) ─────────────────────────────────────────────────────────────
 
 async function postToX() {
@@ -223,25 +238,31 @@ async function postToBluesky() {
     }
     const { data: blobData } = await agent.uploadBlob(bytes, { encoding: 'image/jpeg' })
 
-    const bskyText = [...caption].length > 300
+    // Bluesky caption: trim to 300 chars, then strip hashtags beyond the first two.
+    // Text is the primary content — the image embed is supporting.
+    const rawBskyText = [...caption].length > 300
       ? [...caption].slice(0, 297).join('') + '...'
       : caption
+
+    const bskyText = trimBskyHashtags(rawBskyText, 2)
 
     const rt = new RichText({ text: bskyText })
     await rt.detectFacets(agent)
 
+    // text must come first in the record — Bluesky renders it as the primary content
     const postRecord = {
       text:   rt.text,
-      facets: rt.facets,
+      facets: rt.facets ?? [],
       embed: {
         $type:  'app.bsky.embed.images',
-        images: [{ image: blobData.blob, alt: bskyText }],
+        images: [{ image: blobData.blob, alt: '' }],
       },
     }
 
+    console.log(`  [bluesky] caption hashtags stripped to 2 max`)
     console.log(`  [bluesky] bskyText (${[...bskyText].length} chars): "${bskyText.slice(0, 120)}${bskyText.length > 120 ? '…' : ''}"`)
     console.log(`  [bluesky] rt.text  (${[...rt.text].length} chars): "${rt.text.slice(0, 120)}${rt.text.length > 120 ? '…' : ''}"`)
-    console.log(`  [bluesky] facets: ${rt.facets ? JSON.stringify(rt.facets) : 'none'}`)
+    console.log(`  [bluesky] facets: ${rt.facets?.length ? JSON.stringify(rt.facets) : 'none'}`)
     console.log(`  [bluesky] embed blob ref: ${JSON.stringify(blobData.blob.ref ?? blobData.blob.$link ?? '(no ref)')}`)
 
     const post = await agent.post(postRecord)
