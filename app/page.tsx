@@ -1,150 +1,173 @@
 import Link from 'next/link'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
+import EmailCapture from '@/components/EmailCapture'
+import { getAllPosts } from '@/lib/mdx'
+import shopData from '@/data/shop-products.json'
 
-const AMBER  = '#C17D2E'
-const CREAM  = '#F5ECD7'
-const CARD   = '#162233'
-const MUTED  = '#4A6380'
-const NAVY   = '#0D1B2A'
+export default function HomePage() {
+  const posts    = getAllPosts().slice(0, 3)
+  const products = shopData.picks.slice(0, 3)
 
-const SOCIALS = [
-  {
-    label: 'Instagram',
-    href: 'https://instagram.com/bigsolevibes',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6" aria-hidden="true">
-        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'Facebook',
-    href: 'https://www.facebook.com/profile.php?id=61574284755297',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6" aria-hidden="true">
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'TikTok',
-    href: 'https://tiktok.com/@bigsolevibes',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6" aria-hidden="true">
-        <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.53V6.77a4.85 4.85 0 01-1.01-.08z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'YouTube',
-    href: 'https://www.youtube.com/@bigsolevibes',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6" aria-hidden="true">
-        <path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-      </svg>
-    ),
-  },
-]
-
-
-export default function ComingSoonPage() {
   return (
     <>
       <SiteNav />
-    <div
-      className="min-h-screen flex flex-col items-center px-4 pt-28 pb-12"
-      style={{ backgroundColor: NAVY, color: CREAM }}
-    >
+      <main className="bg-bsv-bg">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="w-full text-center flex flex-col items-center gap-1">
-        <span className="font-heading text-4xl sm:text-5xl tracking-widest" style={{ color: CREAM }}>
-          BIG SOLE VIBES
-        </span>
-        <span className="font-body text-sm sm:text-base italic" style={{ color: AMBER }}>
-          We found what you were looking for.
-        </span>
-        <div className="mt-2 w-16 h-px" style={{ backgroundColor: AMBER }} />
-      </header>
-
-      {/* ── Main content ───────────────────────────────────────────────────── */}
-      <main className="flex flex-col items-center gap-14 w-full text-center mt-10">
-
-        {/* Hero — full width with background image */}
-        <section className="relative w-screen flex flex-col items-center justify-center gap-5 py-24 px-4" style={{ marginLeft: 'calc(-50vw + 50%)' }}>
+        {/* ── HERO ──────────────────────────────────────────────────────── */}
+        <section className="relative min-h-screen flex items-center justify-center pt-16">
           <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{ backgroundImage: "url('/brand/bsv-hero-foundation.png')" }}
             aria-hidden="true"
           />
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: NAVY, opacity: 0.6 }}
-            aria-hidden="true"
-          />
-          <div className="relative z-10 flex flex-col items-center gap-5 w-full max-w-2xl mx-auto text-center px-4">
-            <h1 className="font-heading text-5xl sm:text-7xl leading-none tracking-wide text-center" style={{ color: CREAM }}>
-              We&apos;ve Been<br />
-              <span style={{ color: AMBER }}>Expecting You.</span>
-            </h1>
-            <p className="font-body text-base sm:text-lg leading-relaxed max-w-lg text-center italic" style={{ color: MUTED }}>
-              The day is done and the boots are off. Now, the man remains. This isn&apos;t about hygiene—it&apos;s about the ritual. Pull up a chair, pour a glass, and let&apos;s attend to the foundation. We&apos;ve spent the hours auditing the industry&apos;s best and worst so you don&apos;t have to.
+          <div className="absolute inset-0 bg-bsv-bg" style={{ opacity: 0.65 }} aria-hidden="true" />
+
+          <div className="relative z-10 max-w-2xl mx-auto px-4 text-center">
+            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-6">
+              PREMIUM FOOT CARE FOR MEN
             </p>
+            <h1 className="font-heading text-6xl sm:text-8xl leading-none tracking-wide text-bsv-cream mb-6">
+              We&apos;ve Been<br />
+              <span className="text-bsv-amber">Expecting You.</span>
+            </h1>
+            <p className="text-bsv-muted text-base sm:text-lg leading-relaxed mb-10 max-w-md mx-auto">
+              The standard doesn&apos;t stop at the ankle. Everything on this shelf earned its place.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                href="/sole-report"
+                className="px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
+              >
+                THE SOLE REPORT
+              </Link>
+              <Link
+                href="/shop"
+                className="px-8 py-4 bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest hover:opacity-90 transition-opacity"
+              >
+                THE LOCKER ROOM
+              </Link>
+            </div>
           </div>
         </section>
 
-        {/* Cheeky line */}
-        <section className="flex flex-col items-center gap-3 px-4">
-          <p className="font-body text-base sm:text-lg italic text-center" style={{ color: MUTED }}>
-            Relax. Your secret—and your socks—are safe with us.
-          </p>
+        {/* ── SOLE REPORT ───────────────────────────────────────────────── */}
+        <section className="py-24 border-t border-white/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-baseline justify-between mb-12">
+              <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
+                THE SOLE REPORT
+              </h2>
+              <Link
+                href="/sole-report"
+                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
+              >
+                VIEW ALL →
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
+              {posts.map((post, i) => (
+                <Link
+                  key={post.slug}
+                  href={`/sole-report/${post.slug}`}
+                  className={`block p-8 hover:bg-bsv-card transition-colors${
+                    i < posts.length - 1 ? ' border-b md:border-b-0 md:border-r border-white/10' : ''
+                  }`}
+                >
+                  <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
+                    {new Date(post.date).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                  <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight mb-3">
+                    {post.title.toUpperCase()}
+                  </h3>
+                  <p className="text-bsv-muted text-sm leading-relaxed">{post.excerpt}</p>
+                </Link>
+              ))}
+            </div>
+
+            <div className="mt-8 sm:hidden">
+              <Link
+                href="/sole-report"
+                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
+              >
+                VIEW ALL →
+              </Link>
+            </div>
+          </div>
         </section>
 
-        {/* Amber divider */}
-        <div className="w-24 h-px" style={{ backgroundColor: AMBER }} />
+        {/* ── SHELF PREVIEW ─────────────────────────────────────────────── */}
+        <section className="py-24 bg-bsv-surface border-t border-white/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-baseline justify-between mb-12">
+              <div>
+                <p className="text-bsv-amber font-heading text-xs tracking-widest mb-2">
+                  THE LOCKER ROOM
+                </p>
+                <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
+                  WHAT&apos;S ON THE SHELF
+                </h2>
+              </div>
+              <Link
+                href="/shop"
+                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
+              >
+                FULL SHELF →
+              </Link>
+            </div>
 
-        {/* Entry buttons */}
-        <section className="flex flex-col items-center gap-4 w-full px-4" style={{ maxWidth: 560 }}>
-          <Link
-            href="/lounge"
-            className="w-full flex flex-col items-start gap-1 px-6 py-5 border font-body transition-opacity hover:opacity-80"
-            style={{ backgroundColor: CARD, borderColor: AMBER + '44', color: CREAM }}
-          >
-            <span className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>THE LOUNGE</span>
-            <span className="text-base sm:text-lg italic leading-snug">Shoes off. The standard never clocked out.</span>
-          </Link>
-          <Link
-            href="/kickoff"
-            className="w-full flex flex-col items-start gap-1 px-6 py-5 border font-body transition-opacity hover:opacity-80"
-            style={{ backgroundColor: CARD, borderColor: AMBER + '44', color: CREAM }}
-          >
-            <span className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>THE KICK OFF</span>
-            <span className="text-base sm:text-lg italic leading-snug">Kicks off. Your foundation doesn&apos;t bench itself.</span>
-          </Link>
+            <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
+              {products.map((product, i) => (
+                <div
+                  key={product.asin}
+                  className={`p-8 flex flex-col${
+                    i < products.length - 1 ? ' border-b md:border-b-0 md:border-r border-white/10' : ''
+                  }`}
+                >
+                  <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
+                    {product.category.toUpperCase()}
+                  </p>
+                  <h3 className="font-heading text-xl text-bsv-cream tracking-wide mb-3">
+                    {product.name.toUpperCase()}
+                  </h3>
+                  <p className="text-bsv-muted text-sm leading-relaxed mb-6 flex-1">
+                    {product.description}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="font-heading text-lg text-bsv-cream">{product.price}</span>
+                    <a
+                      href={product.affiliate}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-bsv-amber font-heading text-xs tracking-widest border border-bsv-amber px-4 py-2 hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
+                    >
+                      VIEW →
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 sm:hidden">
+              <Link
+                href="/shop"
+                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
+              >
+                FULL SHELF →
+              </Link>
+            </div>
+          </div>
         </section>
 
-        {/* Socials */}
-        <section className="flex gap-6 justify-center items-center">
-          {SOCIALS.map(s => (
-            <a
-              key={s.label}
-              href={s.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={s.label}
-              className="transition-opacity hover:opacity-70"
-              style={{ color: AMBER }}
-            >
-              {s.icon}
-            </a>
-          ))}
-        </section>
+        {/* ── EMAIL CAPTURE ─────────────────────────────────────────────── */}
+        <EmailCapture />
 
       </main>
-
-
-    </div>
       <Footer />
     </>
   )

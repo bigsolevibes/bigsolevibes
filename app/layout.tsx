@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Playfair_Display, Bebas_Neue } from 'next/font/google'
+import { Playfair_Display, Bebas_Neue, DM_Sans } from 'next/font/google'
 import './globals.css'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
 import AffiliateBanner from '@/components/AffiliateBanner'
@@ -16,6 +16,13 @@ const bebasNeue = Bebas_Neue({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-bebas',
+  display: 'swap',
+})
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-dm-sans',
   display: 'swap',
 })
 
@@ -56,7 +63,7 @@ export default function RootLayout({
   const gaId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? ''
 
   return (
-    <html lang="en" className={`${playfair.variable} ${bebasNeue.variable}`}>
+    <html lang="en" className={`${playfair.variable} ${bebasNeue.variable} ${dmSans.variable}`}>
       <body className="bg-bsv-bg text-bsv-white font-body antialiased">
         {gaId && <GoogleAnalytics gaId={gaId} />}
         <AffiliateBanner />

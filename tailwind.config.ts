@@ -20,7 +20,8 @@ const config: Config = {
       },
       fontFamily: {
         heading: ['var(--font-bebas)', 'sans-serif'],
-        body:    ['var(--font-playfair)', 'Georgia', 'serif'],
+        body:    ['var(--font-dm-sans)', 'DM Sans', 'sans-serif'],
+        display: ['var(--font-playfair)', 'Georgia', 'serif'],
       },
     },
   },

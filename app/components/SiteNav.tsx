@@ -9,6 +9,7 @@ const navLinks = [
   { label: 'The Sole Report', href: '/sole-report' },
   { label: 'The Locker Room', href: '/shop' },
   { label: 'The Lounge',      href: '/lounge' },
+  { label: 'Get on the List', href: '/#email-capture' },
 ]
 
 export default function SiteNav() {
