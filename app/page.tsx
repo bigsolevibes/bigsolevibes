@@ -6,7 +6,11 @@ import { getAllPosts } from '@/lib/mdx'
 import shopData from '@/data/shop-products.json'
 
 export default function HomePage() {
-  const posts    = getAllPosts().slice(0, 3)
+  const today    = new Date()
+  today.setHours(0, 0, 0, 0)
+  const posts    = getAllPosts()
+    .filter((p) => new Date(p.date) <= today)
+    .slice(0, 3)
   const products = shopData.picks.slice(0, 3)
 
   return (
@@ -43,7 +47,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/shop"
-                className="px-8 py-4 bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest hover:opacity-90 transition-opacity"
+                className="px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
               >
                 THE LOCKER ROOM
               </Link>
@@ -159,6 +163,26 @@ export default function HomePage() {
                 className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
               >
                 FULL SHELF →
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ── THE LOUNGE ────────────────────────────────────────────────── */}
+        <section className="py-24 border-t border-white/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="border border-white/10 p-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8">
+              <div>
+                <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">THE LOUNGE</p>
+                <p className="text-bsv-cream text-xl sm:text-2xl leading-snug max-w-md">
+                  Shoes off. The standard never clocked out.
+                </p>
+              </div>
+              <Link
+                href="/#email-capture"
+                className="shrink-0 px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
+              >
+                GET ON THE LIST
               </Link>
             </div>
           </div>
