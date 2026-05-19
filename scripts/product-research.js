@@ -178,15 +178,19 @@ If it's medicine cabinet — it's off the shelf. Full stop.
 - Products whose primary positioning is fixing a visible problem
 - Anything that would embarrass a man to have on his bathroom counter
 - Anything findable on the first page of a Google search for "best foot cream"
+- Any product that shows a "Sponsored" label on Amazon — if it's buying its way to page one, it is not a discovery find
+- Any product that is out of stock on Amazon — check before scoring; if unavailable, skip it entirely
 
-## Source hierarchy — go in this order
+## Source hierarchy — non-negotiable order
 
-1. **Professional channels** — what are podiatrists, athletic trainers, and physical therapists actually recommending to patients who take care of themselves
-2. **Specialty retailers** — what's on the shelf at high-end grooming shops, men's specialty stores, apothecaries
-3. **Athletic and performance community** — what are serious athletes, coaches, and trainers using for recovery and maintenance
-4. **Barber and grooming insider community** — what do the best barbers recommend their clients add to their home routine
-5. **Understated brands** — products that have earned a quiet reputation without mass marketing
-6. **Amazon as a last check only** — confirm availability and pricing, never as a discovery source
+Discovery always starts at niche luxury retailers. Amazon is a confirmation step only.
+
+1. **Niche luxury grooming retailers first** — Grooming Lounge, Huckberry, Art of Shaving, Baxter of California, Aesop, Grown Alchemist, C.O. Bigelow. Find what they're stocking in foot care, body care, and recovery. These are the leads.
+2. **Professional channels** — what podiatrists, athletic trainers, and physical therapists actually recommend to patients who maintain themselves
+3. **Athletic and performance community** — serious athletes, coaches, trainers — recovery and maintenance tools
+4. **Barber and grooming insider community** — what the best barbers recommend clients add to their home routine
+5. **Understated DTC brands** — products with a quiet earned reputation, no mass marketing
+6. **Amazon last — stock check and affiliate link only** — once a specific product name is identified from sources above, find it on Amazon, verify it is in stock (not "Currently unavailable"), verify it has no "Sponsored" badge in search results, get the ASIN and price. If it fails either check, skip it.
 
 ## Scoring — 100 points total
 
@@ -223,44 +227,54 @@ Specifically:
 Product-research and product-development are teammates — one curates the shelf today, the other builds what owns the shelf tomorrow. They do not work against each other.
 ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}`
 
-    const userPrompt = `You are a product curator searching for items that belong on the BSV shelf. You are not searching for what most men would find — you are searching for what a man who takes himself seriously would find if he actually went looking.
+    const userPrompt = `You are the BSV Product Curator. Your job is to find products that belong on the BSV shelf — not products that are easy to find, but products that a man who takes himself seriously would find if he actually went looking.
 
-## Exact search queries to run — use these verbatim
+This is a two-phase process. Do not skip phase one. Do not search Amazon until phase two.
 
-Run each of the following searches and dig into the results. Do not summarize. Find actual products with names, prices, and purchase URLs.
+---
 
-**Discovery searches:**
-- "luxury men's foot ritual UK"
-- "professional grade men's foot treatment"
-- "high end men's pedicure products"
-- "men's foot care sold at Gilt Barneys Nordstrom"
-- "spa quality men's foot soak men"
-- "men's grooming independent brands not Amazon"
-- "men's lower leg recovery tool premium"
-- "magnesium foot soak athletic recovery ritual"
-- "apothecary men's foot care understated"
-- "men's grooming Huckberry exclusive"
+## PHASE 1 — Retailer discovery (run these searches first)
 
-**Search these specific retailer sites directly** — look at their men's grooming and recovery sections:
-- site:huckberry.com men's grooming OR foot OR recovery
-- site:groominglounge.com foot OR leg OR recovery
-- site:artofshaving.com foot OR body
-- site:gilt.com men's grooming
-- site:nordstrom.com men's foot care OR body care OR grooming tools
+Search these niche luxury retailers directly. Look at their men's grooming, body care, and foot/recovery sections. Your goal is to identify specific product names and brand names — not generic categories.
 
-**Niche and independent brand searches:**
-- "men's grooming cult brand UK apothecary"
-- "men's foot soak DTC brand intentional packaging"
-- "premium calf compression men's recovery"
-- "men's skin care dermatologist formulated understated"
+Run these searches in order:
+
+1. site:groominglounge.com foot OR body OR recovery OR soak
+2. site:huckberry.com grooming OR foot OR recovery OR body care
+3. site:artofshaving.com foot OR body OR recovery
+4. site:gilt.com men grooming foot OR body OR soak
+5. "Grooming Lounge" men's foot care picks OR best sellers
+6. "Huckberry" men's grooming exclusives foot OR body OR recovery
+7. C.O. Bigelow apothecary men's foot body care products
+8. Aesop men's body care foot OR leg OR recovery
+9. Grown Alchemist men's foot OR body care review
+10. Baxter of California men's foot body soak
+
+From these searches, build a list of specific product names and brands you found. Do not score yet. Do not go to Amazon yet. Just identify what these curated retailers are actually stocking.
+
+---
+
+## PHASE 2 — Amazon stock check and affiliate confirmation
+
+For each specific product identified in Phase 1:
+
+1. Search Amazon for the exact product name and brand
+2. Find the product listing
+3. Check: is it "In Stock"? If the listing says "Currently unavailable" or shows no Add to Cart button — skip it entirely. Do not score it.
+4. Check: does it appear as a "Sponsored" result in Amazon search? If it is marked Sponsored, skip it. Sponsored placement means the brand is buying its way to visibility — that disqualifies it from BSV discovery.
+5. If it passes both checks: record the ASIN, current price, and confirm availability.
+
+Only products that pass both checks move to scoring.
+
+---
 
 ## What you are looking for
 
 Products anchored at the foot and working up. The man who buys Proprietor's Foot Balm also owns these. Every pick must pass the checkout test: would the BSV man reach for it without needing to explain it to anyone?
 
-Categories: premium foot soaks, lower-leg and calf recovery tools, compression and circulation products, clean-positioning grooming brands (Caldera + Lab register), understated body treatments with serious ingredient decks.
+Categories: premium foot soaks, lower-leg and calf recovery tools, compression and circulation products, understated body treatments with serious ingredient decks, precision grooming tools from professional channels.
 
-Hard exclusions: medicated, antifungal, problem-positioned, first-page generic Google results, loud or juvenile packaging, anything clinical-looking, anything you'd find in a drugstore.
+Hard exclusions: medicated, antifungal, problem-positioned, anything on the first page of a Google search for "best foot cream," loud or juvenile packaging, anything clinical-looking, anything you'd find in a drugstore, anything sponsored on Amazon.
 
 ${previous ? `## Previous research (do not re-recommend anything already in the queue)\n${previous.content.slice(0, 2000)}${previous.content.length > 2000 ? '\n[truncated]' : ''}` : '## No previous research — build the initial shortlist from scratch.'}
 
@@ -269,13 +283,16 @@ ${previous ? `## Previous research (do not re-recommend anything already in the 
 # BSV Product Curation Report — ${today}
 
 ## The Shelf (shortlist, scored and ranked)
-For each product: Name, source where discovered, ASIN or purchase URL, price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), and the Proprietor's Audit field — one paragraph, written as if the Proprietor picked it up and decided it belonged.
+For each product: Name, retailer where discovered in Phase 1, Amazon ASIN (confirmed in stock, confirmed not sponsored), price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), and the Proprietor's Audit field — one paragraph, written as if the Proprietor picked it up and decided it belonged.
+
+## Skipped — Stock or Sponsored
+Products found in Phase 1 that were eliminated in Phase 2 and why (out of stock / sponsored).
 
 ## Held Back
-Products that showed promise but didn't clear 70 — what kept them off the shelf and what would change that.
+Products that passed Phase 2 but didn't clear 70 in scoring — what kept them off the shelf and what would change that.
 
 ## Discovery Notes
-Where the best finds came from this cycle. Which source channels are producing and which are dry.
+Which Phase 1 retailer sources were productive this cycle. Which were dry. What that signals about where to look next.
 
 ## Shelf Gaps
 What categories or product types are underrepresented that BSV should actively seek next cycle.
@@ -297,7 +314,7 @@ If BSV featured the top 3 products once each per week for a month at 2% conversi
         model:      'claude-sonnet-4-6',
         max_tokens: 8192,
         system:     systemPrompt,
-        tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
+        tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 20 }],
         messages,
       })
 
@@ -362,12 +379,13 @@ Return a JSON array with this exact shape:
 ]
 
 Rules:
-- Pick the 12 highest-scoring products from The Shelf section
+- Pick the 12 highest-scoring products from The Shelf section only — do not include anything from Skipped or Held Back
+- Every product in the output must have been confirmed in stock on Amazon and confirmed not sponsored
 - description: 1 sentence, BSV voice — factual, confident, no exclamation marks
 - reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize
 - category must exactly match one of the eight values above
 - score must be "XX/100" format
-- If a product has no ASIN, use its brand direct or specialty retailer URL in the asin field
+- asin must be a real Amazon ASIN (B0XXXXXXX format) — if no confirmed ASIN exists, omit the product entirely
 
 Research:
 ${fullText}`,
