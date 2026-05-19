@@ -122,7 +122,7 @@ function buildProductCard(product) {
   const score      = product['Score']       ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
   const audit      = product['Reasoning']   ? `<p class="card-audit">${escapeHtml(product['Reasoning'])}</p>` : ''
   const price      = product['Price']       ? `<span class="card-price">${escapeHtml(product['Price'])}</span>` : ''
-  const category   = product['Category']    ? `<p class="card-cat">${escapeHtml(product['Category'].toUpperCase())}</p>` : ''
+  const category   = product['Category']    ? `<p class="card-cat">${escapeHtml(displayCategory(product['Category']).toUpperCase())}</p>` : ''
   const heroHtml   = imageUrl
     ? `<div class="card-hero"><img src="${imageUrl}" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
     : ''
@@ -456,7 +456,6 @@ function buildShopPage(approvedProducts) {
       font-size: 0.6875rem;
       letter-spacing: 0.1em;
       color: var(--amber);
-      opacity: 0.55;
     }
     .card-actions {
       display: flex;

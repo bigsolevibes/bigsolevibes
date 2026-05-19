@@ -26,7 +26,7 @@ export default function SoleReportPage() {
               THE <span className="text-bsv-orange">SOLE REPORT</span>
             </h1>
             <p className="text-bsv-muted text-lg max-w-xl mx-auto italic">
-              The Proprietor&apos;s take. No gatekeeping, no filler.
+              Field notes from The Lounge. Everything here earned its column inch.
             </p>
           </div>
         </section>

@@ -29,7 +29,7 @@ export default function HomePage() {
 
           <div className="relative z-10 max-w-2xl mx-auto px-4 text-center">
             <p className="font-heading text-xs tracking-widest text-bsv-amber mb-6">
-              PREMIUM FOOT CARE FOR MEN
+              THE STANDARD
             </p>
             <h1 className="font-heading text-6xl sm:text-8xl leading-none tracking-wide text-bsv-cream mb-6">
               We&apos;ve Been<br />
