@@ -230,14 +230,21 @@ async function postToBluesky() {
     const rt = new RichText({ text: bskyText })
     await rt.detectFacets(agent)
 
-    const post = await agent.post({
+    const postRecord = {
       text:   rt.text,
       facets: rt.facets,
       embed: {
         $type:  'app.bsky.embed.images',
         images: [{ image: blobData.blob, alt: bskyText }],
       },
-    })
+    }
+
+    console.log(`  [bluesky] bskyText (${[...bskyText].length} chars): "${bskyText.slice(0, 120)}${bskyText.length > 120 ? '…' : ''}"`)
+    console.log(`  [bluesky] rt.text  (${[...rt.text].length} chars): "${rt.text.slice(0, 120)}${rt.text.length > 120 ? '…' : ''}"`)
+    console.log(`  [bluesky] facets: ${rt.facets ? JSON.stringify(rt.facets) : 'none'}`)
+    console.log(`  [bluesky] embed blob ref: ${JSON.stringify(blobData.blob.ref ?? blobData.blob.$link ?? '(no ref)')}`)
+
+    const post = await agent.post(postRecord)
     log('Bluesky', 'ok', `Posted — ${post.uri}`)
     appendPostState('bluesky', 'success', post.uri)
   } catch (err) {
