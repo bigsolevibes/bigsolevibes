@@ -455,7 +455,7 @@ function buildShopPage(approvedProducts) {
       font-family: 'Courier New', Courier, monospace;
       font-size: 0.6875rem;
       letter-spacing: 0.1em;
-      color: var(--amber);
+      color: #C17D2E;
     }
     .card-actions {
       display: flex;
