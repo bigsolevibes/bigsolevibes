@@ -51,6 +51,12 @@ export default function HomePage() {
               >
                 THE LOCKER ROOM
               </Link>
+              <Link
+                href="/#email-capture"
+                className="px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
+              >
+                THE LOUNGE
+              </Link>
             </div>
           </div>
         </section>
@@ -71,27 +77,33 @@ export default function HomePage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
-              {posts.map((post, i) => (
-                <Link
-                  key={post.slug}
-                  href={`/sole-report/${post.slug}`}
-                  className={`block p-8 hover:bg-bsv-card transition-colors${
-                    i < posts.length - 1 ? ' border-b md:border-b-0 md:border-r border-white/10' : ''
-                  }`}
-                >
-                  <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
-                    {new Date(post.date).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </p>
-                  <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight mb-3">
-                    {post.title.toUpperCase()}
-                  </h3>
-                  <p className="text-bsv-muted text-sm leading-relaxed">{post.excerpt}</p>
-                </Link>
-              ))}
+              {posts.map((post, i) => {
+                // 1 post: full width. 2 posts: featured (col-span-2) + one beside it.
+                // 3 posts: equal thirds (col-span-1 each).
+                const spanClass  = posts.length === 2 && i === 0 ? 'md:col-span-2' : ''
+                const borderClass = i < posts.length - 1
+                  ? 'border-b md:border-b-0 md:border-r border-white/10'
+                  : ''
+                return (
+                  <Link
+                    key={post.slug}
+                    href={`/sole-report/${post.slug}`}
+                    className={`block p-8 hover:bg-bsv-card transition-colors ${spanClass} ${borderClass}`.trim()}
+                  >
+                    <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
+                      {new Date(post.date).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                    <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight mb-3">
+                      {post.title.toUpperCase()}
+                    </h3>
+                    <p className="text-bsv-muted text-sm leading-relaxed">{post.excerpt}</p>
+                  </Link>
+                )
+              })}
             </div>
 
             <div className="mt-8 sm:hidden">
