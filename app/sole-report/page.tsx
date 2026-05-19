@@ -10,7 +10,9 @@ export const metadata: Metadata = {
 }
 
 export default function SoleReportPage() {
-  const posts = getAllPosts()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const posts = getAllPosts().filter((p) => new Date(p.date) <= today)
 
   return (
     <>

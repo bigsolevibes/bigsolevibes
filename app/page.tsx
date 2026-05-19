@@ -180,26 +180,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── THE LOUNGE ────────────────────────────────────────────────── */}
-        <section className="py-24 border-t border-white/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="border border-white/10 p-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8">
-              <div>
-                <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">THE LOUNGE</p>
-                <p className="text-bsv-cream text-xl sm:text-2xl leading-snug max-w-md">
-                  Shoes off. The standard never clocked out.
-                </p>
-              </div>
-              <Link
-                href="/#email-capture"
-                className="shrink-0 px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
-              >
-                GET ON THE LIST
-              </Link>
-            </div>
-          </div>
-        </section>
-
         {/* ── EMAIL CAPTURE ─────────────────────────────────────────────── */}
         <EmailCapture />
 
