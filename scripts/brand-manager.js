@@ -5,12 +5,14 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT     = path.join(__dirname, '..')
-const LOG_FILE = path.join(ROOT, 'logs', 'brand-manager.log')
-const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-brand-manager')
-const REMOTE   = 'big sole vibes:Big Sole Vibes'
-const KLAVIYO  = 'https://a.klaviyo.com/api'
-const IG_API   = 'https://graph.facebook.com/v21.0'
+const ROOT      = path.join(__dirname, '..')
+const LOG_FILE  = path.join(ROOT, 'logs', 'brand-manager.log')
+const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-brand-manager')
+const REMOTE    = 'big sole vibes:Big Sole Vibes'
+const KLAVIYO   = 'https://a.klaviyo.com/api'
+const IG_API    = 'https://graph.facebook.com/v21.0'
+
+const { VOICES } = require('../config/bsv-voices')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -122,6 +124,58 @@ function buildMetricsBlock(ig, bsky, lounge, drop, date) {
   return lines.join('\n')
 }
 
+// ─── Brief reader — voice tracking ────────────────────────────────────────────
+
+function readRecentBriefs() {
+  const briefsDir = path.join(ROOT, 'posts', 'briefs')
+  if (!fs.existsSync(briefsDir)) return []
+
+  const results = []
+  const files   = fs.readdirSync(briefsDir).filter(f => f.endsWith('-brief.txt')).sort()
+
+  for (const file of files) {
+    const text    = fs.readFileSync(path.join(briefsDir, file), 'utf8')
+    const lines   = text.split('\n')
+    const get     = (key) => {
+      const line = lines.find(l => l.startsWith(`${key}:`))
+      return line ? line.slice(key.length + 1).trim() : null
+    }
+
+    const slot      = get('SLOT')
+    const voice     = get('VOICE')
+    const voiceUsed = get('VOICE_USED')
+
+    // Pull a snippet of the Instagram caption for voice analysis
+    const igIdx = lines.findIndex(l => l.startsWith('INSTAGRAM:'))
+    const igSnippet = igIdx !== -1 ? lines[igIdx].slice('INSTAGRAM:'.length).trim().slice(0, 200) : null
+
+    results.push({ slot: slot || file.replace('-brief.txt', ''), voice, voiceUsed, igSnippet })
+  }
+  return results
+}
+
+function buildVoiceBriefBlock(briefs) {
+  if (!briefs.length) return '(no briefs found)'
+  const lines = ['| Slot | Assigned Voice | Voice Used | Drift |']
+  lines.push('|------|---------------|------------|-------|')
+  for (const b of briefs) {
+    const assigned = b.voice     || '(legacy)'
+    const used     = b.voiceUsed || '(legacy)'
+    const drift    = assigned !== used && b.voice && b.voiceUsed ? '⚠ YES' : 'No'
+    lines.push(`| ${b.slot} | ${assigned} | ${used} | ${drift} |`)
+  }
+
+  const legacyCount = briefs.filter(b => !b.voice).length
+  if (legacyCount > 0) lines.push(`\n_${legacyCount} brief(s) pre-date the five-voice system (VOICE field absent)._`)
+
+  // Instagram caption samples for Claude to analyze voice execution
+  lines.push('\n### Caption samples for voice execution analysis')
+  for (const b of briefs) {
+    if (b.igSnippet) lines.push(`\n**${b.slot}** (${b.voice || 'legacy'}):\n> ${b.igSnippet}`)
+  }
+  return lines.join('\n')
+}
+
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
 function getPostedLastNDays(n = 7) {
@@ -148,7 +202,6 @@ function getPostedLastNDays(n = 7) {
           const name = f.trim().split(/\s+/).slice(1).join(' ')
           if (name) lines.push(`- ${name}`)
         }
-        // Pull caption text if .md files present
         for (const f of files.split('\n')) {
           const name = f.trim().split(/\s+/).slice(1).join(' ')
           if (name && name.endsWith('.md')) {
@@ -195,6 +248,38 @@ function getHandoff() {
   } catch { return null }
 }
 
+function loadLatestSocialReport() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
+// ─── Build voice reference block for system prompt ────────────────────────────
+
+function buildVoiceReferenceBlock() {
+  const lines = ['## BSV Five-Voice Spectrum', '']
+  for (const [key, v] of Object.entries(VOICES)) {
+    lines.push(`### ${v.name}`)
+    lines.push(`${v.description}`)
+    lines.push(`Example: "${v.example}"`)
+    lines.push(`Guardrails: ${v.negative.slice(0, 2).join(' | ')}`)
+    lines.push('')
+  }
+  lines.push('**Voice drift** = a slot assigned CALLOUT but executing BARBER warmth, or assigned NOD but writing three paragraphs. Flag it by name.')
+  lines.push('**Consecutive repeat** = same voice assigned back-to-back across AM→PM or across days. Flag it.')
+  return lines.join('\n')
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -239,16 +324,27 @@ function getHandoff() {
   const metricsBlock = buildMetricsBlock(igMetrics, bskyMetrics, loungeGrowth, dropGrowth, today)
 
   log('Loading directive and collecting context...')
-  const directive     = loadDirective()
+  const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
   log('Loading memory...')
-  const memory        = loadMemory()
+  const memory = loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const postedContent = getPostedLastNDays(7)
   const handoff       = getHandoff()
   log(`Handoff: ${handoff ? handoff.length + ' chars' : 'not found'}`)
+
+  log('Reading recent briefs for voice tracking...')
+  const recentBriefs   = readRecentBriefs()
+  const voiceBriefBlock = buildVoiceBriefBlock(recentBriefs)
+  log(`Briefs read: ${recentBriefs.length}`)
+
+  log('Loading social intelligence for voice signals...')
+  const socialReport = loadLatestSocialReport()
+  log(`Social report: ${socialReport ? socialReport.filename : 'none'}`)
+
+  const voiceRefBlock = buildVoiceReferenceBlock()
 
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
 
@@ -264,33 +360,17 @@ Your job is to protect the voice and the standard — not flatten the creative e
 
 "Safe and predictable" is not a reason to approve something. Safe and predictable is a reason to send it back. The brand has an edge. Your job is to confirm it landed — not sand it down.
 
-## BSV Brand Voices
+${voiceRefBlock}
 
-BSV operates two distinct but equally valid content voices. Both are correct expressions of the brand. Your job is to confirm content is executing each voice cleanly — and that the week alternates between them.
-
-**The Lounge** — Premium/Bourbon register
-- Tone: Confident, unhurried, authoritative. The man who has already arrived.
-- References: Bourbon, leather, barbershops, tailoring, late-night rituals. Quality as habit, not aspiration.
-- Copy style: Dry wit, short declarative sentences, dark humor. Authority without arrogance.
-- Visual energy: Dark, rich, still. Midnight and Bourbon palette dominant. Candlelight and shadow.
-- Example line: "The Lounge has a standard. Anything less is a compromise."
-
-**The Drop** — Streetwear/Sneaker Culture register
-- Tone: Sharp, irreverent, culturally fluent. The man who knows what's next before it drops.
-- References: Sneaker culture, limited releases, heat checks, grails, the fit. Foot care as part of the culture, not separate from it.
-- Copy style: Clipped, punchy, insider vocabulary. Knows when to be serious and when to flex.
-- Visual energy: High contrast, clean lines, product-focused. Sneakers in frame. Steel palette prominent.
-- Example line: "You keep the crease. We keep the rest."
-
-## Rules that apply to both voices
+## Rules that apply to all voices
 - **Visual identity:** Midnight (#0D1B2A), Bourbon (#C17D2E), Steel (#4A6380). No clutter. No stock-photo energy.
 - **Hashtags:** Always #BigSoleVibes (plural, never #BigSoleVibe). Max 4 hashtags per post. No hashtag spam.
 - **Message clarity:** Every post has one clear point. If you can't state it in one sentence, the post fails.
-- **Platform fit:** TikTok = hook-first, punchy. Instagram = brand equity, visual-led. X = one sharp line. Facebook = community warmth within voice.
-- **Voice mixing:** The two voices must never bleed into each other mid-post. A Lounge post that suddenly references sneaker drops is broken. A Drop post that starts quoting bourbon is broken.
+- **Platform fit:** TikTok = hook-first, punchy. Instagram = brand equity, visual-led. X = one sharp line.
+- **Voice mixing:** Voices must not bleed into each other mid-post. A PROPRIETOR post that suddenly gets warm is BARBER drift. A NOD post that runs three sentences is not NOD.
 
 ## Weekly balance check
-A healthy week alternates between The Lounge and The Drop. Consecutive days in the same voice are acceptable, but a full week in one register is a flag. The brand needs both audiences.
+AM slots run PROPRIETOR / BARBER / STANDARD (Lounge register). PM slots run CALLOUT / NOD / PROPRIETOR (Drop register). A healthy week uses multiple voices. Consecutive same-voice assignments are a flag. A full week in one voice is a problem.
 
 You output a Brand Health Report. Be direct and specific. Name what works and what doesn't. Never soften a criticism — this is an internal document, not a press release.`
 
@@ -301,7 +381,12 @@ ${metricsBlock}
 ## Content posted last 7 days
 ${postedContent}
 
-${handoff ? `## Brand strategy context\n${handoff}` : ''}
+## Voice Assignment vs Execution (from brief files)
+${voiceBriefBlock}
+
+${socialReport ? `## Social Intelligence (${socialReport.filename})\nUse voice-tagged observations where present.\n${socialReport.content.slice(0, 2000)}${socialReport.content.length > 2000 ? '\n[truncated]' : ''}` : ''}
+
+${handoff ? `## Brand strategy context\n${handoff.slice(0, 1000)}` : ''}
 
 ---
 
@@ -312,29 +397,38 @@ Structure your report as follows:
 ## Overall Score
 Rate overall brand health this week: **Strong / Acceptable / Needs Work / Off-Brand**. One sentence explaining the rating.
 
-## Voice Balance
-Classify each piece of content as **The Lounge**, **The Drop**, or **Unclassifiable**. Count the split. Flag if the week ran entirely in one voice. Flag any posts where the two voices bled into each other mid-execution.
+## Voice Spectrum Usage
+List which of the five voices (PROPRIETOR / BARBER / CALLOUT / NOD / STANDARD) ran this week. Count by voice. Identify any voice that ran zero times and flag it if it should have run. Flag any week where more than two consecutive slots ran the same voice.
 
-## Voice Execution
-For each post: did it execute its intended voice cleanly? Quote specific lines that landed and specific lines that missed. A Lounge post judged on Lounge criteria, a Drop post on Drop criteria.
+## Voice Drift Report
+For each slot with a VOICE and VOICE_USED field: did the executed caption match the assigned voice? Cite specific lines from the caption samples. Name the drift if present — e.g., "CALLOUT assigned but BARBER warmth in execution" or "NOD assigned but three-sentence caption breaks NOD rules."
+
+## Voice Execution Quality
+For each slot: did it execute its assigned voice cleanly against that voice's guardrails? Quote specific lines that landed and specific lines that missed.
+
+## Voice Balance
+AM register (Lounge: PROPRIETOR / BARBER / STANDARD) vs PM register (Drop: CALLOUT / NOD / PROPRIETOR). Count the split. Flag any imbalance.
+
+## Voice Performance
+Cross-reference voice assignments against any engagement signals from the social intelligence report. Which voices are showing traction? Which are getting forwarded, saved, or commented on? Which are going flat? Note where data is thin — this section improves as signal accumulates.
 
 ## Visual Compliance
-Were the visual outputs (where identifiable from filenames/context) on-brand? Midnight/Bourbon/Steel palette? Clean composition? Flag anything that looks off.
+Were the visual outputs on-brand? Midnight/Bourbon/Steel palette? Clean composition? Flag anything that looks off.
 
 ## Hashtag Audit
 Check every post: #BigSoleVibes present? Correct plural form? Count correct (≤4)? List any violations.
 
 ## Message Clarity
-Did each post have one clear point? Identify any posts that felt muddled or tried to say too much.
+Did each post have one clear point? Identify any posts that felt muddled.
 
 ## Platform Fit
 Was each piece matched to the right platform with appropriate tone adjustment?
 
 ## Top 3 This Week
-The three strongest pieces and why they worked.
+The three strongest pieces and why they worked — include which voice they ran.
 
 ## Fix List
-Specific, actionable changes for next week. Not suggestions — directives.`
+Specific, actionable changes for next week. Not suggestions — directives. Include at least one voice-specific directive if drift was detected.`
 
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
@@ -379,7 +473,6 @@ Specific, actionable changes for next week. Not suggestions — directives.`
 
   if (!fullText.trim()) { log('ERROR: empty response'); process.exit(1) }
 
-  // Prepend live metrics block so downstream scripts can parse follower counts reliably
   const reportContent = metricsBlock + '\n\n---\n\n' + fullText
 
   const localPath = path.join(TEMP_DIR, outFile)

@@ -4,10 +4,13 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT     = path.join(__dirname, '..')
-const LOG_FILE = path.join(ROOT, 'logs', 'media-director.log')
-const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-media-director')
-const REMOTE   = 'big sole vibes:Big Sole Vibes'
+const ROOT       = path.join(__dirname, '..')
+const LOG_FILE   = path.join(ROOT, 'logs', 'media-director.log')
+const STATE_FILE = path.join(ROOT, 'logs', 'voice-state.json')
+const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-media-director')
+const REMOTE     = 'big sole vibes:Big Sole Vibes'
+
+const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -18,7 +21,6 @@ function log(msg) {
 }
 
 // ─── Theme calendar ───────────────────────────────────────────────────────────
-// One theme per slot per day. Creative-agent executes it.
 
 const THEME_CALENDAR = {
   mon: { am: 'The Standard',   pm: 'Street' },
@@ -30,22 +32,35 @@ const THEME_CALENDAR = {
   sun: { am: 'The Standard',   pm: 'The Invite' },
 }
 
-// ─── Voice cadence ────────────────────────────────────────────────────────────
-// Lounge (~40%): man already in the room — confirmation, not introduction.
-// Drop  (~60%): man at the door — sharper, culturally fluent, introduction.
-
-const VOICE_CADENCE = {
-  mon: { am: 'lounge', pm: 'drop' },
-  tue: { am: 'drop',   pm: 'drop' },
-  wed: { am: 'lounge', pm: 'drop' },
-  thu: { am: 'drop',   pm: 'drop' },
-  fri: { am: 'lounge', pm: 'drop' },
-  sat: { am: 'drop',   pm: 'drop' },
-  sun: { am: 'lounge', pm: 'drop' },
-}
-
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
+
+// ─── Voice rotation ───────────────────────────────────────────────────────────
+// AM = Lounge register: PROPRIETOR → BARBER → STANDARD (cycle)
+// PM = Drop register:   CALLOUT → NOD → PROPRIETOR (cycle)
+// Never assign the same voice to consecutive slots across AM/PM boundaries.
+
+function loadVoiceState() {
+  try {
+    return fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {}
+  } catch { return {} }
+}
+
+function saveVoiceState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+}
+
+function pickVoice(pool, lastVoice, indexKey, state) {
+  let idx = state[indexKey] ?? 0
+  let voice = pool[idx % pool.length]
+  // Advance once if this would repeat the last slot's voice
+  if (voice === lastVoice) {
+    idx++
+    voice = pool[idx % pool.length]
+  }
+  state[indexKey] = idx + 1
+  return voice
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -73,18 +88,41 @@ const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
   }
 
   const themes = THEME_CALENDAR[targetDay]
-  const voices = VOICE_CADENCE[targetDay]
-  log(`Themes — AM: "${themes.am}" [${voices.am}]  PM: "${themes.pm}" [${voices.pm}]`)
 
-  // Call creative-agent for each slot with theme + voice
+  // Load rotation state and assign voices
+  const state    = loadVoiceState()
+  const lastVoice = state.lastVoice || null
+
+  const amVoice = pickVoice(AM_VOICE_POOL, lastVoice, 'amIndex', state)
+  const pmVoice = pickVoice(PM_VOICE_POOL, amVoice,   'pmIndex', state)
+
+  state.lastVoice = pmVoice
+  saveVoiceState(state)
+
+  log(`Themes  — AM: "${themes.am}"  PM: "${themes.pm}"`)
+  log(`Voices  — AM: ${amVoice}  PM: ${pmVoice}`)
+
+  // Call creative-agent for each slot with theme + assigned voice
+  const slotVoices = { am: amVoice, pm: pmVoice }
   for (const period of ['am', 'pm']) {
-    const slug  = `${targetDay}-${period}`
-    const theme = themes[period]
-    const voice = voices[period]
-    log(`Spawning creative-agent --slot ${slug} --theme "${theme}" --voice ${voice}...`)
+    const slug       = `${targetDay}-${period}`
+    const theme      = themes[period]
+    const voiceName  = slotVoices[period]
+    const voiceDef   = VOICES[voiceName]
+
+    // Serialize the full voice definition so creative-agent has it at execution time
+    const voiceJson = JSON.stringify(voiceDef)
+
+    log(`Spawning creative-agent --slot ${slug} --theme "${theme}" --voice ${voiceName}...`)
     const result = spawnSync(
       process.execPath,
-      [path.join(__dirname, 'creative-agent.js'), '--slot', slug, '--theme', theme, '--voice', voice],
+      [
+        path.join(__dirname, 'creative-agent.js'),
+        '--slot',  slug,
+        '--theme', theme,
+        '--voice', voiceName,
+        '--voice-def', voiceJson,
+      ],
       { stdio: 'inherit', env: process.env }
     )
     if (result.status !== 0) log(`ERROR: creative-agent exited ${result.status} for ${slug}`)

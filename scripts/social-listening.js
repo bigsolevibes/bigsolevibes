@@ -11,6 +11,8 @@ const LOCK_FILE = path.join(ROOT, 'logs', 'social-listening.lock')
 const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-social-listening')
 const REMOTE    = 'big sole vibes:Big Sole Vibes'
 
+const { VOICES } = require('../config/bsv-voices')
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -128,13 +130,19 @@ function getPreviousReport() {
   const brandHealth = loadLatestBrandHealth()
   log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
 
+  // Build voice reference so Claude can tag observations by voice type
+  const voiceNames = Object.values(VOICES).map(v => `${v.name} (${v.description})`).join(' | ')
+
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver signal, not noise.
 
 You monitor conversations across men's lifestyle, grooming, sneaker culture, and the broader cultural moment. You produce a structured intelligence report that media-director and creative-agent read before generating any content. Your output is raw material — what's happening, what men are saying, what's gaining traction.
 
 You do not generate creative content. You do not suggest copy. You surface intelligence and let the creative agents do their job.
 
-Be specific. Quote real sources (subreddit, handle, platform — no links). A vague trend observation is worthless. A direct quote from a real thread with 400 upvotes is leverage.`
+Be specific. Quote real sources (subreddit, handle, platform — no links). A vague trend observation is worthless. A direct quote from a real thread with 400 upvotes is leverage.
+
+## BSV Voice Spectrum (for tagging observations)
+When you identify content angles or post performance signals, tag them by which BSV voice is best positioned to execute: ${voiceNames}. Use the voice name in brackets: [CALLOUT], [PROPRIETOR], etc.`
 
   const userPrompt = `Run the daily BSV intelligence sweep. Today is ${today}.
 
@@ -162,9 +170,12 @@ What frustration, debate, or unmet expectation is alive right now that BSV is po
 ## 3–5 Content Angles
 Each angle must include:
 - The specific hook or entry point
-- Which BSV voice executes it (Lounge / Drop / Bridge)
+- Which BSV voice executes it — use the five-voice names: PROPRIETOR / BARBER / CALLOUT / NOD / STANDARD
 - One draft opening line to test the angle
 - Why right now (what makes this timely this week, not just evergreen)
+
+## Voice Performance Signals
+Look at what BSV has been posting (or posts similar to BSV's style in the men's grooming/lifestyle space). Where you can observe: which tone registers are getting traction? Deadpan authority [PROPRIETOR]? Warm recognition [BARBER]? Hard callouts [CALLOUT]? Minimal knowing copy [NOD]? Aspirational identity [STANDARD]? Tag each observation with the voice name. If data is thin, say so — do not fabricate signals.
 
 ## Signal vs. Noise
 One thing that looks important but probably isn't. One thing easy to miss that matters.`
