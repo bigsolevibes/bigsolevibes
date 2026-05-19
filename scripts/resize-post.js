@@ -135,7 +135,7 @@ const ext = path.extname(inputPath).toLowerCase()
       execSync('git reset HEAD -- posts/output/ public/posts/output/', { cwd: root, stdio: 'pipe' })
       console.log('\ngit: output unchanged — skipping commit')
     } else {
-      execSync('git commit -m "auto: add post output"', { cwd: root, stdio: 'pipe' })
+      execSync('git commit -m "auto: add post output [skip cf-pages]"', { cwd: root, stdio: 'pipe' })
       require('./git-push-guard').safePushToPipeline(root, console.log)
     }
   } catch (err) {
