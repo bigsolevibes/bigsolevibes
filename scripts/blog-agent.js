@@ -630,8 +630,18 @@ The brief must specify: which scene, the specific light quality, what the man is
    Good: "The Standard Doesn't Stop at the Ankle" (then introduce the shelf)
    Never: "FootLogix Review: Is This the Best Foot Mousse for Men?"
 
-## SEO requirements (weave in naturally — no keyword stuffing)
-Primary targets: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium pedicure tools Solingen steel", "fast absorbing foot treatment men", "dry cracked heel treatment athletes", "luxury shoe friction prevention balm", "premium foot care men"
+## SEO — one term per post, chosen from the social report
+
+Before writing, scan the social intelligence report for the search phrase with the highest signal upside for BSV: something men are actually typing, with clear intent, that fits the article angle and the shelf. If the social report is unavailable, pick from the evergreen list below.
+
+Term placement rules:
+- Exact phrase (or a close natural variant) must appear in the title OR the first paragraph — one of these is required
+- Once more in an h2 heading — naturally woven in, never forced
+- If it sounds stuffed, rework the sentence. Voice always wins over keyword placement.
+
+Evergreen fallback: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium pedicure tools Solingen steel", "fast absorbing foot treatment men", "dry cracked heel treatment athletes", "luxury shoe friction prevention balm", "premium foot care men"
+
+Add a "seoTerm" field to your JSON output — the exact phrase you targeted.
 
 Every post must:
 - Open with something that stops the scroll — no "welcome to the blog" energy
@@ -647,6 +657,7 @@ Every post must:
   "slug": "url-slug-lowercase-hyphens",
   "metaDescription": "Under 160 characters. Primary keyword. Written for the man, not the algorithm.",
   "excerpt": "2–3 sentences for the post listing. Reads like the Proprietor wrote it — not a summary.",
+  "seoTerm": "the exact search phrase you targeted — one line, no explanation",
   "keywords": ["primary kw", "secondary kw", "tertiary kw"],
   "openingHtml": "<p>...</p><p>...</p>  (3–5 paragraphs, no h2, no intro heading — just opens strong)",
   "sections": [
@@ -699,14 +710,17 @@ Length: ${nextCalendarEntry.lengthWords} words`
 
   const userPrompt = `Write the BSV blog post for this week.
 
-## Week context
-${weeklyPlan ? `Weekly content plan (${weeklyPlan.filename}):\n${weeklyPlan.content.slice(0, 1500)}` : 'No weekly plan available — write a hub post on the premium foot care standard.'}
+## Media director plan (${weeklyPlan ? weeklyPlan.filename : 'unavailable'})
+${weeklyPlan ? weeklyPlan.content.slice(0, 1500) : 'No media plan available — write a hub post on the premium foot care standard.'}
+The article angle should reinforce this week's content theme. If a theme is named in the plan, anchor the post to it.
 
 ## Brand signals
 ${brandReport ? brandReport.content.slice(0, 800) : 'No brand report available.'}
 
 ## Social intelligence
 ${socialReport ? socialReport.content.slice(0, 600) : 'No social report available.'}
+
+**SEO:** Before writing, identify the one search phrase from the social intelligence above with the highest signal upside for BSV. Set it in "seoTerm". Place it naturally in the title or first paragraph, and once more in an h2 heading.
 
 ## Approved shelf products — reference these naturally with their URLs as affiliate links
 ${shelfBlock}

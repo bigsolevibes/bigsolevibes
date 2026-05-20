@@ -15,6 +15,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { sendTelegram } = require('./telegram')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'chief-of-staff.log')
@@ -348,27 +349,6 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   }
 }
 
-// ─── Telegram ─────────────────────────────────────────────────────────────────
-
-async function sendTelegram(token, chatId, text) {
-  // Try Markdown first; if Telegram rejects it as malformed, retry as plain text
-  for (const parse_mode of ['Markdown', null]) {
-    const body = { chat_id: chatId, text }
-    if (parse_mode) body.parse_mode = parse_mode
-    const res  = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    })
-    const data = await res.json()
-    if (res.ok) return data
-    const isParseError = data.description?.toLowerCase().includes('parse') ||
-                         data.description?.toLowerCase().includes('entity')
-    if (parse_mode && isParseError) continue   // retry without formatting
-    throw new Error(`Telegram error: ${JSON.stringify(data)}`)
-  }
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -539,7 +519,7 @@ Change Agent recommends tier. Big D decides. Change Agent never promotes to Tier
 - **marketing-manager.js** — Weekly. The scoreboard: Lounge and Drop subscriber counts, growth rate, trajectory.
 - **product-research.js** — Weekly. Sources affiliate products for the shelf.
 - **product-development.js** — Sundays 10PM. Building the Foot Balm brief, milestone by milestone.
-- **blog-agent.js** — Sundays 11:30PM. Reads Drive context + approved shelf products. Writes Proprietor-voice hub post as static HTML to public/blog/. Pushes to main. Chief reads its output Monday morning.
+- **blog-agent.js** — Sundays 10:00PM. Reads Drive context (Plans, Brand, Social, Handoff) + approved shelf products from Sheets. Writes Proprietor-voice long-form article as static HTML to public/sole-report/. Updates index.html and manifest.json. Pushes to preview/full-site. Chief reads output Monday morning. Flag if no new article in 8+ days.
 - **eng-bot.js** — After every watch-drive poll. Your early warning system.
 - **change-agent.js** — 8:30AM daily + post-commit hook. Tracks commits, owns the known-fix library, writes change-state.json.
 - **update-handoff.js** — 11:00PM. Rewrites the operational handoff so the next agent starts with current reality.
@@ -910,16 +890,11 @@ Burn history: ${(costState.burn_history ?? []).map(d => `${d.date}=$${d.cost.toF
         log(`ERROR [emergency-write]: ${writeErr.message}`)
       }
 
-      const tToken  = process.env.TELEGRAM_BOT_TOKEN
-      const tChatId = process.env.TELEGRAM_CHAT_ID
-      if (tToken && tChatId) {
-        try {
-          await sendTelegram(tToken, tChatId,
-            `⚠️ *BSV Chief of Staff — ${today}*\n\nStand-up failed.\n*Reason:* ${reason}\n\nEmergency brief uploaded to Drive.\nRe-run: node scripts/chief-of-staff.js`)
-          log('Telegram emergency ping sent ✓')
-        } catch (tgErr) {
-          log(`ERROR: Telegram emergency ping failed: ${tgErr.message}`)
-        }
+      try {
+        await sendTelegram(`⚠️ *BSV Chief of Staff — ${today}*\n\nStand-up failed.\n*Reason:* ${reason}\n\nEmergency brief uploaded to Drive.\nRe-run: node scripts/chief-of-staff.js`)
+        log('Telegram emergency ping sent ✓')
+      } catch (tgErr) {
+        log(`ERROR: Telegram emergency ping failed: ${tgErr.message}`)
       }
 
       log('━━━ chief-of-staff complete (emergency mode) ━━━\n')
@@ -1078,17 +1053,11 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
   // If change-agent hasn't written a heartbeat in the last 25 hours, it silently
   // failed. That is a Tier 1 event — fire immediately, don't wait for stand-up.
 
-  const telegramToken  = process.env.TELEGRAM_BOT_TOKEN
-  const telegramChatId = process.env.TELEGRAM_CHAT_ID
-
   try {
     const changeStatePath = path.join(ROOT, 'logs', 'change-state.json')
     if (!fs.existsSync(changeStatePath)) {
       log('WATCHDOG: change-state.json missing — change-agent has never run')
-      if (telegramToken && telegramChatId) {
-        await sendTelegram(telegramToken, telegramChatId,
-          `🚨 *BSV — Tier 1: change-agent never ran*\n\nchange-state.json does not exist. change-agent has never successfully completed a run.\n\nRun manually: node scripts/change-agent.js`)
-      }
+      await sendTelegram(`🚨 *BSV — Tier 1: change-agent never ran*\n\nchange-state.json does not exist. change-agent has never successfully completed a run.\n\nRun manually: node scripts/change-agent.js`)
     } else {
       const cs = JSON.parse(fs.readFileSync(changeStatePath, 'utf8'))
       const heartbeat = cs.last_heartbeat ? new Date(cs.last_heartbeat) : null
@@ -1096,10 +1065,7 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
       if (hoursSince > 25) {
         const sinceStr = heartbeat ? `${Math.round(hoursSince)} hours ago` : 'never'
         log(`WATCHDOG: change-agent last heartbeat: ${sinceStr} — TIER 1`)
-        if (telegramToken && telegramChatId) {
-          await sendTelegram(telegramToken, telegramChatId,
-            `🚨 *BSV — Tier 1: change-agent silent*\n\nLast heartbeat: ${sinceStr}\nExpected: every 24h\n\nChange monitoring is down. Rogue pushes to main will go undetected.\n\nRun manually: node scripts/change-agent.js`)
-        }
+        await sendTelegram(`🚨 *BSV — Tier 1: change-agent silent*\n\nLast heartbeat: ${sinceStr}\nExpected: every 24h\n\nChange monitoring is down. Rogue pushes to main will go undetected.\n\nRun manually: node scripts/change-agent.js`)
       } else {
         log(`WATCHDOG: change-agent heartbeat OK — ${Math.round(hoursSince)}h ago`)
       }
@@ -1108,16 +1074,39 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
     log(`WATCHDOG: error checking change-agent heartbeat: ${wdErr.message}`)
   }
 
+  // ── blog-agent staleness watchdog ────────────────────────────────────────────
+  // If no new article in 8+ days, flag it. Expected cadence: every Sunday 10PM.
+
+  try {
+    const manifestPath = path.join(ROOT, 'public', 'sole-report', 'manifest.json')
+    if (!fs.existsSync(manifestPath)) {
+      log('WATCHDOG: blog-agent manifest.json missing — blog-agent has never published')
+    } else {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      const latest = manifest[0]
+      if (!latest) {
+        log('WATCHDOG: blog-agent manifest is empty — no articles published')
+      } else {
+        const daysSince = (Date.now() - new Date(latest.date).getTime()) / (1000 * 60 * 60 * 24)
+        if (daysSince > 8) {
+          log(`WATCHDOG: blog-agent last article was ${Math.round(daysSince)} days ago — STALE`)
+          await sendTelegram(
+            `⚠️ *BSV — blog-agent stale*\n\nLast article: "${latest.title}"\nPublished: ${latest.date} (${Math.round(daysSince)} days ago)\n\nExpected weekly on Sundays. Check logs/blog-agent.log.\n\nRun manually: node scripts/blog-agent.js`
+          ).catch(() => {})
+        } else {
+          log(`WATCHDOG: blog-agent OK — last article ${Math.round(daysSince).toFixed(0)} days ago ("${latest.title}")`)
+        }
+      }
+    }
+  } catch (wdErr) {
+    log(`WATCHDOG: error checking blog-agent staleness: ${wdErr.message}`)
+  }
+
   // ── Telegram ping ─────────────────────────────────────────────────────────────
 
-  if (!telegramToken || !telegramChatId) {
-    log('WARNING: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping Telegram ping')
-    log('To enable: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env')
-    log('  TELEGRAM_BOT_TOKEN — from @BotFather in Telegram')
-    log('  TELEGRAM_CHAT_ID   — send /start to @userinfobot to get your chat ID')
-  } else if (telegramMsg) {
+  if (telegramMsg) {
     try {
-      await sendTelegram(telegramToken, telegramChatId, telegramMsg)
+      await sendTelegram(telegramMsg)
       log('Telegram ping sent ✓')
     } catch (err) {
       log(`ERROR: Telegram ping failed: ${err.message}`)
