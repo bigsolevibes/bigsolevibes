@@ -659,11 +659,12 @@ Open issues, flagged items, Tier 1 candidates awaiting Big D approval.
 Broken things that need a human. Expired credentials. Empty queues at critical moments. Be direct — name the thing and say what the decision is. If nothing needs Proprietor attention: "Clear."
 
 ## Org Chart
-This section is mandatory every morning — always include it, always show all three lines.
+This section is mandatory every morning — always include it, always show all four lines.
 
 **Last updated:** [date from Org Chart Status data, or "unknown — chart missing from Drive"]
 **Chart / directory:** [N in chart] / [N scripts in directory]
 **Gaps:** [gap count] — [list new scripts and inactive agents by name, or "None"]
+**Live:** https://bigsolevibes.com/org-chart.html
 
 If an org chart update was just executed (orgUpdateResult.updated = true), append:
 \`\`\`
