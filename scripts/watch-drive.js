@@ -4,6 +4,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+const { sendTelegram } = require('./telegram')
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -520,7 +521,9 @@ async function run() {
         saveState(state)
         for (const p of effectivePlatforms) {
           if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
-            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${err.message.slice(0, 160)}`)
+            const errSummary = err.message.slice(0, 160)
+            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${errSummary}`)
+            sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* ${errSummary}`).catch(() => {})
           }
         }
         continue
@@ -537,6 +540,7 @@ async function run() {
         for (const p of effectivePlatforms) {
           if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
             log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: no distribute results written`)
+            sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* no distribute results written`).catch(() => {})
           }
         }
         continue
@@ -550,6 +554,7 @@ async function run() {
         if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
           const lastError = extractLastError(distributeOutput, p)
           log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${lastError}`)
+          sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* ${lastError}`).catch(() => {})
         }
       }
 

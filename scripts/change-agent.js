@@ -269,8 +269,10 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
 
   // ── GitHub labels ────────────────────────────────────────────────────────────
 
-  log('Ensuring GitHub labels...')
-  ensureLabels()
+  if (!postCommit) {
+    log('Ensuring GitHub labels...')
+    ensureLabels()
+  }
 
   // ── Rogue main-push detection ─────────────────────────────────────────────────
   // Any commit reachable from origin/main but NOT from origin/preview/full-site
@@ -453,9 +455,13 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
 
   // ── Eng-bot → known-fix library ───────────────────────────────────────────────
 
+  const knownFixes = postCommit ? [] : loadKnownFixes()
+
+  if (postCommit) {
+    log('Post-commit run — skipping known-fix library update (runs at 8:30AM)')
+  } else {
   log('Updating known-fix library from eng-bot log...')
   const engErrors  = parseEngBotErrors(engBotLog)
-  const knownFixes = loadKnownFixes()
   let   fixesChanged = false
 
   for (const err of engErrors) {
@@ -500,6 +506,7 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   } else {
     log(`known-fixes.md: no new entries (${knownFixes.length} existing)`)
   }
+  } // end !postCommit block
 
   // ── Write change report ───────────────────────────────────────────────────────
 

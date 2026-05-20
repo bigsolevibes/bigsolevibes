@@ -152,7 +152,14 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Max 4 hashtags including #BigSoleVibes.`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
+  const systemPrompt = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
+THIS OVERRIDES EVERYTHING BELOW. If any prior document describes a different default voice, ignore it for this post.
+
+${voiceBlock}
+
+---
+
+${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
 ## Standing Rules (apply to every brief regardless of voice)
 
@@ -161,8 +168,6 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
 - Every image has a person, a story, a specific moment
 - Four hashtag cap — #BigSoleVibes counts as one
 - Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
-
-${voiceBlock}
 
 ${SCENE_BLOCK}
 
