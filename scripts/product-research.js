@@ -181,16 +181,34 @@ If it's medicine cabinet — it's off the shelf. Full stop.
 - Any product that shows a "Sponsored" label on Amazon — if it's buying its way to page one, it is not a discovery find
 - Any product that is out of stock on Amazon — check before scoring; if unavailable, skip it entirely
 
-## Source hierarchy — non-negotiable order
+## Approved sources — mandatory list
 
-Discovery always starts at niche luxury retailers. Amazon is a confirmation step only.
+Discovery starts and ends with these ten sources. Do not search general grooming aggregators, Amazon bestseller lists, or affiliate roundups for leads.
 
-1. **Niche luxury grooming retailers first** — Grooming Lounge, Huckberry, Art of Shaving, Baxter of California, Aesop, Grown Alchemist, C.O. Bigelow. Find what they're stocking in foot care, body care, and recovery. These are the leads.
-2. **Professional channels** — what podiatrists, athletic trainers, and physical therapists actually recommend to patients who maintain themselves
-3. **Athletic and performance community** — serious athletes, coaches, trainers — recovery and maintenance tools
-4. **Barber and grooming insider community** — what the best barbers recommend clients add to their home routine
-5. **Understated DTC brands** — products with a quiet earned reputation, no mass marketing
-6. **Amazon last — stock check and affiliate link only** — once a specific product name is identified from sources above, find it on Amazon, verify it is in stock (not "Currently unavailable"), verify it has no "Sponsored" badge in search results, get the ASIN and price. If it fails either check, skip it.
+1. **Grooming Lounge** — groominglounge.com
+2. **Lab Series** — labseries.com
+3. **ELEMIS** — us.elemis.com
+4. **Art of Shaving** — theartofshaving.com
+5. **Kiehl's** — kiehls.com
+6. **Huckberry grooming** — huckberry.com/store/t/category/home/bath-and-grooming
+7. **Gilt men's grooming** — gilt.com
+8. **MR PORTER grooming** — mrporter.com
+9. **GQ grooming** — gq.com
+10. **Esquire grooming** — esquire.com
+
+Amazon is not a sourcing channel. It is a confirmation step only: after a product is discovered through the approved sources and passes all brand alignment gates, look it up on Amazon to confirm availability and get the affiliate ASIN. If the product is not on Amazon, note the direct purchase URL instead.
+
+## Brand alignment gates — run before scoring
+
+Every product must pass four gates before scoring begins. Fail any gate: reject. Do not spend scoring tokens on a product that doesn't belong in the room.
+
+**Gate 1 — Retailer gate:** Is the product sold at Grooming Lounge, Art of Shaving, MR PORTER, Gilt, or Huckberry? If it exists only on Amazon page one and no curated retailer stocks it, reject it.
+
+**Gate 2 — Story gate:** Does the brand have a founding story, heritage claim, or craft narrative? Clinical or pharmacy brands with no origin story — reject. The BSV man buys things with provenance.
+
+**Gate 3 — Scent/texture gate:** Does the product language include any of: sandalwood, cedarwood, oud, eucalyptus, fast-absorbing, non-greasy, lightweight, dry finish? If the scent profile is mint, medicinal, "fresh," or pharmacy-adjacent — reject.
+
+**Gate 4 — Competitor gate:** Does this product directly compete with the Proprietor's Foot Balm positioning (premium foot balm, $35–50)? If yes: do NOT reject — flag it as competitive intel. It goes in a separate Competitive Intelligence section, not The Shelf.
 
 ## Scoring — 100 points total
 
@@ -229,42 +247,62 @@ ${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${pro
 
     const userPrompt = `You are the BSV Product Curator. Your job is to find products that belong on the BSV shelf — not products that are easy to find, but products that a man who takes himself seriously would find if he actually went looking.
 
-This is a two-phase process. Do not skip phase one. Do not search Amazon until phase two.
+This is a three-phase process. Run all three in order. Do not skip phases. Do not score a product before it passes the brand alignment gates.
 
 ---
 
-## PHASE 1 — Retailer discovery (run these searches first)
+## PHASE 1 — Approved source discovery
 
-Search these niche luxury retailers directly. Look at their men's grooming, body care, and foot/recovery sections. Your goal is to identify specific product names and brand names — not generic categories.
+Search exclusively against these ten sources. Do not search Amazon, grooming roundups, or affiliate blogs for leads.
 
 Run these searches in order:
 
-1. site:groominglounge.com foot OR body OR recovery OR soak
-2. site:huckberry.com grooming OR foot OR recovery OR body care
-3. site:artofshaving.com foot OR body OR recovery
-4. site:gilt.com men grooming foot OR body OR soak
-5. "Grooming Lounge" men's foot care picks OR best sellers
-6. "Huckberry" men's grooming exclusives foot OR body OR recovery
-7. C.O. Bigelow apothecary men's foot body care products
-8. Aesop men's body care foot OR leg OR recovery
-9. Grown Alchemist men's foot OR body care review
-10. Baxter of California men's foot body soak
+1. site:groominglounge.com foot OR body OR soak OR recovery OR balm
+2. site:labseries.com body OR foot OR soak OR recovery
+3. site:us.elemis.com body OR foot OR soak OR recovery OR massage
+4. site:theartofshaving.com foot OR body OR balm OR soak
+5. site:kiehls.com foot OR body OR balm OR soak OR recovery
+6. site:huckberry.com/store/t/category/home/bath-and-grooming foot OR body OR recovery OR soak
+7. site:gilt.com men grooming foot OR body OR soak OR balm
+8. site:mrporter.com grooming foot OR body OR soak OR recovery OR balm
+9. site:gq.com men grooming foot OR body care recommendation
+10. site:esquire.com men grooming foot OR body care recommendation
 
-From these searches, build a list of specific product names and brands you found. Do not score yet. Do not go to Amazon yet. Just identify what these curated retailers are actually stocking.
+From these searches, build a list of specific product names and brands. Note which source surfaced each product. Do not score yet. Do not go to Amazon yet.
 
 ---
 
-## PHASE 2 — Amazon stock check and affiliate confirmation
+## PHASE 2 — Brand alignment gates
 
-For each specific product identified in Phase 1:
+Run every product from Phase 1 through these four gates before scoring. A product that fails any gate is rejected — do not score it.
+
+**Gate 1 — Retailer gate**
+Is this product available at Grooming Lounge, Art of Shaving, MR PORTER, Gilt, or Huckberry? If it exists only on Amazon page one and no curated retailer stocks it — reject.
+
+**Gate 2 — Story gate**
+Does this brand have a founding story, heritage claim, or craft narrative? Search the brand's About page or press coverage. Clinical or pharmacy brands with no story — reject.
+
+**Gate 3 — Scent/texture gate**
+Does the product language include any of: sandalwood, cedarwood, oud, eucalyptus, fast-absorbing, non-greasy, lightweight, dry finish? If the scent profile is mint, medicinal, "fresh," or pharmacy-adjacent — reject.
+
+**Gate 4 — Competitor gate**
+Does this product directly compete with the Proprietor's Foot Balm positioning (premium foot balm, $35–50)? If yes — do NOT reject. Flag it in the Competitive Intelligence section instead.
+
+Record gate results for every product. Only products that pass Gates 1–3 move to scoring.
+
+---
+
+## PHASE 3 — Amazon confirmation and scoring
+
+For each product that passed the brand alignment gates:
 
 1. Search Amazon for the exact product name and brand
-2. Find the product listing
-3. Check: is it "In Stock"? If the listing says "Currently unavailable" or shows no Add to Cart button — skip it entirely. Do not score it.
-4. Check: does it appear as a "Sponsored" result in Amazon search? If it is marked Sponsored, skip it. Sponsored placement means the brand is buying its way to visibility — that disqualifies it from BSV discovery.
-5. If it passes both checks: record the ASIN, current price, and confirm availability.
+2. Confirm it is In Stock (skip if "Currently unavailable")
+3. Confirm it does not appear as a Sponsored result in search (skip if sponsored)
+4. If it passes: record the ASIN, current price, and confirm availability
+5. Score against the 100-point rubric from the system prompt
 
-Only products that pass both checks move to scoring.
+Only products that pass both Amazon checks AND score 70+ make The Shelf.
 
 ---
 
@@ -283,16 +321,22 @@ ${previous ? `## Previous research (do not re-recommend anything already in the 
 # BSV Product Curation Report — ${today}
 
 ## The Shelf (shortlist, scored and ranked)
-For each product: Name, retailer where discovered in Phase 1, Amazon ASIN (confirmed in stock, confirmed not sponsored), price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), and the Proprietor's Audit field — one paragraph, written as if the Proprietor picked it up and decided it belonged.
+For each product: Name, source where discovered (Phase 1), gate results (G1/G2/G3 pass, G4 flag if applicable), Amazon ASIN (confirmed in stock, not sponsored), price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), Proprietor's Audit (one paragraph — not a product description, not an Amazon review; written as if the Proprietor picked it up and decided it belonged), and Brand Story (2–3 sentences: who makes this, what their heritage is, why it has provenance — this is what the Sole Report uses to write editorial around the link).
+
+## Gate Rejections
+Products from Phase 1 that failed a brand alignment gate — which gate, and why.
 
 ## Skipped — Stock or Sponsored
-Products found in Phase 1 that were eliminated in Phase 2 and why (out of stock / sponsored).
+Products that passed gates but were eliminated in Phase 3 (out of stock / sponsored).
 
 ## Held Back
-Products that passed Phase 2 but didn't clear 70 in scoring — what kept them off the shelf and what would change that.
+Products that passed all gates and Phase 3 but didn't clear 70 in scoring — what kept them off and what would change that.
+
+## Competitive Intelligence
+Products flagged on Gate 4 (direct foot balm competitors). Name, price, positioning, what they do well, what they leave open for BSV to own.
 
 ## Discovery Notes
-Which Phase 1 retailer sources were productive this cycle. Which were dry. What that signals about where to look next.
+Which Phase 1 sources were productive this cycle. Which were dry. What that signals about where to look next.
 
 ## Shelf Gaps
 What categories or product types are underrepresented that BSV should actively seek next cycle.
@@ -363,7 +407,7 @@ If BSV featured the top 3 products once each per week for a month at 2% conversi
     system:     'You extract structured product data from research documents. Return only valid JSON — no markdown fences, no commentary.',
     messages:   [{
       role: 'user',
-      content: `From the research below, extract the top 12 products from the shelf shortlist for BSV review.
+      content: `From the research below, extract the top 12 products from The Shelf shortlist for BSV review.
 
 Return a JSON array with this exact shape:
 [
@@ -374,15 +418,17 @@ Return a JSON array with this exact shape:
     "price": "$XX",
     "score": "82/100",
     "description": "One sentence — BSV voice: direct, specific, no hype. This is what appears on the shop card.",
-    "reasoning": "The Proprietor's Audit — one paragraph explaining why this belongs on the BSV shelf: what standard it upholds, why a man who takes his core seriously would reach for it. Not a product description. Not an Amazon review."
+    "reasoning": "The Proprietor's Audit — one paragraph explaining why this belongs on the BSV shelf: what standard it upholds, why a man who takes his core seriously would reach for it. Not a product description. Not an Amazon review.",
+    "brand_story": "2–3 sentences: who makes this brand, what their founding story or heritage is, why it has provenance. Pulled from research — not invented. This is what the Sole Report uses to editorialize around the affiliate link. If no heritage narrative was found in research, write exactly: No heritage narrative identified."
   }
 ]
 
 Rules:
-- Pick the 12 highest-scoring products from The Shelf section only — do not include anything from Skipped or Held Back
+- Pick the 12 highest-scoring products from The Shelf section only — do not include anything from Gate Rejections, Skipped, Held Back, or Competitive Intelligence
 - Every product in the output must have been confirmed in stock on Amazon and confirmed not sponsored
 - description: 1 sentence, BSV voice — factual, confident, no exclamation marks
 - reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize
+- brand_story: 2–3 sentences pulled directly from the Brand Story field in the research — do not write marketing copy; if none found, use "No heritage narrative identified."
 - category must exactly match one of the eight values above
 - score must be "XX/100" format
 - asin must be a real Amazon ASIN (B0XXXXXXX format) — if no confirmed ASIN exists, omit the product entirely

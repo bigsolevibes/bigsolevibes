@@ -3,7 +3,7 @@ const { google } = require('googleapis')
 const fs   = require('fs')
 const path = require('path')
 
-// Column order in BSV Product Queue sheet (A–I)
+// Column order in BSV Product Queue sheet (A–J)
 const HEADERS = [
   'Product Name',
   'Category',
@@ -12,8 +12,9 @@ const HEADERS = [
   'Score',
   'Status',        // Pending / Approved / Rejected
   'Description',   // BSV voice — shown on shop card
-  'Reasoning',     // why it qualified — for Big D's review context
+  'Reasoning',     // Proprietor's Audit — why it qualified, for Big D's review context
   'Locker Image',  // public image URL for the locker card hero
+  'Brand Story',   // 2–3 sentence brand narrative — used by Sole Report for editorial context
 ]
 
 async function connect() {
@@ -39,13 +40,13 @@ async function connect() {
 async function ensureHeaders({ sheets, spreadsheetId }) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Sheet1!A1:I1',
+    range: 'Sheet1!A1:J1',
   })
   const existing = (res.data.values || [])[0] || []
   if (existing[0] === HEADERS[0] && existing.length >= HEADERS.length) return  // already initialised
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: 'Sheet1!A1:I1',
+    range: 'Sheet1!A1:J1',
     valueInputOption: 'RAW',
     requestBody: { values: [HEADERS] },
   })
@@ -56,7 +57,7 @@ async function ensureHeaders({ sheets, spreadsheetId }) {
 async function readAllRows({ sheets, spreadsheetId }) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Sheet1!A:I',
+    range: 'Sheet1!A:J',
   })
   const rows = res.data.values || []
   if (rows.length < 2) return []
@@ -81,10 +82,11 @@ async function appendPick({ sheets, spreadsheetId }, pick) {
     pick.description,
     pick.reasoning,
     pick.lockerImage || '',
+    pick.brand_story || '',
   ]
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: 'Sheet1!A:I',
+    range: 'Sheet1!A:J',
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
