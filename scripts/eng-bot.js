@@ -7,6 +7,7 @@ const os           = require('os')
 const crypto       = require('crypto')
 const { execSync } = require('child_process')
 const { sendTelegram } = require('./telegram')
+const { addPendingItem, readDecisionFromDrive, archiveDecision, loadPendingItems, savePendingItems } = require('./telegram-queue')
 
 const ROOT                  = path.join(__dirname, '..')
 const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
@@ -389,6 +390,93 @@ function writeReport(date, failures, diagnosis, exhaustedEntries = [], inactiveT
   try { fs.unlinkSync(tmpFile) } catch {}
 }
 
+// ─── Issue categorization ─────────────────────────────────────────────────────
+
+// Returns 'auto-fix' | 'simple' | 'code'
+function categorizeIssue(failure, diagnosisText) {
+  const msg    = (failure.message || '').toLowerCase()
+  const source = (failure.source  || '').toLowerCase()
+  const diag   = (diagnosisText   || '').toLowerCase()
+
+  // auto-fix: log rotation, duplicate entries, minor state file housekeeping
+  if (
+    /log.?rotat/i.test(msg) ||
+    /duplicate.?log/i.test(msg) ||
+    /state.?file.?(corrupt|malform|empty)/i.test(msg) ||
+    source === 'log-rotate.log'
+  ) {
+    return 'auto-fix'
+  }
+
+  // simple: credentials expired, service restart needed, config file missing
+  if (
+    /token.?(expired|revoked|invalid)/i.test(msg) ||
+    /credential.?(expired|invalid|missing)/i.test(msg) ||
+    /refresh.?token/i.test(msg) ||
+    /config.?(file|missing|not.?found)/i.test(msg) ||
+    /service.*(restart|down)/i.test(msg) ||
+    /smtp.*(auth|reject)/i.test(msg) ||
+    /ssl.*(handshake|error)/i.test(msg) ||
+    /unauthorized/i.test(msg) ||
+    /token.*(expired|revoked|invalid)/i.test(diag)
+  ) {
+    return 'simple'
+  }
+
+  // code: logic errors, missing features, pipeline behavior changes
+  return 'code'
+}
+
+function buildIssueId(failure) {
+  const scriptSlug = (failure.source || 'unknown')
+    .replace(/[^a-z0-9]/gi, '-')
+    .toLowerCase()
+    .slice(0, 30)
+  const dateStr = new Date().toISOString().slice(0, 10)
+  return `eng-${scriptSlug}-${dateStr}`
+}
+
+// Handles a FIX-authorized simple issue — logs action needed, no code changes
+async function attemptSimpleFix(item) {
+  const { script, problem, fix, issueId } = item.metadata || {}
+  log(`FIX authorized: ${issueId || item.id} — ${problem || '(no description)'} — manual execution required`)
+  log(`  Proposed fix: ${fix || '(no fix specified)'}`)
+  await sendTelegram(`✅ Fix authorized for *${script || item.id}*.\n\n${fix || 'Check eng-bot.log for details.'}\n\nManual execution required.`)
+}
+
+// Write a structured code ticket to Drive
+async function fileCodeTicket(item, today) {
+  const { script, problem, fix, issueId } = item.metadata || {}
+  const ticketName    = `code-ticket-${today}.md`
+  const tmpDir        = path.join(os.tmpdir(), 'bsv-eng-bot-tickets')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const ticketContent = [
+    `# Code Ticket — ${today}`,
+    ``,
+    `**Issue ID:** ${issueId || item.id}`,
+    `**Script:** ${script || 'unknown'}`,
+    `**Problem:** ${problem || '(not specified)'}`,
+    `**Proposed Fix:** ${fix || '(not specified)'}`,
+    `**Complexity:** Needs Code session`,
+    `**Filed:** ${new Date().toISOString()}`,
+    ``,
+    `---`,
+    `*Filed automatically by eng-bot after Big D authorized FIX.*`,
+  ].join('\n')
+
+  const localTicket = path.join(tmpDir, ticketName)
+  fs.writeFileSync(localTicket, ticketContent)
+  try {
+    execSync(
+      `rclone copyto "${localTicket}" "${GDRIVE_DRIVE_ROOT}/Inbox/${ticketName}"`,
+      { stdio: 'pipe' }
+    )
+    log(`Code ticket filed: ${ticketName}`)
+  } catch (err) {
+    log(`WARNING: could not upload code ticket: ${err.message}`)
+  }
+}
+
 // ─── Claude diagnosis ─────────────────────────────────────────────────────────
 
 // Collapse failures that normalize to the same message, then cap at max.
@@ -477,6 +565,37 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey && !baseline) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
+
+  // ── Process any pending eng decisions from Drive Inbox ───────────────────────
+  try {
+    const allPending = loadPendingItems()
+    const engPending = allPending.filter(i => i.type === 'eng')
+    for (const item of engPending) {
+      const decision = readDecisionFromDrive(item.driveFile)
+      if (!decision) continue
+      log(`Decision for ${item.id}: ${decision.decision}`)
+
+      if (decision.decision === 'FIX') {
+        const complexity = item.metadata?.complexity || 'Needs Code session'
+        if (complexity === 'Simple') {
+          await attemptSimpleFix(item)
+        } else {
+          await fileCodeTicket(item, today)
+          await sendTelegram(`✅ Code ticket filed for *${item.metadata?.script || item.id}*. Will action next session.`)
+        }
+        archiveDecision(item.driveFile)
+      } else if (decision.decision === 'SKIP') {
+        log(`Skipped per Big D: ${item.id}`)
+        archiveDecision(item.driveFile)
+      } else {
+        archiveDecision(item.driveFile)
+      }
+      savePendingItems(loadPendingItems().filter(i => i.id !== item.id))
+    }
+    if (engPending.length) log(`Processed ${engPending.length} pending eng decision(s)`)
+  } catch (err) {
+    log(`WARNING: inbox processing failed: ${err.message}`)
+  }
 
   // ── Inactive agent triage — runs on every execution ─────────────────────────
   log('Loading org chart inactive agents...')
@@ -599,6 +718,58 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
   // Write report to Google Drive
   writeReport(today, allFailures, diagnosis, exhaustedAll, inactiveTriage)
+
+  // ── Per-failure Telegram approval requests ────────────────────────────────
+  try {
+    for (const failure of allFailures.slice(0, 10)) {
+      const category = categorizeIssue(failure, diagnosis)
+      if (category === 'auto-fix') {
+        log(`Auto-fix: ${failure.platform} — ${failure.message.slice(0, 100)}`)
+        continue
+      }
+
+      const issueId    = buildIssueId(failure)
+      const complexity = category === 'simple' ? 'Simple' : 'Needs Code session'
+
+      // Extract a proposed fix from the diagnosis text
+      let proposedFix = 'See eng report for details'
+      if (diagnosis) {
+        const fixMatch = diagnosis.match(/\*\*Fix:\*\*\s*([^\n]+)/)
+        if (fixMatch) proposedFix = fixMatch[1].trim().slice(0, 120)
+      }
+
+      const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
+      const problem    = failure.message.slice(0, 120)
+
+      const issueMsg = [
+        `🔧 *ENG ISSUE DETECTED*`,
+        `*Script:* ${scriptName}`,
+        `*Problem:* ${problem}`,
+        `*Fix:* ${proposedFix}`,
+        `*Complexity:* ${complexity}`,
+        ``,
+        `Reply *FIX* to authorize`,
+        `Reply *SKIP* to ignore this time`,
+        `Reply *LATER* to remind tomorrow`,
+      ].join('\n')
+
+      addPendingItem({
+        id:              issueId,
+        type:            'eng',
+        driveFile:       `${issueId}-decision.md`,
+        sentAt:          new Date().toISOString(),
+        remindAfter:     null,
+        metadata:        { script: scriptName, problem, fix: proposedFix, complexity, issueId },
+        originalMessage: issueMsg,
+      })
+
+      // Fire and continue — don't await
+      sendTelegram(issueMsg).catch(err => log(`WARNING: issue Telegram failed: ${err.message}`))
+      log(`Issue notification sent for ${issueId} (${complexity})`)
+    }
+  } catch (err) {
+    log(`WARNING: per-failure notification failed: ${err.message}`)
+  }
 
   // Mark genuinely new failures as seen (active ones already have a hash entry)
   const now = new Date().toISOString()

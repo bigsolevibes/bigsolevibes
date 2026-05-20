@@ -16,6 +16,13 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { sendTelegram } = require('./telegram')
+const {
+  addPendingItem,
+  readDecisionFromDrive,
+  archiveDecision,
+  loadPendingItems,
+  savePendingItems,
+} = require('./telegram-queue')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'chief-of-staff.log')
@@ -349,6 +356,49 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   }
 }
 
+// ─── Inbox processing ─────────────────────────────────────────────────────────
+
+async function processChiefInbox(client) {
+  try {
+    // List all chief-*-decision.md files from Drive Inbox
+    let inboxFiles = []
+    try {
+      const listing = execSync(`rclone ls "${REMOTE}/Inbox"`, {
+        encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      inboxFiles = listing.trim().split('\n')
+        .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+        .filter(f => /^chief-.+-decision\.md$/.test(f))
+    } catch { /* inbox may not exist yet */ }
+
+    if (!inboxFiles.length) return
+
+    log(`processChiefInbox: found ${inboxFiles.length} decision file(s)`)
+
+    const allPending = loadPendingItems()
+    const chiefPending = allPending.filter(i => i.type === 'chief')
+    let pendingChanged = false
+
+    for (const driveFile of inboxFiles) {
+      const decision = readDecisionFromDrive(driveFile)
+      if (!decision) continue
+      log(`Chief inbox decision: ${driveFile} → ${decision.decision}`)
+
+      // Find matching pending item
+      const item = chiefPending.find(i => i.driveFile === driveFile)
+      if (item) {
+        log(`  Matched pending item: ${item.id}`)
+        savePendingItems(loadPendingItems().filter(i => i.id !== item.id))
+        pendingChanged = true
+      }
+
+      archiveDecision(driveFile)
+    }
+  } catch (err) {
+    log(`WARNING: processChiefInbox failed: ${err.message}`)
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -371,6 +421,9 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   // Step-level failure tracking — accumulated into the final summary line
   const failures = []
   let standupUploaded = false
+
+  // ── Process any pending chief approvals from Drive Inbox ──────────────────
+  await processChiefInbox(client)
 
   // ── Collect context ──────────────────────────────────────────────────────────
 
@@ -1119,6 +1172,59 @@ Return the complete updated BSV-Memory.md. Start with the # BSV-Memory.md header
     }
   } else {
     log('WARNING: no Telegram section found in stand-up output — ping skipped')
+  }
+
+  // ── Lounge content approval request ──────────────────────────────────────────
+
+  try {
+    // Parse The Lounge section from standupMd
+    const loungeMatch = standupMd.match(/## The Lounge[^\n]*\n([\s\S]*?)(?=\n## |\n---|\n# |$)/)
+    if (loungeMatch) {
+      const loungeSection = loungeMatch[1]
+      const titleMatch    = loungeSection.match(/\*\*Title:\*\*\s*(.+)/)
+      const angleMatch    = loungeSection.match(/\*\*The angle:\*\*\s*(.+)/)
+
+      if (titleMatch) {
+        const loungeTitle  = titleMatch[1].trim()
+        const loungeAngle  = angleMatch ? angleMatch[1].trim() : ''
+        const driveFile    = `chief-lounge-${today}-decision.md`
+        const pendingItems = loadPendingItems()
+        const alreadyQueued = pendingItems.some(i => i.type === 'chief' && i.driveFile === driveFile)
+
+        if (!alreadyQueued) {
+          const loungeApprovalMsg = [
+            `⚙️ *APPROVAL NEEDED*`,
+            `*Lounge content:* ${loungeTitle}`,
+            loungeAngle ? loungeAngle : '',
+            ``,
+            `Reply *APPROVED* to queue for creative-agent`,
+            `Reply *DENIED* to cancel`,
+            `Reply *LATER* to defer to tomorrow`,
+          ].filter(l => l !== undefined).join('\n')
+
+          addPendingItem({
+            id:              `chief-lounge-${today}`,
+            type:            'chief',
+            driveFile,
+            sentAt:          new Date().toISOString(),
+            remindAfter:     null,
+            metadata:        { title: loungeTitle, angle: loungeAngle },
+            originalMessage: loungeApprovalMsg,
+          })
+
+          await sendTelegram(loungeApprovalMsg)
+          log(`Lounge content approval sent: "${loungeTitle}"`)
+        } else {
+          log(`Lounge content already in pending queue — skipping re-send`)
+        }
+      } else {
+        log('No Lounge title found in stand-up — skipping approval request')
+      }
+    } else {
+      log('No Lounge section found in stand-up — skipping approval request')
+    }
+  } catch (err) {
+    log(`WARNING: Lounge approval request failed: ${err.message}`)
   }
 
   // ── Final summary ─────────────────────────────────────────────────────────────

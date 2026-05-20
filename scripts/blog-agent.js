@@ -15,6 +15,8 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+const { addPendingItem, readDecisionFromDrive } = require('./telegram-queue')
+const { sendTelegram } = require('./telegram')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
@@ -480,6 +482,29 @@ function gitPush(files) {
   const today   = new Date().toISOString().slice(0, 10)
   const dateObj = new Date()
 
+  // ─── Check for pending draft from previous timed-out run ─────────────────
+  let resumedPost = null
+  try {
+    const draftFiles = execSync(`rclone ls "${REMOTE}/Inbox"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^blog-draft-.+\.json$/.test(f))
+      .sort()
+    if (draftFiles.length) {
+      const draftFile = draftFiles[draftFiles.length - 1]
+      log(`Found pending draft: ${draftFile} — restoring for approval loop`)
+      execSync(`rclone copy "${REMOTE}/Inbox/${draftFile}" "${TEMP_DIR}/"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      const localDraft = path.join(TEMP_DIR, path.basename(draftFile))
+      if (fs.existsSync(localDraft)) {
+        resumedPost = JSON.parse(fs.readFileSync(localDraft, 'utf8'))
+        log(`Resumed post: "${resumedPost.title}" → /${resumedPost.slug}`)
+      }
+    }
+  } catch { /* Drive may be unavailable — continue to normal generation */ }
+
   // ─── Load Drive context ───────────────────────────────────────────────────
   log('Loading Drive context...')
 
@@ -729,52 +754,56 @@ ${postRequirementsBlock}
 
 Return ONLY the JSON object. No preamble, no explanation.`
 
-  // ─── Call Claude ──────────────────────────────────────────────────────────
-  log('Calling Claude API to generate blog post...')
-  const client   = new Anthropic({ apiKey })
-  const response = await client.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 6000,
-    system:     systemPrompt,
-    messages:   [{ role: 'user', content: userPrompt }],
-  })
+  // ─── Call Claude (skipped if resumedPost exists) ─────────────────────────
+  const client = new Anthropic({ apiKey })
+  let rawText  = ''
 
-  const rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
-  log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+  if (!resumedPost) {
+    log('Calling Claude API to generate blog post...')
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 6000,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    })
+    rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+    log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+  }
 
   // ─── Parse JSON ───────────────────────────────────────────────────────────
   let post
-  try {
-    const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
-    const start = stripped.indexOf('{')
-    const end   = stripped.lastIndexOf('}')
-    if (start === -1 || end === -1) throw new Error('no JSON object found')
-    post = JSON.parse(stripped.slice(start, end + 1))
-    if (!post.title || !post.slug || !post.openingHtml) throw new Error('missing required fields')
-    log(`Post: "${post.title}" → /${post.slug}`)
-    if (post.imageBrief) log(`Image brief: ${post.imageBrief}`)
-    else log('WARNING: no imageBrief in response')
-  } catch (err) {
-    log(`ERROR: JSON parse failed — ${err.message}`)
-    log(`Raw (first 500): ${rawText.slice(0, 500)}`)
-    process.exit(1)
+  if (resumedPost) {
+    // Restored from pending draft — skip generation
+    post = resumedPost
+    log(`Using resumed post: "${post.title}" → /${post.slug}`)
+  } else {
+    try {
+      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+      const start = stripped.indexOf('{')
+      const end   = stripped.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('no JSON object found')
+      post = JSON.parse(stripped.slice(start, end + 1))
+      if (!post.title || !post.slug || !post.openingHtml) throw new Error('missing required fields')
+      log(`Post: "${post.title}" → /${post.slug}`)
+      if (post.imageBrief) log(`Image brief: ${post.imageBrief}`)
+      else log('WARNING: no imageBrief in response')
+    } catch (err) {
+      log(`ERROR: JSON parse failed — ${err.message}`)
+      log(`Raw (first 500): ${rawText.slice(0, 500)}`)
+      process.exit(1)
+    }
   }
 
-  // ─── Build and write HTML ─────────────────────────────────────────────────
+  // ─── Build manifest context (needed for both dry-run and approval loop) ───
   const filename  = `${today}-${post.slug}.html`
   const postPath  = path.join(BLOG_DIR, filename)
   const indexPath = path.join(BLOG_DIR, 'index.html')
   const manifestPath = path.join(BLOG_DIR, 'manifest.json')
 
-  const postHtml = buildPostHtml(post, today)
-
-  // Load or init manifest
   let manifest = []
   if (fs.existsSync(manifestPath)) {
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) } catch {}
   }
-
-  // Prepend new post (dedup by slug)
   manifest = manifest.filter(m => m.slug !== post.slug)
   manifest.unshift({
     slug:        post.slug,
@@ -786,16 +815,194 @@ Return ONLY the JSON object. No preamble, no explanation.`
     imageStatus: 'pending',
   })
 
-  const indexHtml = buildIndexHtml(manifest)
-
+  // ─── Dry-run exits before approval loop ──────────────────────────────────
   if (dryRun) {
+    const postHtmlDry = buildPostHtml(post, today)
     const preview = path.join(ROOT, 'logs', 'blog-preview.html')
-    fs.writeFileSync(preview, postHtml)
+    fs.writeFileSync(preview, postHtmlDry)
     log(`[dry-run] Post HTML written to logs/blog-preview.html`)
     log(`[dry-run] Manifest would have ${manifest.length} posts`)
     log('━━━ blog-agent complete ━━━\n')
     return
   }
+
+  // ─── Approval loop (up to 3 EDIT revisions) ──────────────────────────────
+
+  const MAX_EDITS    = 3
+  let   editAttempts = 0
+  let   approvalDecision = null
+
+  // Helper: strip HTML tags for read-time and preview
+  function stripHtml(html) {
+    return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+  // Helper: save draft to Drive Inbox for later resumption
+  async function saveDraftToDrive(postObj) {
+    const draftName = `blog-draft-${postObj.slug}.json`
+    const tmpDraft  = path.join(os.tmpdir(), draftName)
+    fs.writeFileSync(tmpDraft, JSON.stringify(postObj, null, 2))
+    try {
+      execSync(`rclone copyto "${tmpDraft}" "${REMOTE}/Inbox/${draftName}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      log(`Draft saved to Drive Inbox: ${draftName}`)
+    } catch (err) {
+      log(`WARNING: could not save draft to Drive: ${err.message}`)
+    }
+    try { fs.unlinkSync(tmpDraft) } catch {}
+  }
+
+  // Helper: archive rejected/expired draft
+  async function archiveRejectedDraft(postObj, reason) {
+    const rejName  = `blog-rejected-${postObj.slug}-${today}.md`
+    const tmpRej   = path.join(os.tmpdir(), rejName)
+    fs.writeFileSync(tmpRej, `# Blog Draft Rejected\n\nslug: ${postObj.slug}\ndate: ${today}\nreason: ${reason}\n`)
+    try {
+      execSync(`rclone copyto "${tmpRej}" "${REMOTE}/Inbox/Processed/${rejName}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch {}
+    try { fs.unlinkSync(tmpRej) } catch {}
+  }
+
+  while (true) {
+    // Build approval message
+    const postHtmlForApproval = buildPostHtml(post, today)
+    const fullText   = post.openingHtml + (post.sections || []).map(s => s.html).join('') + post.closingHtml
+    const wordCount  = stripHtml(fullText).split(/\s+/).filter(Boolean).length
+    const readTime   = Math.max(1, Math.ceil(wordCount / 200))
+    const previewTxt = (post.excerpt
+      ? stripHtml(post.excerpt)
+      : stripHtml(post.openingHtml)
+    ).slice(0, 200)
+    const voice = (nextCalendarEntry && nextCalendarEntry.voice)
+      ? nextCalendarEntry.voice.split('.')[0]
+      : 'Proprietor'
+
+    const driveFile = `blog-${post.slug}-decision.md`
+
+    const telegramMsg = [
+      `📝 *NEW SOLE REPORT DRAFT*`,
+      `*Title:* ${post.title}`,
+      `*Voice:* ${voice}`,
+      `*Est. read time:* ${readTime} min`,
+      ``,
+      `*Preview:* ${previewTxt}`,
+      ``,
+      `Reply *APPROVE* to publish`,
+      `Reply *REJECT* to discard`,
+      `Reply *EDIT [your notes]* to revise`,
+    ].join('\n')
+
+    addPendingItem({
+      id:              `blog-${post.slug}`,
+      type:            'blog',
+      driveFile,
+      sentAt:          new Date().toISOString(),
+      remindAfter:     null,
+      metadata:        { slug: post.slug, title: post.title, voice },
+      originalMessage: telegramMsg,
+    })
+
+    await sendTelegram(telegramMsg)
+    log(`Approval request sent — polling Drive for decision (max 4h)...`)
+
+    // Poll Drive every 15 minutes, max 16 polls (4 hours)
+    const MAX_POLLS     = 16
+    const POLL_INTERVAL_MS = 15 * 60 * 1000
+    let   decision      = null
+
+    for (let poll = 0; poll < MAX_POLLS; poll++) {
+      if (poll > 0) {
+        log(`Waiting 15 minutes before next poll (${poll}/${MAX_POLLS})...`)
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
+      }
+      const result = readDecisionFromDrive(driveFile)
+      if (result) {
+        decision = result
+        log(`Decision received: ${result.decision}${result.notes ? ` — notes: ${result.notes}` : ''}`)
+        break
+      }
+    }
+
+    if (!decision) {
+      // Timed out — save draft to Drive Inbox for next run
+      log('No approval decision received in 4 hours — saving draft to Drive Inbox')
+      await saveDraftToDrive(post)
+      await sendTelegram(`⏰ *Sole Report draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
+      log('━━━ blog-agent complete (awaiting approval) ━━━\n')
+      return
+    }
+
+    approvalDecision = decision.decision
+
+    if (approvalDecision === 'APPROVE') {
+      // Remove from pending queue
+      const { loadPendingItems: lp, savePendingItems: sp } = require('./telegram-queue')
+      const pending = lp()
+      sp(pending.filter(i => i.id !== `blog-${post.slug}`))
+      break
+    }
+
+    if (approvalDecision === 'REJECT') {
+      const { loadPendingItems: lp, savePendingItems: sp } = require('./telegram-queue')
+      const pending = lp()
+      sp(pending.filter(i => i.id !== `blog-${post.slug}`))
+      await archiveRejectedDraft(post, 'Rejected by Big D')
+      await sendTelegram(`❌ Rejected and archived.`)
+      log(`Post rejected — exiting cleanly`)
+      log('━━━ blog-agent complete (rejected) ━━━\n')
+      return
+    }
+
+    if (approvalDecision === 'EDIT') {
+      editAttempts++
+      if (editAttempts > MAX_EDITS) {
+        log(`Max edit attempts (${MAX_EDITS}) reached — saving draft`)
+        await saveDraftToDrive(post)
+        await sendTelegram(`⚠️ Max revisions reached for "${post.title}". Draft saved to Drive Inbox.`)
+        log('━━━ blog-agent complete (max edits) ━━━\n')
+        return
+      }
+      const notes = decision.notes || ''
+      log(`Edit requested (attempt ${editAttempts}/${MAX_EDITS}): ${notes}`)
+
+      // Re-call Claude with revision notes
+      const revisionPrompt = `Revision requested: ${notes}. Apply to the draft.\n\n${userPrompt}`
+      try {
+        const revResponse = await client.messages.create({
+          model:      'claude-sonnet-4-6',
+          max_tokens: 6000,
+          system:     systemPrompt,
+          messages:   [{ role: 'user', content: revisionPrompt }],
+        })
+        const revRaw = revResponse.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+        const stripped = revRaw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+        const start = stripped.indexOf('{')
+        const end   = stripped.lastIndexOf('}')
+        if (start === -1 || end === -1) throw new Error('no JSON in revision response')
+        const revised = JSON.parse(stripped.slice(start, end + 1))
+        if (!revised.title || !revised.slug || !revised.openingHtml) throw new Error('missing required fields in revision')
+        post = revised
+        log(`Revision ${editAttempts} applied: "${post.title}" → /${post.slug}`)
+      } catch (err) {
+        log(`ERROR: revision parse failed — ${err.message}`)
+        await sendTelegram(`⚠️ Revision failed to parse. Keeping original draft. Reply APPROVE to publish as-is.`)
+        // Re-loop with same post
+      }
+      continue
+    }
+
+    // Unexpected decision value — treat as skip and break
+    log(`Unexpected decision: ${approvalDecision} — treating as approved`)
+    break
+  }
+
+  // ─── Write HTML to disk and push ─────────────────────────────────────────
+
+  const postHtml = buildPostHtml(post, today)
+  const indexHtml = buildIndexHtml(manifest)
 
   fs.writeFileSync(postPath,    postHtml)
   fs.writeFileSync(indexPath,   indexHtml)
@@ -804,7 +1011,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
   log(`Written: index.html (${manifest.length} total post(s))`)
   log(`Written: manifest.json`)
 
-  // Push all three files to main
+  // Push all three files to preview
   const pushed = gitPush([
     path.join('public', 'sole-report', filename),
     path.join('public', 'sole-report', 'index.html'),
@@ -812,5 +1019,9 @@ Return ONLY the JSON object. No preamble, no explanation.`
   ])
 
   log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)
+
+  // Notify Big D
+  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/sole-report/${post.slug}.html`)
+
   log(`━━━ blog-agent complete — "${post.title}" ━━━\n`)
 })()
