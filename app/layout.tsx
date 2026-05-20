@@ -53,6 +53,9 @@ export const metadata: Metadata = {
     description: 'The standard for the man who takes himself seriously — head to toe. The shelf is curated. Nothing here was easy to find.',
     images: ['/og-image.jpg'],
   },
+  other: {
+    'fo-verify': '770cd075-e694-446c-b465-cc95054a4514',
+  },
 }
 
 export default function RootLayout({
