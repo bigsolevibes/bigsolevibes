@@ -447,6 +447,13 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   log('Running org chart gap detection...')
   const orgChartSvg    = loadOrgChart()
   const knownAgents    = orgChartSvg ? parseOrgChartAgents(orgChartSvg) : []
+  let orgChartLastUpdated = null
+  if (orgChartSvg) {
+    try {
+      const svgPath = path.join(TEMP_DIR, 'BSV-Org-Chart.svg')
+      if (fs.existsSync(svgPath)) orgChartLastUpdated = fs.statSync(svgPath).mtime.toISOString().slice(0, 10)
+    } catch {}
+  }
   let scriptFiles = []
   try {
     scriptFiles = fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort()
@@ -457,8 +464,10 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   const inactiveAgents = checkLogActivity(knownAgents, 7)
   const newScripts     = scriptFiles.filter(s => !knownAgents.includes(s))
   const orgHasGaps     = newScripts.length > 0 || inactiveAgents.length > 0
+  const orgGapCount    = newScripts.length + inactiveAgents.length
 
-  log(`Org chart: ${orgChartSvg ? `loaded (${knownAgents.length} agents known)` : 'missing from Drive'}`)
+  log(`Org chart: ${orgChartSvg ? `loaded (${knownAgents.length} agents known, last updated ${orgChartLastUpdated ?? 'unknown'})` : 'missing from Drive'}`)
+  log(`Scripts in directory: ${scriptFiles.length} | In chart: ${knownAgents.length} | Gaps: ${orgGapCount}`)
   log(`New scripts not in chart: ${newScripts.join(', ') || 'none'}`)
   log(`Inactive agents (7d): ${inactiveAgents.join(', ') || 'none'}`)
 
@@ -598,9 +607,13 @@ Open issues, flagged items, Tier 1 candidates awaiting Big D approval.
 Broken things that need a human. Expired credentials. Empty queues at critical moments. Be direct — name the thing and say what the decision is. If nothing needs Proprietor attention: "Clear."
 
 ## Org Chart
-New scripts not in BSV-Org-Chart.svg → flag for approval. Inactive agents (no log activity 7d) → flag.
+This section is mandatory every morning — always include it, always show all three lines.
 
-If gaps exist:
+**Last updated:** [date from Org Chart Status data, or "unknown — chart missing from Drive"]
+**Chart / directory:** [N in chart] / [N scripts in directory]
+**Gaps:** [gap count] — [list new scripts and inactive agents by name, or "None"]
+
+If gaps exist, append:
 \`\`\`
 ORG CHANGES DETECTED
   New script: [name]
@@ -608,14 +621,13 @@ ORG CHANGES DETECTED
   → Awaiting Big D approval: node scripts/chief-of-staff.js --update-org-chart
 \`\`\`
 
-If an org chart update was just executed (orgUpdateResult.updated = true):
+If an org chart update was just executed (orgUpdateResult.updated = true), append:
 \`\`\`
 ORG CHART UPDATED
   [changes applied]
   Uploaded: Big Sole Vibes/BSV-Org-Chart.svg
 \`\`\`
 
-If no gaps: "Org chart current."
 Chief never updates autonomously. Flags → waits → executes on --update-org-chart.
 
 ## Tonight
@@ -781,13 +793,12 @@ ${productBrief ? productBrief.content.slice(0, 1500) + (productBrief.content.len
 ${changeState ? JSON.stringify(changeState, null, 2) : '(not available — change-agent.js has not run yet)'}
 \`\`\`
 
-## Org Chart Gap Detection
-Org chart loaded: ${orgChartSvg ? `yes (${knownAgents.length} agents known)` : 'NO — BSV-Org-Chart.svg missing from Drive'}
-Known agents in chart: ${knownAgents.join(', ') || '(none parsed)'}
-Scripts in scripts/ directory: ${scriptFiles.join(', ')}
-New scripts not in chart: ${newScripts.join(', ') || 'none'}
-Inactive agents (no log activity 7d): ${inactiveAgents.join(', ') || 'none'}
-Gaps detected: ${orgHasGaps ? 'YES' : 'no'}
+## Org Chart Status
+Loaded: ${orgChartSvg ? 'yes' : 'NO — BSV-Org-Chart.svg missing from Drive'}
+Last updated: ${orgChartLastUpdated ?? 'unknown'}
+Agents in chart: ${knownAgents.length} | Scripts in directory: ${scriptFiles.length} | Gap count: ${orgGapCount}
+New scripts not in chart (${newScripts.length}): ${newScripts.join(', ') || 'none'}
+Inactive agents 7d (${inactiveAgents.length}): ${inactiveAgents.join(', ') || 'none'}
 Update mode (--update-org-chart): ${updateOrgChart ? 'YES' : 'no'}
 Org update result: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : 'n/a'}
 
