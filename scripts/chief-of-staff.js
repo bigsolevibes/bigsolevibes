@@ -367,7 +367,6 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   const isMonday         = dayOfWeek === 1
   const isMidWeekLate    = dayOfWeek >= 3 && dayOfWeek <= 5  // Wed–Fri
   const outFile          = `standup-${today}.md`
-  const updateOrgChart   = process.argv.includes('--update-org-chart')
 
   // Step-level failure tracking — accumulated into the final summary line
   const failures = []
@@ -471,14 +470,14 @@ async function runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents
   log(`New scripts not in chart: ${newScripts.join(', ') || 'none'}`)
   log(`Inactive agents (7d): ${inactiveAgents.join(', ') || 'none'}`)
 
-  // ── Org chart update (if approved by Big D via --update-org-chart) ───────────
+  // ── Org chart update — runs automatically whenever gaps are detected ─────────
 
   let orgUpdateResult = null
-  if (updateOrgChart) {
+  if (orgHasGaps) {
     if (!orgChartSvg) {
-      log('ERROR: --update-org-chart requires org chart in Drive — BSV-Org-Chart.svg not found')
+      log('ERROR: org chart update skipped — BSV-Org-Chart.svg missing from Drive')
     } else {
-      log('--update-org-chart flag set — executing approved update...')
+      log('Gaps detected — running org chart update...')
       orgUpdateResult = await runOrgChartUpdate(client, orgChartSvg, newScripts, inactiveAgents)
     }
   }
@@ -613,14 +612,6 @@ This section is mandatory every morning — always include it, always show all t
 **Chart / directory:** [N in chart] / [N scripts in directory]
 **Gaps:** [gap count] — [list new scripts and inactive agents by name, or "None"]
 
-If gaps exist, append:
-\`\`\`
-ORG CHANGES DETECTED
-  New script: [name]
-  Inactive: [name]
-  → Awaiting Big D approval: node scripts/chief-of-staff.js --update-org-chart
-\`\`\`
-
 If an org chart update was just executed (orgUpdateResult.updated = true), append:
 \`\`\`
 ORG CHART UPDATED
@@ -628,7 +619,12 @@ ORG CHART UPDATED
   Uploaded: Big Sole Vibes/BSV-Org-Chart.svg
 \`\`\`
 
-Chief never updates autonomously. Flags → waits → executes on --update-org-chart.
+If gaps were detected but the update failed (orgUpdateResult.updated = false), append:
+\`\`\`
+ORG UPDATE FAILED
+  Reason: [orgUpdateResult.reason]
+  Manual fix: node scripts/chief-of-staff.js
+\`\`\`
 
 ## Tonight
 What runs when. Which slots generate tomorrow. Anything to watch for in the morning.
@@ -799,8 +795,7 @@ Last updated: ${orgChartLastUpdated ?? 'unknown'}
 Agents in chart: ${knownAgents.length} | Scripts in directory: ${scriptFiles.length} | Gap count: ${orgGapCount}
 New scripts not in chart (${newScripts.length}): ${newScripts.join(', ') || 'none'}
 Inactive agents 7d (${inactiveAgents.length}): ${inactiveAgents.join(', ') || 'none'}
-Update mode (--update-org-chart): ${updateOrgChart ? 'YES' : 'no'}
-Org update result: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : 'n/a'}
+Update ran: ${orgUpdateResult ? JSON.stringify(orgUpdateResult) : orgHasGaps ? 'attempted — see log' : 'no gaps — skipped'}
 
 ## Current Handoff Doc (${HANDOFF_FILENAME})
 ${handoff ? handoff.slice(0, 2000) + (handoff.length > 2000 ? '\n[truncated]' : '') : '(not available)'}
