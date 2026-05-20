@@ -6,6 +6,7 @@ const path         = require('path')
 const os           = require('os')
 const crypto       = require('crypto')
 const { execSync } = require('child_process')
+const { sendTelegram } = require('./telegram')
 
 const ROOT                  = path.join(__dirname, '..')
 const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
@@ -13,6 +14,8 @@ const LOGS_DIR              = path.join(ROOT, 'logs')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
+const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
+const ORG_CHART_TEMP        = path.join(os.tmpdir(), 'bsv-eng-bot')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +63,117 @@ function normalizeMessage(msg) {
     .trim()
 }
 
-// Known-DOA platforms — EXHAUSTED lines for these are expected and need no action.
+// Sources suppressed until they are properly configured — skip entirely, don't report failures.
+const SUPPRESSED_SOURCES = [
+  'reddit-agent.log',   // Reddit credentials + Puppeteer not yet configured
+  'fetch-reddit.log',
+]
+
+// Log rotation lines from log-rotate.log are housekeeping, never failures.
+const LOG_ROTATION_PATTERNS = [
+  /^\[?[^\]]*\]?\s*Rotating\s+\S/,           // "Rotating media-director-error.log"
+  /→.*\(\d+(?:\.\d+)?\s*MB archived\)/,      // "→ file.log.1 (0.0 MB archived)"
+  /—\s*fresh file created\s*$/,              // "— fresh file created"
+  /\.log\.\d+\s*→/,                          // ".log.1 →" rotation rename
+]
+
+function isLogRotationLine(line) {
+  return LOG_ROTATION_PATTERNS.some(re => re.test(line))
+}
+
+// ─── Inactive agent triage ────────────────────────────────────────────────────
+
+function loadOrgChartInactiveAgents() {
+  try {
+    fs.mkdirSync(ORG_CHART_TEMP, { recursive: true })
+    execSync(`rclone copy "${GDRIVE_DRIVE_ROOT}/BSV-Org-Chart.svg" "${ORG_CHART_TEMP}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const svgPath = path.join(ORG_CHART_TEMP, 'BSV-Org-Chart.svg')
+    if (!fs.existsSync(svgPath)) return []
+    const svg = fs.readFileSync(svgPath, 'utf8')
+    const inactive = []
+    const re = />([^<]*\(inactive\)[^<]*)</g
+    let m
+    while ((m = re.exec(svg)) !== null) {
+      const scriptMatch = m[1].trim().match(/^([\w.-]+\.js)\s*\(inactive\)/i)
+      if (scriptMatch) inactive.push(scriptMatch[1])
+    }
+    return [...new Set(inactive)]
+  } catch {
+    return []
+  }
+}
+
+function triageInactiveAgent(scriptName) {
+  const logPath = path.join(LOGS_DIR, scriptName.replace('.js', '.log'))
+
+  if (!fs.existsSync(logPath)) {
+    return {
+      script:         scriptName,
+      lastEntry:      'no log file',
+      lastStatus:     'unknown',
+      assessment:     'no log file found — never ran or log was rotated away',
+      recommendation: 'investigate — if this script should be running, check launchd and run manually',
+    }
+  }
+
+  const content = readTailBytes(logPath, 8 * 1024)
+  const lines   = content.split('\n').filter(Boolean)
+
+  if (!lines.length) {
+    return {
+      script:         scriptName,
+      lastEntry:      'empty',
+      lastStatus:     'unknown',
+      assessment:     'log file exists but is empty — likely just rotated',
+      recommendation: 'no action needed',
+    }
+  }
+
+  // Find last timestamped line
+  let lastTimestamp = null
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const tsMatch = lines[i].match(/\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/)
+    if (tsMatch) { lastTimestamp = tsMatch[1]; break }
+  }
+
+  if (!lastTimestamp) {
+    return {
+      script:         scriptName,
+      lastEntry:      'no timestamps',
+      lastStatus:     'unknown',
+      assessment:     'log has entries but no timestamps — may be a helper/utility script',
+      recommendation: 'no action needed',
+    }
+  }
+
+  const daysSince    = (Date.now() - new Date(lastTimestamp).getTime()) / 86400000
+  const lastDate     = lastTimestamp.slice(0, 10)
+  const recentText   = lines.slice(-10).join('\n').toLowerCase()
+  const hasError     = recentText.includes('error') || recentText.includes('failed') || recentText.includes('✗')
+  const hasSuccess   = recentText.includes('complete') || recentText.includes('✓') || recentText.includes('success') || recentText.includes('done')
+
+  let lastStatus, assessment, recommendation
+
+  if (hasError && !hasSuccess) {
+    lastStatus     = 'error'
+    assessment     = `last run ended with errors (${Math.round(daysSince)}d ago) — Chief marked inactive based on log silence since then`
+    recommendation = 'needs investigation — check full log for root cause'
+  } else if (daysSince > 14) {
+    lastStatus     = 'stale'
+    assessment     = `genuinely stopped — no log activity in ${Math.round(daysSince)} days`
+    recommendation = 'needs investigation — expected cadence has lapsed significantly'
+  } else {
+    lastStatus     = 'success'
+    assessment     = `running fine — last activity ${Math.round(daysSince)}d ago, 7-day log-mtime window triggered inactive label`
+    recommendation = 'no action needed'
+  }
+
+  return { script: scriptName, lastEntry: lastDate, lastStatus, assessment, recommendation }
+}
+
+// ─── Known-DOA platforms — EXHAUSTED lines for these are expected and need no action.
 const KNOWN_DOA_PLATFORMS = ['tiktok', 'youtube', 'twitter', 'facebook']
 
 // Parse structured EXHAUSTED: lines written by watch-drive.js when a slot runs out of retries.
@@ -95,10 +208,18 @@ function extractFailures(logContent, source) {
     const ll = line.toLowerCase()
     // EXHAUSTED: lines are handled separately — skip here to avoid double-counting
     if (line.includes('EXHAUSTED:')) continue
+    // Log rotation housekeeping is never a failure regardless of filename content
+    if (isLogRotationLine(line)) continue
+    // Require a real failure signal — bare "error" matches filenames like media-director-error.log
     if (
       !line.includes('✗') &&
-      !ll.includes('error') &&
-      !ll.includes('failed') &&
+      !line.includes('Error:') &&
+      !line.includes('ERROR:') &&
+      !line.includes('Exception:') &&
+      !ll.includes('fatal') &&
+      !ll.includes('fail') &&
+      !ll.includes('stderr') &&
+      !/exit(?:ed)?\s+(?:with\s+)?(?:code\s+)?[1-9]/.test(ll) &&
       !ll.includes('warning')
     ) continue
 
@@ -160,7 +281,7 @@ function extractSlug(context) {
   return m ? m[1] : null
 }
 
-function writeReport(date, failures, diagnosis, exhaustedEntries = []) {
+function writeReport(date, failures, diagnosis, exhaustedEntries = [], inactiveTriage = []) {
   const timestamp = new Date().toISOString()
 
   const slugs = [...new Set(failures.map(f => extractSlug(f.context)).filter(Boolean))]
@@ -211,16 +332,35 @@ function writeReport(date, failures, diagnosis, exhaustedEntries = []) {
     '**Status:** ⏳ Awaiting Big D approval before any fix is applied.',
   ].filter(l => l !== '').join('\n')).join('\n\n---\n\n')
 
+  const triageSection = inactiveTriage.length ? [
+    '## Inactive Agent Triage',
+    '',
+    '_Source: BSV-Org-Chart.svg — agents marked inactive by Chief of Staff_',
+    '',
+    ...inactiveTriage.map(t => [
+      `### ${t.script} — marked inactive by Chief`,
+      `- **Last log entry:** ${t.lastEntry}`,
+      `- **Last known status:** ${t.lastStatus}`,
+      `- **Assessment:** ${t.assessment}`,
+      `- **Recommendation:** ${t.recommendation}`,
+    ].join('\n')),
+    '',
+    '---',
+    '',
+  ].join('\n') : ''
+
   const content = [
     `# BSV Eng Report — ${date}`,
     '',
     `**Generated:** ${timestamp}`,
     `**Failures:** ${failures.length}`,
     `**Exhausted slots:** ${actionableExhausted.length} actionable, ${knownExhausted.length} known`,
+    `**Inactive agents triaged:** ${inactiveTriage.length}`,
     `**Affected slugs:** ${slugLine}`,
     '',
     '---',
     '',
+    triageSection,
     exhaustedSection,
     failureSections,
     '',
@@ -338,6 +478,13 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey && !baseline) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
 
+  // ── Inactive agent triage — runs on every execution ─────────────────────────
+  log('Loading org chart inactive agents...')
+  const inactiveAgents = loadOrgChartInactiveAgents()
+  log(`Inactive agents in org chart: ${inactiveAgents.length}${inactiveAgents.length ? ` — ${inactiveAgents.join(', ')}` : ''}`)
+  const inactiveTriage = inactiveAgents.map(triageInactiveAgent)
+  inactiveTriage.forEach(t => log(`  ${t.script}: ${t.lastStatus} — ${t.assessment}`))
+
   // Discover all log files in logs/ (excluding eng-bot.log itself)
   const logFiles = collectLogFiles()
   log(`Scanning ${logFiles.length} log file(s): ${logFiles.map(f => path.basename(f)).join(', ')}`)
@@ -352,9 +499,13 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const failures        = []
   const exhaustedAll    = []
   for (const logPath of logFiles) {
+    const source = path.basename(logPath)
+    if (SUPPRESSED_SOURCES.includes(source)) {
+      log(`  ${source}: suppressed — skipping until configured`)
+      continue
+    }
     try {
       const content  = readTailBytes(logPath)
-      const source   = path.basename(logPath)
       const found    = extractFailures(content, source)
       const exhausted = extractExhaustedEntries(content, source)
       if (found.length)    log(`  ${source}: ${found.length} failure(s)`)
@@ -371,8 +522,8 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   if (knownExhausted.length)      log(`${knownExhausted.length} known-DOA exhausted slot(s) — no action needed (${knownExhausted.map(e => `${e.slot}/${e.platform}`).join(', ')})`)
   if (actionableExhausted.length) log(`${actionableExhausted.length} ACTIONABLE exhausted slot(s): ${actionableExhausted.map(e => `${e.slot}/${e.platform}`).join(', ')}`)
 
-  if (!failures.length && !actionableExhausted.length) {
-    log('No failures or actionable exhausted slots found across all logs')
+  if (!failures.length && !actionableExhausted.length && !inactiveTriage.length) {
+    log('No failures, exhausted slots, or inactive agents — nothing to report')
     log('━━━ eng-bot complete (no failures) ━━━\n')
     return
   }
@@ -414,7 +565,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
   const allFailures = [...newFailures, ...activeFailures]
 
-  if (!allFailures.length && !actionableExhausted.length) {
+  if (!allFailures.length && !actionableExhausted.length && !inactiveTriage.length) {
     log('All failures already in eng-seen.json — nothing new to report')
     log('━━━ eng-bot complete (no new failures) ━━━\n')
     return
@@ -447,13 +598,44 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   }
 
   // Write report to Google Drive
-  writeReport(today, allFailures, diagnosis, exhaustedAll)
+  writeReport(today, allFailures, diagnosis, exhaustedAll, inactiveTriage)
 
   // Mark genuinely new failures as seen (active ones already have a hash entry)
   const now = new Date().toISOString()
   newFailures.forEach(f => { seenData.hashes[failureHash(f)] = now })
   saveSeen(seenData)
   log(`Saved ${newFailures.length} new hash(es) to eng-seen.json`)
+
+  // Telegram digest — send alongside (not replacing) the Drive report
+  try {
+    const lines = [`⚠️ *BSV Eng Report — ${today}*`]
+    if (newFailures.length)         lines.push(`*New failures:* ${newFailures.length}`)
+    if (activeFailures.length)      lines.push(`*Active recurring:* ${activeFailures.length}`)
+    if (actionableExhausted.length) lines.push(`*Exhausted slots:* ${actionableExhausted.length}`)
+    if (inactiveTriage.length)      lines.push(`*Inactive agents triaged:* ${inactiveTriage.length}`)
+    lines.push('')
+    for (const f of allFailures.slice(0, 5)) {
+      lines.push(`✗ *${f.platform}* (${f.source}): ${f.message.slice(0, 120)}`)
+    }
+    if (allFailures.length > 5) lines.push(`…and ${allFailures.length - 5} more`)
+    for (const e of actionableExhausted.slice(0, 3)) {
+      lines.push(`⛔ *${e.slot}/${e.platform}* exhausted — ${e.lastError.slice(0, 100)}`)
+    }
+    if (inactiveTriage.length) {
+      lines.push('')
+      lines.push(`*INACTIVE AGENT TRIAGE*`)
+      for (const t of inactiveTriage) {
+        const icon = t.recommendation.startsWith('no action') ? '✓' : '⚠️'
+        lines.push(`${icon} ${t.script} — ${t.lastEntry} — ${t.recommendation}`)
+      }
+    }
+    lines.push('')
+    lines.push(`Full report: Drive → eng-report-${today}.md`)
+    await sendTelegram(lines.join('\n'))
+    log('Telegram digest sent ✓')
+  } catch (tgErr) {
+    log(`WARNING: Telegram digest failed: ${tgErr.message}`)
+  }
 
   log('━━━ eng-bot complete ━━━\n')
 })()
