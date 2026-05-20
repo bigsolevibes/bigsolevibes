@@ -4,15 +4,27 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
+const ROOT     = path.join(__dirname, '..')
+const LOG_FILE = path.join(ROOT, 'logs', 'brand-video.log')
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`
+  console.log(line)
+  try {
+    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+    fs.appendFileSync(LOG_FILE, line + '\n')
+  } catch {}
+}
+
 const GDRIVE_REMOTE = 'big sole vibes'
 const GDRIVE_VIDEOS = `${GDRIVE_REMOTE}:Big Sole Vibes/Videos`
 
 function copyToGDrive(localPath) {
   try {
     execSync(`rclone copy "${localPath}" "${GDRIVE_VIDEOS}"`, { stdio: 'pipe' })
-    console.log(`  → synced to Google Drive: ${GDRIVE_VIDEOS}`)
+    log(`  → synced to Google Drive: ${GDRIVE_VIDEOS}`)
   } catch (err) {
-    console.warn(`  ⚠ Google Drive upload failed: ${err.stderr?.toString().trim() || err.message}`)
+    log(`  ⚠ Google Drive upload failed: ${err.stderr?.toString().trim() || err.message}`)
   }
 }
 
@@ -48,11 +60,11 @@ const FONT_NUMERAL = findFont(
   'Impact.ttf'
 )
 
-if (!FONT_BSV)      { console.error('✗ No bold serif font found'); process.exit(1) }
-if (!FONT_SUBTITLE) { console.error('✗ No serif font found');      process.exit(1) }
-if (!FONT_NUMERAL)  { console.error('✗ No display font found');    process.exit(1) }
+if (!FONT_BSV)      { log('ERROR: no bold serif font found'); process.exit(1) }
+if (!FONT_SUBTITLE) { log('ERROR: no serif font found');      process.exit(1) }
+if (!FONT_NUMERAL)  { log('ERROR: no display font found');    process.exit(1) }
 
-console.log(`Fonts: ${path.basename(FONT_BSV)}, ${path.basename(FONT_SUBTITLE)}, ${path.basename(FONT_NUMERAL)}`)
+log(`fonts: ${path.basename(FONT_BSV)}, ${path.basename(FONT_SUBTITLE)}, ${path.basename(FONT_NUMERAL)}`)
 
 // ─── ffmpeg escaping ──────────────────────────────────────────────────────────
 
@@ -74,17 +86,17 @@ const numeral    = getArg('--numeral') || ''
 const outputArg  = getArg('--output')
 
 if (!videoPath) {
-  console.error('Usage: node scripts/brand-video.js --video /path/to/input.mp4 [--numeral XIV] [--output posts/output/branded.mp4]')
+  log('ERROR: no --video argument — Usage: node scripts/brand-video.js --video /path/to/input.mp4 [--numeral XIV] [--output posts/output/branded.mp4]')
   process.exit(1)
 }
 if (!fs.existsSync(videoPath)) {
-  console.error(`Video not found: ${videoPath}`)
+  log(`ERROR: video not found: ${videoPath}`)
   process.exit(1)
 }
 
 const ffmpegCheck = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' })
 if (ffmpegCheck.error || ffmpegCheck.status !== 0) {
-  console.error('ffmpeg not found. Install with: brew install ffmpeg')
+  log('ERROR: ffmpeg not found — install with: brew install ffmpeg')
   process.exit(1)
 }
 
@@ -96,7 +108,7 @@ if (outputArg) {
     ? outputArg
     : path.join(process.cwd(), outputArg)
 } else {
-  const outputDir = path.join(__dirname, '..', 'posts', 'output')
+  const outputDir = path.join(ROOT, 'posts', 'output')
   fs.mkdirSync(outputDir, { recursive: true })
   const base = path.basename(videoPath, path.extname(videoPath))
   outputPath = path.join(outputDir, `${base}-branded.mp4`)
@@ -139,15 +151,22 @@ const vf = brandFilters.join(',')
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 const label = numeral ? ` [${numeral}]` : ''
-console.log(`Branding video${label}: ${path.basename(videoPath)} → ${path.basename(outputPath)}`)
+log(`START input=${path.basename(videoPath)} output=${path.basename(outputPath)}${label}`)
 
 // Re-encode video to burn filters; copy audio stream untouched
-execSync(
-  `ffmpeg -y -i "${videoPath}" -vf "${vf}" -c:v libx264 -crf 18 -preset fast -c:a copy "${outputPath}"`,
-  { stdio: 'inherit' }
-)
+// ffmpeg output goes directly to inherited stdio — captured by parent if needed
+try {
+  execSync(
+    `ffmpeg -y -i "${videoPath}" -vf "${vf}" -c:v libx264 -crf 18 -preset fast -c:a copy "${outputPath}"`,
+    { stdio: 'inherit' }
+  )
+} catch (err) {
+  log(`ERROR: ffmpeg failed — exit code ${err.status ?? 'unknown'}`)
+  process.exit(1)
+}
 
 fs.copyFileSync(outputPath, desktopPath)
-console.log(`\nOutput: ${outputPath}`)
-console.log(`  → copied to ${desktopPath}`)
+log(`output: ${outputPath}`)
+log(`  → copied to ${desktopPath}`)
 copyToGDrive(outputPath)
+log(`END input=${path.basename(videoPath)}`)

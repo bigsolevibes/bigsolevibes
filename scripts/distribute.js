@@ -9,6 +9,16 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3')
 
 const RESULTS_FILE    = path.join(__dirname, '..', 'logs', 'distribute-results.json')
 const POST_STATE_FILE = path.join(__dirname, '..', 'logs', 'post-state.json')
+const LOG_FILE        = path.join(__dirname, '..', 'logs', 'distribute.log')
+
+function flog(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`
+  console.log(line)
+  try {
+    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+    fs.appendFileSync(LOG_FILE, line + '\n')
+  } catch {}
+}
 
 // Platforms temporarily paused (code stays intact; remove from array to re-enable)
 const PAUSED_PLATFORMS = ['twitter', 'facebook']
@@ -158,7 +168,7 @@ function log(platform, status, detail) {
   const icon = status === 'ok' ? '✓' : status === 'pause' ? '⏸' : '✗'
   const msg = `${icon} ${platform}: ${detail}`
   results.push(msg)
-  console.log(msg)
+  flog(msg)
   platformResults[platform.toLowerCase()] = status
 }
 
@@ -552,12 +562,14 @@ async function runSetup() {
     return
   }
 
-  console.log(`\nDistributing — caption: "${caption}"\n`)
-  console.log('Images found:')
+  const captionSnippet = caption.slice(0, 80).replace(/\n/g, ' ')
+  const platformList   = [...activePlatforms].join(',')
+  flog(`START caption="${captionSnippet}${caption.length > 80 ? '…' : ''}" platforms=${platformList} slot=${slot || 'none'}`)
+
+  flog('Images found:')
   for (const [platform, file] of Object.entries(images)) {
-    console.log(`  ${platform}: ${file ? path.basename(file) : 'NOT FOUND'}`)
+    flog(`  ${platform}: ${file ? path.basename(file) : 'NOT FOUND'}`)
   }
-  console.log()
 
   if (activePlatforms.has('x'))         await postToX()
   if (activePlatforms.has('bluesky'))   await postToBluesky()
@@ -565,11 +577,14 @@ async function runSetup() {
   if (activePlatforms.has('instagram')) await postToInstagram()
   if (activePlatforms.has('youtube'))   await postToYouTube()
 
-  console.log('\n─── Summary ───────────────────────────────')
-  results.forEach(r => console.log(r))
-  console.log()
+  flog('─── Summary ───────────────────────────────')
+  results.forEach(r => flog(r))
 
   // Write machine-readable results for watch-drive.js retry logic
   fs.mkdirSync(path.dirname(RESULTS_FILE), { recursive: true })
   fs.writeFileSync(RESULTS_FILE, JSON.stringify(platformResults, null, 2))
+
+  const okCount   = Object.values(platformResults).filter(s => s === 'ok').length
+  const failCount = Object.values(platformResults).filter(s => s === 'fail').length
+  flog(`END ok=${okCount} failed=${failCount} paused=${Object.values(platformResults).filter(s => s === 'pause').length}`)
 })()
