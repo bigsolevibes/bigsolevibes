@@ -17,6 +17,7 @@ const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { sendTelegram } = require('./telegram')
 
 const ROOT       = path.join(__dirname, '..')
 const LOG_FILE   = path.join(ROOT, 'logs', 'change-agent.log')
@@ -26,6 +27,24 @@ const REMOTE     = 'big sole vibes:Big Sole Vibes'
 const GH_REPO    = 'bigsolevibes/bigsolevibes'
 
 const LABELS = ['approved', 'monitoring', 'stable', 'flagged', 'rolled-back']
+
+// Syntax errors in these scripts warrant automatic rollback — pipeline cannot run without them.
+const CRITICAL_SCRIPTS = new Set([
+  'scripts/watch-drive.js',
+  'scripts/distribute.js',
+  'scripts/resize-post.js',
+  'scripts/brand-image.js',
+  'scripts/brand-video.js',
+  'scripts/git-push-guard.js',
+])
+
+// Commits tagged [BSV-AUTO] came from eng-bot or change-agent autonomous fixes.
+// Change-agent validates them but does NOT escalate or roll them back unless they
+// crossed an autonomous authority boundary.
+const BSV_AUTO_PREFIX = /^\[BSV-AUTO\]/i
+
+// Commit message prefix for all autonomous fix commits made by this process.
+const AUTO_COMMIT_PREFIX = '[BSV-AUTO]'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -255,6 +274,221 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   ].filter(Boolean).join('\n')
 }
 
+// ─── Early Warning: Syntax check + logging audit ──────────────────────────────
+
+function checkSyntax(commits) {
+  const failures = []
+  for (const commit of commits) {
+    for (const f of getCommitFiles(commit.hash).filter(f => f.startsWith('scripts/') && f.endsWith('.js'))) {
+      const fullPath = path.join(ROOT, f)
+      if (!fs.existsSync(fullPath)) continue
+      try {
+        const result = spawnSync(process.execPath, ['--check', fullPath], { encoding: 'utf8' })
+        if (result.status !== 0) {
+          failures.push({
+            file:    f,
+            commit:  commit.hash.slice(0, 7),
+            subject: commit.subject,
+            error:   (result.stderr || '').trim().slice(0, 200),
+          })
+        }
+      } catch {}
+    }
+  }
+  return failures
+}
+
+function detectUnloggedScripts(commits) {
+  const unlogged = []
+  for (const commit of commits) {
+    for (const f of getCommitFiles(commit.hash).filter(f => f.startsWith('scripts/') && f.endsWith('.js'))) {
+      const fullPath = path.join(ROOT, f)
+      if (!fs.existsSync(fullPath)) continue
+      try {
+        const content = fs.readFileSync(fullPath, 'utf8')
+        if (!/appendFileSync|LOG_FILE|logs\//i.test(content)) {
+          unlogged.push({ file: f, commit: commit.hash.slice(0, 7), subject: commit.subject })
+        }
+      } catch {}
+    }
+  }
+  return unlogged
+}
+
+// ─── Post-commit hook installer ───────────────────────────────────────────────
+
+function ensurePostCommitHook() {
+  const hookPath    = path.join(ROOT, '.git', 'hooks', 'post-commit')
+  const hookContent = `#!/bin/sh\nnode ${path.join(__dirname, 'change-agent.js')} --post-commit &\n`
+  try {
+    const existing = fs.existsSync(hookPath) ? fs.readFileSync(hookPath, 'utf8') : ''
+    if (!existing.includes('change-agent.js')) {
+      fs.writeFileSync(hookPath, hookContent, { mode: 0o755 })
+      log('Post-commit hook installed')
+    }
+  } catch (err) {
+    log(`WARNING: could not install post-commit hook: ${err.message}`)
+  }
+}
+
+// ─── Commit impact classification ─────────────────────────────────────────────
+
+// Returns 'big-d' | 'chief' | 'autonomous'
+// big-d      — website, affiliate link logic; Chief surfaces to Big D
+// chief      — posting pipeline, content generation, schedule; Chief decides
+// autonomous — utilities, logging, config, plists — change-agent monitors only
+function classifyCommitImpact(files) {
+  // Big D: site pages
+  const siteFiles = files.filter(f =>
+    f.startsWith('app/') ||
+    (f.startsWith('public/') && !f.startsWith('public/posts/') && !f.startsWith('public/brand/'))
+  )
+  if (siteFiles.length) return 'big-d'
+
+  // Big D: affiliate or tracking logic
+  if (files.some(f => /affiliate|tracking|cj-research|product-research/i.test(f))) return 'big-d'
+
+  // Chief: touches how/what/when content is posted or generated
+  const chiefTriggers = new Set([
+    'scripts/distribute.js',
+    'scripts/watch-drive.js',
+    'scripts/sync-shop.js',
+    'scripts/media-director.js',
+    'scripts/image-gen.js',
+    'scripts/video-gen.js',
+    'scripts/creative-agent.js',
+    'scripts/gemini-bridge.js',
+  ])
+  if (files.some(f => chiefTriggers.has(f))) return 'chief'
+
+  // Chief: plist changes = schedule changes
+  if (files.some(f => f.startsWith('config/') && f.endsWith('.plist'))) return 'chief'
+
+  return 'autonomous'
+}
+
+// ─── Chief escalation ─────────────────────────────────────────────────────────
+
+async function escalateToChief(message) {
+  try {
+    const r = await sendTelegram(message)
+    if (r?.message_id) log(`Chief escalation delivered — message_id: ${r.message_id}`)
+    else log('WARNING: Chief escalation — no Telegram confirmation')
+  } catch (err) {
+    log(`WARNING: Chief escalation Telegram failed: ${err.message}`)
+  }
+}
+
+// ─── Rollback authority ───────────────────────────────────────────────────────
+
+async function writePostMortem(commit, reason, rollbackHash) {
+  const today     = new Date().toISOString().slice(0, 10)
+  const shortHash = commit.hash.slice(0, 7)
+  const content   = [
+    `## Post-Mortem — ${today}`,
+    ``,
+    `**What broke:** ${reason}`,
+    `**Commit reverted:** \`${shortHash}\` — ${commit.subject}`,
+    `**Author:** ${commit.author || 'unknown'}`,
+    `**Rollback commit:** \`${rollbackHash || 'failed'}\``,
+    `**Detected by:** change-agent.js (post-commit hook)`,
+    `**Action:** Automatic rollback — pipeline preserved`,
+    `**Fix required:** ${reason} — must be fixed before re-landing this change`,
+    ``,
+    `---`,
+    ``,
+  ].join('\n')
+
+  const memoryDir  = path.join(os.homedir(), 'tmp', 'bsv-memory')
+  const memoryFile = path.join(memoryDir, 'BSV-Memory.md')
+  try {
+    fs.mkdirSync(memoryDir, { recursive: true })
+    fs.appendFileSync(memoryFile, content)
+    log(`Post-mortem appended to BSV-Memory.md`)
+    execSync(`rclone copyto "${memoryFile}" "${REMOTE}/BSV-Memory.md"`, { stdio: 'pipe' })
+    log(`Post-mortem uploaded to Drive`)
+  } catch (err) {
+    log(`WARNING: post-mortem write/upload failed: ${err.message}`)
+  }
+}
+
+async function executeRollback(commit, reason) {
+  const shortHash = commit.hash.slice(0, 7)
+  log(`ROLLBACK: reverting ${shortHash} — reason: ${reason}`)
+
+  try {
+    execSync(`git revert --no-edit ${commit.hash}`, { cwd: ROOT, stdio: 'pipe' })
+    const rollbackHash = execSync('git rev-parse HEAD', { cwd: ROOT, encoding: 'utf8' }).trim().slice(0, 7)
+    log(`ROLLBACK: revert commit created — ${rollbackHash}`)
+
+    execSync('git push origin HEAD:preview/full-site', { cwd: ROOT, stdio: 'pipe' })
+    log(`ROLLBACK: pushed to preview/full-site`)
+
+    await writePostMortem(commit, reason, rollbackHash)
+
+    const chiefMsg = [
+      `⚠️ *BSV — Chief: Change-agent rolled back a commit*`,
+      ``,
+      `*Reverted:* \`${shortHash}\` — ${commit.subject.slice(0, 80)}`,
+      `*Reason:* ${reason}`,
+      `*Rollback commit:* \`${rollbackHash}\``,
+      ``,
+      `Pipeline restored. Post-mortem written to BSV-Memory.md on Drive.`,
+      ``,
+      `*Notify Big D:* "Change-agent rolled back [${shortHash}] — reason: ${reason}. Pipeline restored."`,
+    ].join('\n')
+    await escalateToChief(chiefMsg)
+    log(`ROLLBACK: Chief notified`)
+
+    return rollbackHash
+  } catch (err) {
+    log(`ROLLBACK ERROR: failed to revert ${shortHash}: ${err.message}`)
+    await escalateToChief([
+      `🚨 *BSV — ROLLBACK FAILED: Manual intervention required*`,
+      ``,
+      `*Failed to revert:* \`${shortHash}\` — ${commit.subject.slice(0, 80)}`,
+      `*Reason for rollback:* ${reason}`,
+      `*Error:* ${err.message.slice(0, 200)}`,
+      ``,
+      `*Manual rollback:*`,
+      '```',
+      `git revert ${commit.hash}`,
+      `git push origin HEAD:preview/full-site`,
+      '```',
+    ].join('\n'))
+    return null
+  }
+}
+
+// ─── BSV-AUTO commit validation ────────────────────────────────────────────────
+
+// Autonomous authority boundaries: these file patterns are safe for auto-commits.
+// If a [BSV-AUTO] commit touches anything outside this list, flag it.
+const AUTO_SAFE_PATTERNS = [
+  /^config\/com\.bsv\.[^/]+\.plist$/,     // plist installs
+  /^logs\//,                               // log files
+  /^scripts\/log-rotate\.js$/,             // log rotation
+]
+
+function validateAutoCommit(commit, files) {
+  const violations = files.filter(f => !AUTO_SAFE_PATTERNS.some(p => p.test(f)))
+  if (!violations.length) {
+    log(`[BSV-AUTO] ${commit.hash.slice(0, 7)}: validated — within autonomous authority (${files.length} file(s))`)
+    return true
+  }
+  log(`[BSV-AUTO] ${commit.hash.slice(0, 7)}: BOUNDARY VIOLATION — touched non-autonomous files: ${violations.join(', ')}`)
+  escalateToChief([
+    `🚨 *BSV — Chief: [BSV-AUTO] Boundary Violation*`,
+    ``,
+    `An autonomous commit touched files outside its authority.`,
+    `*Commit:* \`${commit.hash.slice(0, 7)}\` — ${commit.subject.slice(0, 80)}`,
+    `*Unauthorized files:* ${violations.join(', ')}`,
+    ``,
+    `Review and roll back if the change was not intentional.`,
+  ].join('\n'))
+  return false
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -263,6 +497,9 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
 
   const postCommit = process.argv.includes('--post-commit')
   log(`━━━ change-agent start${postCommit ? ' [post-commit]' : ' [daily]'} ━━━`)
+
+  // ── Always: ensure post-commit hook is installed ──────────────────────────────
+  ensurePostCommitHook()
 
   const today = new Date().toISOString().slice(0, 10)
   const state = loadState()
@@ -355,6 +592,72 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
   const newCommits = getNewCommits(state.last_commit_hash)
   log(`New commits: ${newCommits.length}`)
 
+  // ── Early Warning: Syntax + logging checks + rollback for critical scripts ────
+  if (newCommits.length) {
+    // Filter out [BSV-AUTO] commits before syntax/logging checks — those are validated separately
+    const nonAutoCommits = newCommits.filter(c => !BSV_AUTO_PREFIX.test(c.subject))
+
+    const syntaxFailures = checkSyntax(nonAutoCommits.slice(0, 10))
+
+    // Split: critical scripts warrant auto-rollback; others get an alert only
+    const criticalFailures    = syntaxFailures.filter(f => CRITICAL_SCRIPTS.has(f.file))
+    const nonCriticalFailures = syntaxFailures.filter(f => !CRITICAL_SCRIPTS.has(f.file))
+
+    // Rollback any commit with a syntax error in a critical pipeline script
+    for (const f of criticalFailures) {
+      log(`CRITICAL SYNTAX ERROR: ${f.file} (${f.commit}) — initiating rollback`)
+      const badCommit = nonAutoCommits.find(c => c.hash.startsWith(f.commit) || c.hash.slice(0, 7) === f.commit)
+      if (badCommit) {
+        await executeRollback(badCommit, `Syntax error in critical pipeline script ${f.file}: ${f.error.slice(0, 100)}`)
+      } else {
+        await escalateToChief([
+          `🚨 *BSV — CRITICAL: Syntax error in pipeline script — could not rollback*`,
+          ``,
+          `*File:* \`${f.file}\``,
+          `*Commit:* \`${f.commit}\` — ${f.subject.slice(0, 80)}`,
+          `*Error:* \`${f.error.slice(0, 150)}\``,
+          ``,
+          `Could not locate commit to revert. Manual fix required immediately.`,
+        ].join('\n'))
+      }
+    }
+
+    // Alert (no rollback) for syntax errors in non-critical scripts
+    for (const f of nonCriticalFailures) {
+      log(`EARLY WARNING: syntax error in ${f.file} (${f.commit}) — ${f.error.slice(0, 80)}`)
+      await escalateToChief([
+        `⚠️ *BSV — Chief: Syntax Error in Commit \`${f.commit}\`*`,
+        ``,
+        `*File:* \`${f.file}\``,
+        `*Commit:* ${f.subject.slice(0, 80)}`,
+        ``,
+        `*Error:*`,
+        '```',
+        f.error,
+        '```',
+        ``,
+        `Non-critical script — pipeline not auto-rolled-back. Fix before next run.`,
+      ].join('\n'))
+    }
+
+    const unlogged = detectUnloggedScripts(nonAutoCommits.slice(0, 10))
+    for (const u of unlogged) {
+      log(`EARLY WARNING: ${u.file} has no logging — added in ${u.commit}`)
+      await escalateToChief(
+        `⚠️ *BSV — Chief: New Script Without Logging*\n\n` +
+        `\`${u.file}\` was added in commit \`${u.commit}\` with no \`LOG_FILE\` or \`appendFileSync\` to logs/.\n\n` +
+        `Eng-bot cannot monitor it. Add logging before this script goes live.`
+      )
+    }
+
+    // ── [BSV-AUTO] validation ─────────────────────────────────────────────────
+    const autoCommits = newCommits.filter(c => BSV_AUTO_PREFIX.test(c.subject))
+    for (const commit of autoCommits) {
+      const files = getCommitFiles(commit.hash)
+      validateAutoCommit(commit, files)
+    }
+  }
+
   const changeRecords = []
 
   for (const commit of newCommits) {
@@ -363,8 +666,15 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
       continue
     }
 
-    // Skip routine automated commits — track them in state so they're never revisited,
-    // but don't open an issue (post output, chores, and other pipeline noise).
+    // [BSV-AUTO] commits: validated above — log in state and stand down
+    if (BSV_AUTO_PREFIX.test(commit.subject)) {
+      log(`  ${commit.hash.slice(0, 7)} [BSV-AUTO] — validated, logged, standing down`)
+      state.tracked_issues = state.tracked_issues || {}
+      state.tracked_issues[commit.hash] = 'bsv-auto'
+      continue
+    }
+
+    // Skip routine automated pipeline commits — post output, chores, pipeline noise
     const SKIP_PREFIXES = /^(auto:|chore:|Auto:|Chore:)/
     if (SKIP_PREFIXES.test(commit.subject)) {
       log(`  ${commit.hash.slice(0, 7)} skipped (automated commit): ${commit.subject.slice(0, 60)}`)
@@ -375,7 +685,7 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
 
     const files          = getCommitFiles(commit.hash)
     const changedScripts = files.filter(f => f.startsWith('scripts/') && f.endsWith('.js'))
-    const changedPlists  = files.filter(f => f.startsWith('launchd/'))
+    const changedPlists  = files.filter(f => f.startsWith('config/') && f.endsWith('.plist'))
     const changedApp     = files.filter(f => f.startsWith('app/') || f.startsWith('public/'))
 
     const impactParts = []
@@ -384,7 +694,43 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
     if (changedApp.length)     impactParts.push(`Site: ${changedApp.length} file(s)`)
     const impact = impactParts.join(' | ') || 'General — monitoring'
 
+    // Classify commit impact and escalate accordingly
+    const tier = classifyCommitImpact(files)
     const filesList = files.slice(0, 12).join(', ') + (files.length > 12 ? `… +${files.length - 12}` : '')
+
+    if (tier === 'big-d') {
+      log(`  ${commit.hash.slice(0, 7)}: Big D tier — site or affiliate files touched`)
+      await escalateToChief([
+        `🚨 *BSV — Chief → Big D: Commit Requires Review*`,
+        ``,
+        `*Commit:* \`${commit.hash.slice(0, 7)}\` — ${commit.subject.slice(0, 80)}`,
+        `*Author:* ${commit.author}`,
+        `*Impact:* ${impact}`,
+        ``,
+        `This touches the website or affiliate logic. Big D must review.`,
+        `*Rollback if needed:*`,
+        '```',
+        `git revert ${commit.hash}`,
+        '```',
+      ].join('\n'))
+    } else if (tier === 'chief') {
+      log(`  ${commit.hash.slice(0, 7)}: Chief tier — posting pipeline or schedule changed`)
+      await escalateToChief([
+        `⚠️ *BSV — Chief: Commit Changes Pipeline Behavior*`,
+        ``,
+        `*Commit:* \`${commit.hash.slice(0, 7)}\` — ${commit.subject.slice(0, 80)}`,
+        `*Author:* ${commit.author}`,
+        `*Impact:* ${impact}`,
+        ``,
+        `This affects what posts, when, or how. Review before next post cycle.`,
+        `*Rollback if needed:*`,
+        '```',
+        `git revert ${commit.hash}`,
+        '```',
+      ].join('\n'))
+    } else {
+      log(`  ${commit.hash.slice(0, 7)}: autonomous tier — monitoring only`)
+    }
 
     changeRecords.push(buildChangeRecord({
       what:           commit.subject,
@@ -393,17 +739,18 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
       files:          filesList,
       impact,
       rollback:       `git revert ${commit.hash}`,
-      recommendation: 'monitor',
+      recommendation: tier === 'autonomous' ? 'monitor' : `escalated to ${tier === 'big-d' ? 'Big D' : 'Chief'}`,
       status:         'monitoring',
     }))
 
-    // Open GitHub issue
+    // Open GitHub issue (all human commits get tracked regardless of tier)
     const issueTitle = `[monitoring] ${commit.subject.slice(0, 80)}`
     const issueBody  = [
       `## Change\n${commit.subject}`,
       `**Commit:** [\`${commit.hash.slice(0, 7)}\`](https://github.com/${GH_REPO}/commit/${commit.hash})`,
       `**Date:** ${commit.date}`,
       `**Author:** ${commit.author}`,
+      `**Tier:** ${tier}`,
       `**Files changed:**\n${files.slice(0, 15).map(f => `- \`${f}\``).join('\n')}${files.length > 15 ? `\n- _(+${files.length - 15} more)_` : ''}`,
       `## Impact\n${impact}`,
       `## Rollback\n\`\`\`\ngit revert ${commit.hash}\n\`\`\``,
@@ -440,8 +787,11 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
     const ageDays = (Date.now() - new Date(issue.createdAt).getTime()) / 86400000
     if (ageDays < 3) continue
 
-    const keywords = issue.title.replace('[monitoring] ', '').split(/\s+/).slice(0, 5).join('|')
-    const hasErrors = recentErrors.some(e => new RegExp(keywords, 'i').test(e))
+    const keywords = issue.title.replace('[monitoring] ', '').split(/\s+/).slice(0, 5)
+      .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .filter(Boolean)
+      .join('|')
+    const hasErrors = keywords ? recentErrors.some(e => new RegExp(keywords, 'i').test(e)) : false
     if (hasErrors) continue
 
     updateIssueLabel(issue.number, 'stable', 'monitoring')

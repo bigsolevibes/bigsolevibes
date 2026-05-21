@@ -275,6 +275,92 @@ function saveSeen({ baselineAt, hashes }) {
   fs.writeFileSync(SEEN_FILE, JSON.stringify({ baselineAt, hashes }, null, 2))
 }
 
+// ─── OMG Protocol — Missed Post First Responder ───────────────────────────────
+
+async function checkMissedPosts() {
+  const yesterday = new Date(Date.now() - 86400000)
+  const days      = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const dayAbbr   = days[yesterday.getDay()]
+  const expected  = [`${dayAbbr}-am`, `${dayAbbr}-pm`]
+
+  let postState = []
+  try {
+    const p = path.join(ROOT, 'logs', 'post-state.json')
+    if (fs.existsSync(p)) postState = JSON.parse(fs.readFileSync(p, 'utf8'))
+  } catch {}
+
+  const confirmed = new Set(postState.filter(e => e.status === 'success').map(e => e.slot))
+  const gaps      = expected.filter(s => !confirmed.has(s))
+
+  if (!gaps.length) {
+    log(`Post check: ${expected.join(', ')} — all confirmed`)
+    return
+  }
+
+  log(`OMG: missed posts — ${gaps.join(', ')}`)
+  for (const slot of gaps) {
+    const msg = [
+      `🚨 *BSV — Eng: Missed Post*`,
+      ``,
+      `Slot *${slot}* has no success entry in post-state.json.`,
+      ``,
+      `*Check what's staged in Drive:*`,
+      '```',
+      `rclone ls "big sole vibes:Big Sole Vibes/Ready to Post/"`,
+      '```',
+      `*Force retry if media + caption are present:*`,
+      '```',
+      `node scripts/distribute.js --force`,
+      '```',
+    ].join('\n')
+    const r = await sendTelegram(msg)
+    if (r?.message_id) log(`OMG: missed-post alert (${slot}) — message_id: ${r.message_id}`)
+    else log(`WARNING: OMG missed-post alert (${slot}) — no confirmation`)
+  }
+}
+
+// ─── OMG Protocol — Critical Failure Targeted Alerts ─────────────────────────
+
+async function sendCriticalAlerts(activeFailures, actionableExhausted) {
+  for (const f of activeFailures) {
+    const msg = [
+      `🚨 *BSV — Recurring Failure (Active)*`,
+      ``,
+      `*Error:* ${(f.message || '').slice(0, 150)}`,
+      `*Source:* \`${f.source || 'unknown'}\``,
+      `*First seen:* ${f.timestamp}`,
+      ``,
+      `This failure was baselined and has recurred. It will not resolve on its own.`,
+      ``,
+      `*Inspect log:*`,
+      '```',
+      `tail -50 logs/${f.source || 'watch-drive.log'}`,
+      '```',
+    ].join('\n')
+    const r = await sendTelegram(msg)
+    if (r?.message_id) log(`OMG: recurring-failure alert (${f.platform}) — message_id: ${r.message_id}`)
+    else log(`WARNING: OMG recurring alert (${f.platform}) — no confirmation`)
+  }
+
+  for (const e of actionableExhausted) {
+    const msg = [
+      `🚨 *BSV — Slot Exhausted: ${e.slot}/${e.platform}*`,
+      ``,
+      `*Last error:* ${(e.lastError || '').slice(0, 150)}`,
+      ``,
+      `All retries used. This slot will NOT post without manual intervention.`,
+      ``,
+      `*Force retry:*`,
+      '```',
+      `node scripts/distribute.js --force --platforms ${e.platform.toLowerCase()}`,
+      '```',
+    ].join('\n')
+    const r = await sendTelegram(msg)
+    if (r?.message_id) log(`OMG: exhausted-slot alert (${e.slot}/${e.platform}) — message_id: ${r.message_id}`)
+    else log(`WARNING: OMG exhausted alert (${e.slot}/${e.platform}) — no confirmation`)
+  }
+}
+
 // ─── Google Drive report ──────────────────────────────────────────────────────
 
 function extractSlug(context) {
@@ -330,7 +416,7 @@ function writeReport(date, failures, diagnosis, exhaustedEntries = [], inactiveT
     f.context,
     '```',
     '',
-    '**Status:** ⏳ Awaiting Big D approval before any fix is applied.',
+    `**Status:** ${f.active ? '🔁 Active recurring — Chief escalation sent' : '⏳ Queued — see diagnosis section'}`,
   ].filter(l => l !== '').join('\n')).join('\n\n---\n\n')
 
   const triageSection = inactiveTriage.length ? [
@@ -392,39 +478,36 @@ function writeReport(date, failures, diagnosis, exhaustedEntries = [], inactiveT
 
 // ─── Issue categorization ─────────────────────────────────────────────────────
 
-// Returns 'auto-fix' | 'simple' | 'code'
+// Returns 'autonomous' | 'chief' | 'big-d'
+// autonomous — eng-bot fixes immediately; reversible, contained, no output effect
+// chief      — affects what posts/when/how, or site/shelf; Chief decides
+// big-d      — revenue, brand output, affiliate, strategic/irreversible; Chief surfaces to Big D
 function categorizeIssue(failure, diagnosisText) {
   const msg    = (failure.message || '').toLowerCase()
   const source = (failure.source  || '').toLowerCase()
   const diag   = (diagnosisText   || '').toLowerCase()
 
-  // auto-fix: log rotation, duplicate entries, minor state file housekeeping
+  // Autonomous: operational housekeeping with no effect on post output
   if (
     /log.?rotat/i.test(msg) ||
     /duplicate.?log/i.test(msg) ||
     /state.?file.?(corrupt|malform|empty)/i.test(msg) ||
-    source === 'log-rotate.log'
-  ) {
-    return 'auto-fix'
-  }
+    source === 'log-rotate.log' ||
+    /missing.?plist|plist.?not.?loaded/i.test(msg) ||
+    /dormant.?agent|agent.?dormant/i.test(msg) ||
+    /orphan.*(?:file|image|asset)/i.test(msg) ||
+    /smtp.*(auth|reject)|zoho.*fail/i.test(msg)
+  ) return 'autonomous'
 
-  // simple: credentials expired, service restart needed, config file missing
+  // Big D: revenue, affiliate, brand output, strategic — irreversible
   if (
-    /token.?(expired|revoked|invalid)/i.test(msg) ||
-    /credential.?(expired|invalid|missing)/i.test(msg) ||
-    /refresh.?token/i.test(msg) ||
-    /config.?(file|missing|not.?found)/i.test(msg) ||
-    /service.*(restart|down)/i.test(msg) ||
-    /smtp.*(auth|reject)/i.test(msg) ||
-    /ssl.*(handshake|error)/i.test(msg) ||
-    /unauthorized/i.test(msg) ||
-    /token.*(expired|revoked|invalid)/i.test(diag)
-  ) {
-    return 'simple'
-  }
+    /affiliate|revenue|product.?decision|org.?change/i.test(msg) ||
+    /caption.?change|image.?delet|brand.?output/i.test(msg) ||
+    /affiliate|revenue|product.?decision/i.test(diag)
+  ) return 'big-d'
 
-  // code: logic errors, missing features, pipeline behavior changes
-  return 'code'
+  // Chief: everything else that could affect what posts, when, or how
+  return 'chief'
 }
 
 function buildIssueId(failure) {
@@ -436,12 +519,138 @@ function buildIssueId(failure) {
   return `eng-${scriptSlug}-${dateStr}`
 }
 
-// Handles a FIX-authorized simple issue — logs action needed, no code changes
+// ─── Autonomous Fix Engine ─────────────────────────────────────────────────────
+
+// Proactive: install any config/ plists that aren't in LaunchAgents yet.
+// Called at startup. Commits fixes with [BSV-AUTO] prefix.
+async function checkMissingPlists() {
+  const LAUNCH_AGENTS = path.join(os.homedir(), 'Library', 'LaunchAgents')
+  const CONFIG_DIR    = path.join(ROOT, 'config')
+  try {
+    const configPlists  = fs.readdirSync(CONFIG_DIR).filter(f => f.startsWith('com.bsv.') && f.endsWith('.plist'))
+    const installedSet  = new Set(fs.existsSync(LAUNCH_AGENTS) ? fs.readdirSync(LAUNCH_AGENTS) : [])
+    const missing       = configPlists.filter(p => !installedSet.has(p))
+    if (!missing.length) { log(`Plist check: all ${configPlists.length} installed`); return [] }
+
+    log(`AUTO-FIX: ${missing.length} plist(s) not in LaunchAgents — installing`)
+    const fixed = []
+    for (const plist of missing) {
+      const src  = path.join(CONFIG_DIR, plist)
+      const dest = path.join(LAUNCH_AGENTS, plist)
+      try {
+        fs.copyFileSync(src, dest)
+        execSync(`launchctl load "${dest}"`, { stdio: 'pipe' })
+        log(`  AUTO-FIX: installed + loaded ${plist}`)
+        fixed.push(plist)
+      } catch (err) {
+        log(`  AUTO-FIX: failed to install ${plist}: ${err.message}`)
+      }
+    }
+    if (fixed.length) {
+      await sendTelegram([
+        `✅ *BSV — Eng: Auto-Fix Applied*`,
+        ``,
+        `Installed ${fixed.length} missing plist(s) into LaunchAgents:`,
+        ...fixed.map(p => `• ${p}`),
+        ``,
+        `Agents now active. No action needed.`,
+      ].join('\n'))
+    }
+    return fixed
+  } catch (err) {
+    log(`WARNING: checkMissingPlists failed: ${err.message}`)
+    return []
+  }
+}
+
+// Reactive: attempt an autonomous fix for a specific failure.
+// Returns { applied: bool, description: string }
+async function attemptAutonomousFix(failure) {
+  const msg    = (failure.message || '').toLowerCase()
+  const source = failure.source   || ''
+
+  // SMTP/Zoho down → Telegram is already the primary channel — no switch needed
+  if (/smtp|zoho|mail/i.test(msg)) {
+    log(`AUTO-FIX: SMTP failure — Telegram already primary, no action`)
+    return { applied: true, description: 'SMTP failure — Telegram already active as primary channel' }
+  }
+
+  // Log rotation issue → trigger log-rotate.js
+  if (/log.?rotat/i.test(msg) || source === 'log-rotate.log') {
+    try {
+      execSync(`node "${path.join(__dirname, 'log-rotate.js')}"`, { cwd: ROOT, stdio: 'pipe' })
+      log(`AUTO-FIX: log rotation triggered`)
+      return { applied: true, description: 'Log rotation triggered via log-rotate.js' }
+    } catch (err) {
+      return { applied: false, description: `log-rotate.js failed: ${err.message.slice(0, 100)}` }
+    }
+  }
+
+  // Corrupt/empty state file → wipe to empty object (watch-drive re-initializes on next run)
+  if (/state.?file.?(corrupt|malform|empty)/i.test(msg)) {
+    const stateFile = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    if (fs.existsSync(stateFile)) {
+      try {
+        fs.writeFileSync(stateFile, JSON.stringify({}, null, 2))
+        log(`AUTO-FIX: watch-drive-state.json reset`)
+        return { applied: true, description: 'watch-drive-state.json reset to empty object' }
+      } catch (err) {
+        return { applied: false, description: `state file reset failed: ${err.message}` }
+      }
+    }
+  }
+
+  // Missing plist: if config/ has it but LaunchAgents doesn't — install it
+  const scriptInMsg = msg.match(/(?:com\.bsv\.|scripts\/)([\w-]+)(?:\.plist|\.js)?/)
+  if (scriptInMsg) {
+    const slug      = scriptInMsg[1].replace(/^com\.bsv\./, '')
+    const plistName = `com.bsv.${slug}.plist`
+    const src       = path.join(ROOT, 'config', plistName)
+    const dest      = path.join(os.homedir(), 'Library', 'LaunchAgents', plistName)
+    if (fs.existsSync(src) && !fs.existsSync(dest)) {
+      try {
+        fs.copyFileSync(src, dest)
+        execSync(`launchctl load "${dest}"`, { stdio: 'pipe' })
+        log(`AUTO-FIX: installed + loaded ${plistName}`)
+        return { applied: true, description: `Installed and loaded ${plistName} into LaunchAgents` }
+      } catch (err) {
+        return { applied: false, description: `plist install failed: ${err.message}` }
+      }
+    }
+  }
+
+  return { applied: false, description: 'no autonomous fix pattern matched' }
+}
+
+// Escalate a chief-level failure — affects posts/schedule/content; Chief decides.
+async function escalateToChief(failure, proposedFix) {
+  const today      = new Date().toISOString().slice(0, 10)
+  const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
+  const msg = [
+    `⚠️ *BSV — Chief: Action Required*`,
+    ``,
+    `*Source:* \`${scriptName}\``,
+    `*Problem:* ${(failure.message || '').slice(0, 120)}`,
+    proposedFix ? `*Proposed fix:* ${proposedFix.slice(0, 120)}` : null,
+    ``,
+    `This affects what posts, when, or how. Eng-bot cannot fix autonomously.`,
+    `Review — fix if within authority, or surface to Big D if it affects revenue or brand.`,
+    ``,
+    `*Full report:* Drive → eng-report-${today}.md`,
+  ].filter(Boolean).join('\n')
+  const r = await sendTelegram(msg)
+  if (r?.message_id) log(`Chief escalation sent — ${scriptName} — message_id: ${r.message_id}`)
+  else log(`WARNING: Chief escalation — no Telegram confirmation for ${scriptName}`)
+}
+
+// Handles a FIX-authorized issue that requires manual or code work — logs ticket
 async function attemptSimpleFix(item) {
   const { script, problem, fix, issueId } = item.metadata || {}
   log(`FIX authorized: ${issueId || item.id} — ${problem || '(no description)'} — manual execution required`)
   log(`  Proposed fix: ${fix || '(no fix specified)'}`)
-  await sendTelegram(`✅ Fix authorized for *${script || item.id}*.\n\n${fix || 'Check eng-bot.log for details.'}\n\nManual execution required.`)
+  const tgFix = await sendTelegram(`✅ Fix authorized for *${script || item.id}*.\n\n${fix || 'Check eng-bot.log for details.'}\n\nManual execution required.`)
+  if (tgFix?.message_id) log(`Telegram delivered — message_id: ${tgFix.message_id}`)
+  else log('WARNING: Telegram fix alert returned no confirmation')
 }
 
 // Write a structured code ticket to Drive
@@ -566,6 +775,16 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey && !baseline) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
 
+  // ── Proactive: install any missing plists ───────────────────────────────────
+  if (!baseline) {
+    try { await checkMissingPlists() } catch (err) { log(`WARNING: checkMissingPlists failed: ${err.message}`) }
+  }
+
+  // ── OMG: First responder — check missed posts immediately ────────────────────
+  if (!baseline) {
+    try { await checkMissedPosts() } catch (err) { log(`WARNING: checkMissedPosts failed: ${err.message}`) }
+  }
+
   // ── Process any pending eng decisions from Drive Inbox ───────────────────────
   try {
     const allPending = loadPendingItems()
@@ -581,7 +800,9 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
           await attemptSimpleFix(item)
         } else {
           await fileCodeTicket(item, today)
-          await sendTelegram(`✅ Code ticket filed for *${item.metadata?.script || item.id}*. Will action next session.`)
+          const tgTicket = await sendTelegram(`✅ Code ticket filed for *${item.metadata?.script || item.id}*. Will action next session.`)
+          if (tgTicket?.message_id) log(`Telegram delivered — message_id: ${tgTicket.message_id}`)
+          else log('WARNING: Telegram ticket alert returned no confirmation')
         }
         archiveDecision(item.driveFile)
       } else if (decision.decision === 'SKIP') {
@@ -719,38 +940,67 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   // Write report to Google Drive
   writeReport(today, allFailures, diagnosis, exhaustedAll, inactiveTriage)
 
-  // ── Per-failure Telegram approval requests ────────────────────────────────
+  // ── OMG: Critical alerts fire first, targeted, awaited ───────────────────────
+  try {
+    await sendCriticalAlerts(activeFailures, actionableExhausted)
+  } catch (err) {
+    log(`WARNING: sendCriticalAlerts failed: ${err.message}`)
+  }
+
+  // ── Per-failure dispatch: autonomous fix / chief escalation / Big D queue ────
   try {
     for (const failure of allFailures.slice(0, 10)) {
       const category = categorizeIssue(failure, diagnosis)
-      if (category === 'auto-fix') {
-        log(`Auto-fix: ${failure.platform} — ${failure.message.slice(0, 100)}`)
-        continue
-      }
 
-      const issueId    = buildIssueId(failure)
-      const complexity = category === 'simple' ? 'Simple' : 'Needs Code session'
-
-      // Extract a proposed fix from the diagnosis text
+      // Extract proposed fix from diagnosis for all paths
       let proposedFix = 'See eng report for details'
       if (diagnosis) {
         const fixMatch = diagnosis.match(/\*\*Fix:\*\*\s*([^\n]+)/)
         if (fixMatch) proposedFix = fixMatch[1].trim().slice(0, 120)
       }
 
+      // ── Tier 1: Autonomous — fix now, no approval needed ──────────────────
+      if (category === 'autonomous') {
+        const result = await attemptAutonomousFix(failure)
+        log(`AUTONOMOUS ${result.applied ? 'FIXED' : 'ATTEMPTED'}: ${failure.platform} — ${result.description}`)
+        if (result.applied) {
+          const tg = await sendTelegram([
+            `✅ *BSV — Eng: Auto-Fix Applied*`,
+            ``,
+            `*Script:* ${failure.source || 'unknown'}`,
+            `*Issue:* ${(failure.message || '').slice(0, 100)}`,
+            `*Fixed:* ${result.description}`,
+          ].join('\n'))
+          if (tg?.message_id) log(`  Auto-fix Telegram delivered — message_id: ${tg.message_id}`)
+          else log('  WARNING: auto-fix Telegram returned no confirmation')
+        }
+        continue
+      }
+
+      // ── Tier 2: Chief — affects posts/schedule/content; Chief decides ─────
+      if (category === 'chief') {
+        try { await escalateToChief(failure, proposedFix) } catch (err) {
+          log(`WARNING: escalateToChief failed: ${err.message}`)
+        }
+        continue
+      }
+
+      // ── Tier 3: Big D — revenue/brand/strategic; Chief surfaces to Big D ──
+      const issueId    = buildIssueId(failure)
       const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
       const problem    = failure.message.slice(0, 120)
 
       const issueMsg = [
-        `🔧 *ENG ISSUE DETECTED*`,
+        `🚨 *BSV — Chief → Big D: Decision Required*`,
         `*Script:* ${scriptName}`,
         `*Problem:* ${problem}`,
-        `*Fix:* ${proposedFix}`,
-        `*Complexity:* ${complexity}`,
+        `*Proposed fix:* ${proposedFix}`,
+        ``,
+        `This affects revenue, brand output, or is irreversible.`,
+        `Chief cannot authorize — requires Big D sign-off.`,
         ``,
         `Reply *FIX* to authorize`,
-        `Reply *SKIP* to ignore this time`,
-        `Reply *LATER* to remind tomorrow`,
+        `Reply *SKIP* to defer`,
       ].join('\n')
 
       addPendingItem({
@@ -759,16 +1009,18 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
         driveFile:       `${issueId}-decision.md`,
         sentAt:          new Date().toISOString(),
         remindAfter:     null,
-        metadata:        { script: scriptName, problem, fix: proposedFix, complexity, issueId },
+        metadata:        { script: scriptName, problem, fix: proposedFix, complexity: 'Big D decision', issueId },
         originalMessage: issueMsg,
       })
 
-      // Fire and continue — don't await
-      sendTelegram(issueMsg).catch(err => log(`WARNING: issue Telegram failed: ${err.message}`))
-      log(`Issue notification sent for ${issueId} (${complexity})`)
+      sendTelegram(issueMsg).then(r => {
+        if (r?.message_id) log(`Big-D escalation delivered — message_id: ${r.message_id}`)
+        else log(`WARNING: Big-D escalation — no Telegram confirmation for ${issueId}`)
+      })
+      log(`Big-D escalation queued: ${issueId}`)
     }
   } catch (err) {
-    log(`WARNING: per-failure notification failed: ${err.message}`)
+    log(`WARNING: per-failure dispatch failed: ${err.message}`)
   }
 
   // Mark genuinely new failures as seen (active ones already have a hash entry)
@@ -802,8 +1054,12 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     }
     lines.push('')
     lines.push(`Full report: Drive → eng-report-${today}.md`)
-    await sendTelegram(lines.join('\n'))
-    log('Telegram digest sent ✓')
+    const tgDigest = await sendTelegram(lines.join('\n'))
+    if (tgDigest?.message_id) {
+      log(`Telegram digest delivered — message_id: ${tgDigest.message_id}`)
+    } else {
+      log('WARNING: Telegram digest returned no confirmation — check console for API error')
+    }
   } catch (tgErr) {
     log(`WARNING: Telegram digest failed: ${tgErr.message}`)
   }
