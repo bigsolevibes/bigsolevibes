@@ -67,13 +67,19 @@ function safePushToPreview(cwd, log) {
 const PIPELINE_TARGET = 'pipeline/media'
 function safePushToPipeline(cwd, log) {
   const logFn = log || console.log
+  let stashed = false
   try {
     execSync(`git fetch origin ${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    // Stash any unstaged changes so rebase doesn't refuse a dirty tree
+    const stashOut = execSync('git stash --include-untracked', { cwd, encoding: 'utf8', stdio: 'pipe' })
+    stashed = !stashOut.trim().startsWith('No local changes')
     execSync(`git rebase origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
     execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    if (stashed) execSync('git stash pop', { cwd, stdio: 'pipe' })
     logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
     return true
   } catch (err) {
+    if (stashed) { try { execSync('git stash pop', { cwd, stdio: 'pipe' }) } catch {} }
     const msg = err.stderr?.toString().trim() || err.message
     logFn(`ERROR: git push failed — ${msg}`)
     return false
