@@ -70,9 +70,15 @@ function safePushToPipeline(cwd, log) {
   let stashed = false
   try {
     execSync(`git fetch origin ${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
-    // Stash any unstaged changes so rebase doesn't refuse a dirty tree
-    const stashOut = execSync('git stash --include-untracked', { cwd, encoding: 'utf8', stdio: 'pipe' })
-    stashed = !stashOut.trim().startsWith('No local changes')
+    // Only stash unstaged changes to tracked files — untracked files never block rebase
+    // and --include-untracked causes pop conflicts when HEAD moves after rebase
+    const hasUnstaged = (() => {
+      try { execSync('git diff --quiet', { cwd, stdio: 'pipe' }); return false } catch { return true }
+    })()
+    if (hasUnstaged) {
+      execSync('git stash', { cwd, stdio: 'pipe' })
+      stashed = true
+    }
     execSync(`git rebase origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
     execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
     if (stashed) execSync('git stash pop', { cwd, stdio: 'pipe' })
