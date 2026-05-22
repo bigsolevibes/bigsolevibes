@@ -493,28 +493,37 @@ async function run() {
 
       const captionText = fs.readFileSync(localCaption, 'utf8')
 
-      // Scheduling gate — only distribute at or after post_time.
-      // Uses _hold_since to detect cross-day stale holds: if today's UTC date is
-      // after the date this slug was first held, post_time is overdue — fire immediately.
+      // Scheduling gate — hold every new slot for at least one full poll cycle before
+      // distributing. This prevents the timezone race where the pipeline runs at ~10 PM
+      // local time and sees post_time 09:00 as already passed, firing immediately with
+      // whatever media happened to be in Drive at that moment (possibly stale/wrong image).
+      // On first encounter: always hold regardless of ready state.
+      // On subsequent encounters: fire if ready=true, or if held since a prior day (overdue).
       const { postTime, ready } = parsePostTime(captionText)
-      if (!ready) {
-        if (!state[base]) state[base] = {}
-        const holdSince = state[base]._hold_since
-        if (holdSince && holdSince < today) {
-          log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
-          // fall through to distribution
-        } else {
-          if (!holdSince) {
-            state[base]._hold_since = today
-            saveState(state)
-          }
-          const now = new Date()
-          const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-          log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
-          continue
-        }
-      } else if (state[base] && state[base]._hold_since) {
-        // post_time reached normally — clear the hold sentinel
+      if (!state[base]) state[base] = {}
+      const holdSince = state[base]._hold_since
+
+      if (!holdSince) {
+        // First time we've seen this slot — hold for at least one cycle
+        state[base]._hold_since = today
+        saveState(state)
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: first seen — holding until post_time ${postTime} confirmed on next poll (current time ${currentTime})`)
+        continue
+      } else if (holdSince < today) {
+        // Held since a prior day and still not posted — overdue, fire immediately
+        log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
+        delete state[base]._hold_since
+        // fall through to distribution
+      } else if (!ready) {
+        // Held today but post_time not yet reached — keep waiting
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
+        continue
+      } else {
+        // ready=true and held at least one cycle — clear sentinel and fire
         delete state[base]._hold_since
       }
 

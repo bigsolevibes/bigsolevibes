@@ -19,24 +19,27 @@ function log(msg) {
 // ─── Category → locker number map ────────────────────────────────────────────
 // Deterministic order so locker numbers don't shuffle on every deploy.
 const CATEGORY_ORDER = [
-  // Legacy internal names (existing sheet rows)
+  // Ground — the founding argument
   'Foot Files',
   'Foot Serums',
   'Foot Creams',
-  'Foot Care',
   'Foot Soaks',
   'Foot Soaks & Recovery',
   'Foot Powders',
   'Foot Grooming Tools',
   'Nail Care',
-  'Body Care',
+  // Up the body
+  'Body & Recovery',
+  'Shaving',
+  'Face & Skincare',
+  'Fragrance',
+  'Hair & Grooming',
+  // The kit
+  'Leather Goods & Accessories',
+  'Precision Tools',
+  // Bundles
   'Men\'s Grooming Kits',
   'Full Kits',
-  // BSV display names (new sheet rows written by product-research)
-  'Fast-Absorbing Treatments',
-  'Athletic Recovery',
-  'Precision German Podiatry Hardware',
-  'Head to Toe Ritual',
 ]
 
 // ─── SEO-aligned display names ────────────────────────────────────────────────
@@ -65,22 +68,23 @@ function displayCategory(cat) {
 
 function categoryIcon(cat) {
   const map = {
-    'Foot Files':                       'ti-sparkles',
-    'Foot Serums':                      'ti-droplet-filled',
-    'Foot Creams':                      'ti-droplet',
-    'Foot Care':                        'ti-droplet',
-    'Fast-Absorbing Treatments':        'ti-droplet',
-    'Foot Soaks':                       'ti-ripple',
-    'Foot Soaks & Recovery':            'ti-ripple',
-    'Athletic Recovery':                'ti-ripple',
-    'Foot Powders':                     'ti-wind',
-    'Foot Grooming Tools':              'ti-tool',
-    'Nail Care':                        'ti-scissors',
-    'Precision German Podiatry Hardware': 'ti-scissors',
-    'Body Care':                        'ti-sparkles',
-    'Head to Toe Ritual':               'ti-sparkles',
-    'Men\'s Grooming Kits':             'ti-briefcase',
-    'Full Kits':                        'ti-package',
+    'Foot Files':                 'ti-sparkles',
+    'Foot Serums':                'ti-droplet-filled',
+    'Foot Creams':                'ti-droplet',
+    'Foot Soaks':                 'ti-ripple',
+    'Foot Soaks & Recovery':      'ti-ripple',
+    'Foot Powders':               'ti-wind',
+    'Foot Grooming Tools':        'ti-tool',
+    'Nail Care':                  'ti-scissors',
+    'Body & Recovery':            'ti-droplet-filled',
+    'Shaving':                    'ti-razor',
+    'Face & Skincare':            'ti-sparkles',
+    'Fragrance':                  'ti-feather',
+    'Hair & Grooming':            'ti-scissors',
+    'Leather Goods & Accessories':'ti-briefcase',
+    'Precision Tools':            'ti-tool',
+    'Men\'s Grooming Kits':       'ti-briefcase',
+    'Full Kits':                  'ti-package',
   }
   return map[cat] || 'ti-star'
 }
@@ -117,15 +121,38 @@ function buildProductCard(product) {
     // No ASIN — search fallback
     amazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
   }
-  const isAmazon = amazonUrl.includes('amazon.com')
-  const imageUrl   = (product['Locker Image'] || '').trim()
-  const score      = product['Score']       ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
-  const audit      = product['Reasoning']   ? `<p class="card-audit">${escapeHtml(product['Reasoning'])}</p>` : ''
-  const price      = product['Price']       ? `<span class="card-price">${escapeHtml(product['Price'])}</span>` : ''
-  const category   = product['Category']    ? `<p class="card-cat">${escapeHtml(displayCategory(product['Category']).toUpperCase())}</p>` : ''
-  const heroHtml   = imageUrl
-    ? `<div class="card-hero"><img src="${imageUrl}" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
-    : ''
+
+  const isAmazon  = amazonUrl.includes('amazon.com')
+  const score     = product['Score']    ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
+  const price     = product['Price']    ? `<span class="card-price">${escapeHtml(product['Price'])}</span>` : ''
+  const category  = product['Category'] ? `<p class="card-cat">${escapeHtml(displayCategory(product['Category']).toUpperCase())}</p>` : ''
+
+  // Image_URL is the canonical field; Locker Image is the legacy fallback.
+  // NEEDS_RENDER and empty both render the BSV placeholder — dark background, Bourbon monogram.
+  const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
+  const useImage    = rawImageUrl && rawImageUrl !== 'NEEDS_RENDER'
+  const heroHtml    = useImage
+    ? `<div class="card-hero"><img src="${rawImageUrl}" alt="A detail from The Locker Room" loading="lazy"></div>`
+    : `<div class="card-hero card-hero--placeholder"><span class="card-hero-mono">BSV</span></div>`
+
+  // Narrative-first layout: render if Narrative is populated.
+  // Status=Approved is the single gate — [DRAFT] prefix is stripped at render time.
+  const rawNarrative = (product['Narrative'] || '').trim().replace(/^\[DRAFT\]\s*/i, '')
+  const hasNarrative = !!rawNarrative
+
+  let contentHtml, ctaText
+  if (hasNarrative) {
+    const descLine = (product['Description'] || '').trim()
+      ? `<p class="card-desc">${escapeHtml(product['Description'])}</p>`
+      : ''
+    contentHtml = `<p class="card-narrative">${escapeHtml(rawNarrative)}</p>${descLine}`
+    ctaText = "It's on the shelf →"
+  } else {
+    // Fallback: description or reasoning, standard CTA
+    const fallbackText = (product['Description'] || product['Reasoning'] || '').trim()
+    contentHtml = fallbackText ? `<p class="card-audit">${escapeHtml(fallbackText)}</p>` : ''
+    ctaText = isAmazon ? 'SHOP ON AMAZON ↗' : 'SHOP NOW ↗'
+  }
 
   return `
         <article class="locker-card">
@@ -133,13 +160,13 @@ function buildProductCard(product) {
           <div class="card-body">
             ${category}
             <h3 class="card-name">${escapeHtml(product['Product Name'] || '')}</h3>
-            ${audit}
+            ${contentHtml}
             <div class="card-footer">
               ${score}
               <div class="card-actions">
                 ${price}
                 <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                  ${isAmazon ? 'SHOP ON AMAZON ↗' : 'SHOP NOW ↗'}
+                  ${ctaText}
                 </a>
               </div>
             </div>
@@ -399,20 +426,34 @@ function buildShopPage(approvedProducts) {
     }
     .locker-card:hover { border-color: rgba(193,125,46,0.2); }
 
-    /* Hero image — full bleed, portrait ~3:2 */
+    /* Hero image — 4:3, contained */
     .card-hero {
       width: 100%;
-      aspect-ratio: 3 / 2;
+      aspect-ratio: 4 / 3;
       overflow: hidden;
       background: #0a1220;
     }
     .card-hero img {
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      object-position: center top;
+      object-fit: contain;
+      object-position: center;
       display: block;
       filter: brightness(0.92);
+    }
+    .card-hero--placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a1220;
+    }
+    .card-hero-mono {
+      font-family: var(--font-bebas);
+      font-size: 3rem;
+      letter-spacing: 0.25em;
+      color: ${C.amber};
+      opacity: 0.18;
+      user-select: none;
     }
 
     /* Text panel */
@@ -442,6 +483,19 @@ function buildShopPage(approvedProducts) {
       font-size: 0.9375rem;
       color: rgba(245,236,215,0.65);
       line-height: 1.7;
+    }
+    .card-narrative {
+      font-family: var(--font-playfair);
+      font-style: italic;
+      font-size: 1rem;
+      color: var(--cream);
+      line-height: 1.75;
+    }
+    .card-desc {
+      font-size: 0.8125rem;
+      color: rgba(245,236,215,0.45);
+      line-height: 1.5;
+      margin-top: 0.25rem;
     }
     .card-footer {
       display: flex;

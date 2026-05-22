@@ -131,6 +131,22 @@ function getLatestBrandHealth() {
   } catch { return null }
 }
 
+function getHandoffFindings() {
+  try {
+    const p = path.join(ROOT, 'logs', 'handoff-findings.md')
+    if (!fs.existsSync(p)) return null
+    const content = fs.readFileSync(p, 'utf8').trim()
+    return content || null
+  } catch { return null }
+}
+
+function clearHandoffFindings() {
+  try {
+    const p = path.join(ROOT, 'logs', 'handoff-findings.md')
+    if (fs.existsSync(p)) fs.writeFileSync(p, '')
+  } catch {}
+}
+
 function getExistingHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -165,16 +181,17 @@ function getExistingHandoff() {
 
   // Collect state
   log('Collecting project state...')
-  const envKeys       = getEnvKeyNames()
-  const recentLogs    = getRecentLogs(30)
-  const pipelineState = getPipelineState()
-  const outputFiles   = getOutputFiles()
-  const contentFiles  = getContentFiles()
-  const gitLog        = getGitLog()
-  const driveStructure = getDriveStructure()
+  const envKeys         = getEnvKeyNames()
+  const recentLogs      = getRecentLogs(30)
+  const pipelineState   = getPipelineState()
+  const outputFiles     = getOutputFiles()
+  const contentFiles    = getContentFiles()
+  const gitLog          = getGitLog()
+  const driveStructure  = getDriveStructure()
   const existingHandoff = getExistingHandoff()
-  const tokenExpiry   = await checkMetaTokenExpiry()
-  const brandHealth   = getLatestBrandHealth()
+  const tokenExpiry     = await checkMetaTokenExpiry()
+  const brandHealth     = getLatestBrandHealth()
+  const handoffFindings = getHandoffFindings()
   const now = new Date().toISOString()
 
   log(`Env keys: ${envKeys.join(', ')}`)
@@ -235,6 +252,7 @@ ${gitLog}
 ${fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort().map(s => `- scripts/${s}`).join('\n')}
 
 ${brandHealth?.metrics ? `## Audience — Current Follower Counts (from ${brandHealth.filename})\n${brandHealth.metrics}\n` : ''}
+${handoffFindings ? `## Pipeline Alerts (from logs/handoff-findings.md)\n${handoffFindings}\n` : ''}
 ## Phase 2 — BSV Own Product Line (fixed strategy, always include)
 - **First product:** Proprietor's Foot Balm — private label, custom formulation
 - **Packaging:** Midnight #0D1B2A and Bourbon #C17D2E colorway
@@ -322,6 +340,10 @@ Do not invent or fabricate information not present in the context.`
   try {
     execSync(`rclone copyto "${localOutput}" "${REMOTE_HANDOFF}/${HANDOFF_FILE}"`, { stdio: ['pipe','pipe','pipe'] })
     log(`Uploaded → ${REMOTE_HANDOFF}/${HANDOFF_FILE}`)
+    if (handoffFindings) {
+      clearHandoffFindings()
+      log('Cleared logs/handoff-findings.md after successful upload')
+    }
   } catch (err) {
     log(`ERROR: rclone upload failed: ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)

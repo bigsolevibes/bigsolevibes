@@ -95,6 +95,44 @@ function getLatestDriveFile(folder) {
   } catch { return null }
 }
 
+// ─── Image sourcing rules — never violate ─────────────────────────────────────
+// 1. Never download and re-host brand images without explicit permission
+// 2. Never use Amazon product images under any circumstances (ToS violation)
+// 3. Official brand site images linked directly = standard editorial practice
+// 4. BSV-generated renders = original content, no IP issues
+// 5. If in doubt about a source — use NEEDS_RENDER and generate
+
+// ─── Narrative generation ─────────────────────────────────────────────────────
+
+async function generateNarrative(client, productName) {
+  try {
+    const resp = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 300,
+      messages:   [{
+        role: 'user',
+        content: `Write an 80–120 word narrative for the BSV Locker Room shelf about ${productName}.
+
+Voice: The Proprietor — deadpan, confident, slightly amused. Never preachy. Present tense.
+The reader is already in the room. This is a scene, not a description.
+
+PRODUCT INTEGRATION RULE: The product is never the subject. It is the detail that completes the man.
+
+Wrong: "The FootLogix Mousse is a fast-absorbing formula with urea and tea tree oil..."
+Right: "He reached for the mousse — not because he'd researched it, but because it was the only thing on the shelf that didn't announce itself."
+
+Write the man first. The product appears where it belongs in the scene.
+End with one quiet line that makes the reader want it without asking them to buy it.`,
+      }],
+    })
+    const text = (resp.content.find(b => b.type === 'text')?.text || '').trim()
+    return text ? `[DRAFT] ${text}` : ''
+  } catch (err) {
+    log(`WARNING: narrative generation failed for "${productName}" — ${err.message}`)
+    return ''
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -419,7 +457,8 @@ Return a JSON array with this exact shape:
     "score": "82/100",
     "description": "One sentence — BSV voice: direct, specific, no hype. This is what appears on the shop card.",
     "reasoning": "The Proprietor's Audit — one paragraph explaining why this belongs on the BSV shelf: what standard it upholds, why a man who takes his core seriously would reach for it. Not a product description. Not an Amazon review.",
-    "brand_story": "2–3 sentences: who makes this brand, what their founding story or heritage is, why it has provenance. Pulled from research — not invented. This is what the Sole Report uses to editorialize around the affiliate link. If no heritage narrative was found in research, write exactly: No heritage narrative identified."
+    "brand_story": "2–3 sentences: who makes this brand, what their founding story or heritage is, why it has provenance. Pulled from research — not invented. This is what the Sole Report uses to editorialize around the affiliate link. If no heritage narrative was found in research, write exactly: No heritage narrative identified.",
+    "image_url": "URL of the product's primary image from the brand's official website (og:image or main hero image). Must be from the brand's own domain — not Amazon, not a retailer. If you visited the brand's product page during research and found a clean image URL, write it here. If not found or unverifiable, write exactly: NEEDS_RENDER"
   }
 ]
 
@@ -429,6 +468,7 @@ Rules:
 - description: 1 sentence, BSV voice — factual, confident, no exclamation marks
 - reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize
 - brand_story: 2–3 sentences pulled directly from the Brand Story field in the research — do not write marketing copy; if none found, use "No heritage narrative identified."
+- image_url: official brand domain image URL only — not Amazon, not a retailer CDN. If the brand product page was not visited during research, write NEEDS_RENDER
 - category must exactly match one of the eight values above
 - score must be "XX/100" format
 - asin must be a real Amazon ASIN (B0XXXXXXX format) — if no confirmed ASIN exists, omit the product entirely
@@ -473,6 +513,12 @@ ${fullText}`,
       if (dryRun) {
         log(`  [dry-run] would append "${pick.name}" (${pick.asin}) → Pending`)
       } else {
+        // Generate narrative draft before writing — marked [DRAFT] until Big D reviews
+        pick.narrative = await generateNarrative(client, pick.name)
+        if (pick.narrative) log(`  Narrative draft: "${pick.narrative.slice(0, 60)}..."`)
+        // imageUrl: use official brand URL from extraction, fall back to NEEDS_RENDER
+        pick.imageUrl = (pick.image_url && pick.image_url !== 'NEEDS_RENDER') ? pick.image_url : 'NEEDS_RENDER'
+        log(`  Image URL: ${pick.imageUrl === 'NEEDS_RENDER' ? 'NEEDS_RENDER (will generate render)' : pick.imageUrl.slice(0, 60)}`)
         await appendPick(conn, pick)
         log(`  Sheet: appended "${pick.name}" (${pick.asin}) → Pending`)
       }

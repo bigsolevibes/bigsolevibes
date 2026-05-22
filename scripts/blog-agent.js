@@ -37,7 +37,30 @@ const CONTENT_CALENDAR = [
     title: 'The Standard Doesn\'t Stop at the Ankle',
   },
   {
-    // Piece 2 — Hammer & Nails validation
+    // Piece 2 — The Seven Steps Stop at the Ankle (approved 2026-05-21)
+    // This is a Sole Report ARTICLE, not a social post brief.
+    // Voice: The Lounge — long-form warmth. GQ editorial angle, not lifestyle fluff.
+    slug: 'the-seven-steps-stop-at-the-ankle',
+    titleDirection: '"The Seven Steps Stop at the Ankle." Fixed title — do not deviate. This is the argument, not the observation: the ankle line is arbitrary. It is not biological, not medical, not inevitable. Men built a seven-step grooming standard over the last decade and drew the line at the ankle because nobody told them to go further. Name that precisely. Make the argument — not the lifestyle take, the actual argument.',
+    voice: 'The Lounge — long-form warmth. This is the full essay, not the one-liner. Write the way a man talks when he\'s thought carefully about something and finally decided to say it clearly. Not deadpan. Not a list. Not a tweet with line breaks. Warm, considered, and specific. GQ editorial register: technical mastery without condescension.',
+    contentDirection: [
+      'Hook: Open on the seven-step routine in motion — the man who actually does all of it. Hair, beard, face, body, fragrance, nails, skin. He\'s disciplined. He\'s serious. And then he puts his shoes on and the standard ends.',
+      'The argument: The ankle line is not biological. It is not where the body stops mattering. It is where the culture stopped telling men to care — and men complied. That line is arbitrary, and it\'s starting to move.',
+      'The evidence: The grooming industry spent 20 years expanding the standard upward — skincare, then fragrance, then nails. The pattern is there. The ankle is next, not because BSV says so, but because the logic already points there. Name it as an argument. Use the pattern as evidence.',
+      'The close: Not a summary. The Proprietor\'s last word on it — quiet and certain. The man who reads this either already knows it or just realized it. Either way, the shelf is there. One soft sentence pointing to bigsolevibes.com/shop: "The shelf is there when you\'re ready."',
+    ],
+    ctaBox: {
+      text: 'The shelf is there when you\'re ready.',
+      subtext: '',
+      linkHref: '/shop',
+      linkText: 'The Locker Room',
+    },
+    seoTargets: ['mens foot care routine', 'premium foot care men', 'men grooming below the ankle'],
+    lengthWords: '800–1,200',
+    structureNote: 'Hook → the argument → the evidence → the close. No listicles. No subheads that read like BuzzFeed. If you use subheads, make them one declarative sentence — the kind a man would actually say. This is an essay.',
+  },
+  {
+    // Piece 3 — Hammer & Nails validation
     slugPattern: /hammer.*nails|29-days|barberspa/i,
     titleDirection: 'Concept-first. The concept is the gap between visits. Working titles: "29 Days: What the Man Does Between Appointments" or "The BarberSpa That Finally Gets It: What Happens After You Leave." The concept leads — H&N is the proof it matters, not the subject.',
     voice: 'Validation, not competition. Warm and knowing. The tone of a man who respects H&N\'s in-person standard and is quietly filling the gap they leave open. Never critical of H&N — they built something worth referencing. BSV is what happens after the chair.',
@@ -606,8 +629,22 @@ The feeling is: the door is open, the room is warm, the drink is already poured.
 - Generic lifestyle content
 - Anything that explains what BSV is
 
+## PRODUCT INTEGRATION RULE — NON-NEGOTIABLE
+
+Every product that appears in this article must earn its mention through the narrative.
+Products are never introduced as review subjects, features, or recommendations.
+They appear as details that complete the man in the scene.
+
+Wrong: "The FootLogix Mousse is a fast-absorbing formula with urea..."
+Right: "He reached for the mousse — not because he'd researched it, but because it was the only thing on the shelf that didn't announce itself."
+
+The product brief informs what's in the scene. The scene is never about the product.
+If the product cannot appear naturally in a scene, it does not appear in this article.
+No listicles. No feature callouts. No "here's why we picked this."
+The story is the argument. The product is the evidence.
+
 ## Affiliate link anchor text rule
-Every shelf product reference must link to its URL using context-rich anchor text that describes the product's specific quality or mechanism. The link is a natural extension of the sentence — never an ad placement.
+Every product that earns a scene mention must be linked using context-rich anchor text that names the specific quality or mechanism that belongs in that scene — not ad copy.
 
 Good: <a href="URL" rel="sponsored">Gehwol's fast-acting formula</a>
 Good: <a href="URL" rel="sponsored">FootLogix's zero-residue mousse</a>
@@ -704,7 +741,32 @@ Every post must:
   }
   const publishedSlugs = new Set(earlyManifest.map(m => m.slug))
 
-  const nextCalendarEntry = CONTENT_CALENDAR.find(entry => {
+  // Merge chief-approved Lounge items from sidecar queue (written at Telegram approval time)
+  const sidecarPath = path.join(ROOT, 'logs', 'blog-calendar-queue.json')
+  let sidecarEntries = []
+  try {
+    if (fs.existsSync(sidecarPath)) {
+      const raw = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'))
+      sidecarEntries = raw
+        .filter(e => e.slug && !publishedSlugs.has(e.slug))
+        .map(e => ({
+          slug:             e.slug,
+          titleDirection:   `"${e.title}." ${e.angle}`.trim(),
+          voice:            'The Lounge — long-form warmth. Full essay, not a one-liner. GQ editorial register: technical mastery without condescension.',
+          contentDirection: [],
+          ctaBox:           { text: 'The shelf is there when you\'re ready.', subtext: '', linkHref: '/shop', linkText: 'The Locker Room' },
+          seoTargets:       [],
+          lengthWords:      '800–1,200',
+        }))
+      if (sidecarEntries.length) log(`Calendar sidecar: ${sidecarEntries.length} approved item(s) — ${sidecarEntries.map(e => e.slug).join(', ')}`)
+    }
+  } catch (err) {
+    log(`WARNING: could not read blog-calendar-queue — ${err.message}`)
+  }
+  // Sidecar entries run before hardcoded calendar so approvals publish first
+  const effectiveCalendar = [...sidecarEntries, ...CONTENT_CALENDAR]
+
+  const nextCalendarEntry = effectiveCalendar.find(entry => {
     if (entry.slugPattern) return !Array.from(publishedSlugs).some(s => entry.slugPattern.test(s))
     return !publishedSlugs.has(entry.slug) && entry.titleDirection
   })
@@ -715,9 +777,10 @@ Title direction: ${nextCalendarEntry.titleDirection}
 Voice: ${nextCalendarEntry.voice}
 Content direction:
 ${nextCalendarEntry.contentDirection.map((b, i) => `${i + 1}. ${b}`).join('\n')}
-CTA box: "${nextCalendarEntry.ctaBox.text}" / "${nextCalendarEntry.ctaBox.subtext}" — link href="${nextCalendarEntry.ctaBox.linkHref}" text="${nextCalendarEntry.ctaBox.linkText}"
+${nextCalendarEntry.structureNote ? `Structure: ${nextCalendarEntry.structureNote}` : ''}
+CTA box: "${nextCalendarEntry.ctaBox.text}"${nextCalendarEntry.ctaBox.subtext ? ` / "${nextCalendarEntry.ctaBox.subtext}"` : ''} — link href="${nextCalendarEntry.ctaBox.linkHref}" text="${nextCalendarEntry.ctaBox.linkText}"
 SEO targets: ${nextCalendarEntry.seoTargets.join(', ')}
-Length: ${nextCalendarEntry.lengthWords} words`
+Length: ${nextCalendarEntry.lengthWords} words`.replace(/\n\n+/g, '\n')
     : `## Post requirements
 - Voice: Proprietor — statements, deadpan, confident. Never preachy.
 - Target: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium foot care men"

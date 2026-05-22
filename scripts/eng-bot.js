@@ -211,6 +211,8 @@ function extractFailures(logContent, source) {
     if (line.includes('EXHAUSTED:')) continue
     // Log rotation housekeeping is never a failure regardless of filename content
     if (isLogRotationLine(line)) continue
+    // Success metric lines like "END branded=N failed=0" contain "failed" but are not failures
+    if (/\bfailed=0\b/i.test(line)) continue
     // Require a real failure signal — bare "error" matches filenames like media-director-error.log
     if (
       !line.includes('✗') &&
@@ -278,10 +280,19 @@ function saveSeen({ baselineAt, hashes }) {
 // ─── OMG Protocol — Missed Post First Responder ───────────────────────────────
 
 async function checkMissedPosts() {
-  const yesterday = new Date(Date.now() - 86400000)
-  const days      = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
-  const dayAbbr   = days[yesterday.getDay()]
-  const expected  = [`${dayAbbr}-am`, `${dayAbbr}-pm`]
+  const now      = new Date()
+  const days     = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+
+  // Yesterday's slots are always expected
+  const yesterday  = new Date(now - 86400000)
+  const ydAbbr     = days[yesterday.getDay()]
+  const expected   = [`${ydAbbr}-am`, `${ydAbbr}-pm`]
+
+  // Today's slots are expected once their post window has passed locally
+  const todayAbbr  = days[now.getDay()]
+  const localMins  = now.getHours() * 60 + now.getMinutes()
+  if (localMins >= 10 * 60)  expected.push(`${todayAbbr}-am`)   // past 10:00 AM
+  if (localMins >= 20 * 60)  expected.push(`${todayAbbr}-pm`)   // past 8:00 PM
 
   let postState = []
   try {
@@ -735,7 +746,7 @@ ${failureText}`
 
   const response = await client.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 1500,
+    max_tokens: 2500,
     system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
 
 Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`,
@@ -753,13 +764,22 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     }
   })
 
+  if (response.stop_reason === 'max_tokens') {
+    log('WARNING: diagnosis hit max_tokens limit — response was truncated')
+  }
+
   const text = response.content
     .filter(b => b.type === 'text')
     .map(b => b.text)
     .join('')
 
   if (!text) log('WARNING: no text blocks in API response — diagnosis will be empty')
-  return text.trim()
+
+  const result = text.trim()
+  if (response.stop_reason === 'max_tokens') {
+    return result + '\n\n_(Diagnosis truncated — max token limit reached. Some failures above may be missing a fix recommendation.)_'
+  }
+  return result
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

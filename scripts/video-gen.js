@@ -81,6 +81,16 @@ function scanPromptFiles() {
   return prompts
 }
 
+// ─── BSV video preamble ───────────────────────────────────────────────────────
+// Prepended to every Veo prompt. Mirrors the Head to Toe rule in gemini-bridge.js
+// and image-gen.js so the campaign visual language is consistent across media.
+
+const BSV_VIDEO_PREAMBLE = `BSV HEAD TO TOE — VIDEO VISUAL RULE:
+A bare foot enters the frame naturally at some point in the video — not dramatically, not as the subject. The camera never calls attention to it directly. The foot is present, incidental, knowing. When the product being featured is foot care, the foot becomes the subject. Otherwise it is the wink — the audience finds it, the camera does not announce it.
+TONE: Lived-in, not staged. The man looks complete but slightly caught. Casual confidence, never try-hard. Dark wood, leather, low light where the scene allows — the lounge aesthetic.
+
+`
+
 // ─── Veo video generation ─────────────────────────────────────────────────────
 
 // Submits one generation operation and polls until done. Returns the
@@ -173,7 +183,7 @@ async function generateVideo(ai, apiKey, prompt) {
     }
 
     try {
-      const buf = await generateVideo(ai, apiKey, videoPrompt)
+      const buf = await generateVideo(ai, apiKey, BSV_VIDEO_PREAMBLE + videoPrompt)
       fs.writeFileSync(localPath, buf)
       execSync(
         `rclone copyto "${localPath}" "${GDRIVE_REMOTE}:${outFilename}" --drive-root-folder-id ${READY_TO_POST_FOLDER}`,

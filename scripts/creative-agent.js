@@ -12,6 +12,7 @@ const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-creative-agent')
 const REMOTE     = 'big sole vibes:Big Sole Vibes'
 
 const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
+const { connect: sheetConnect, readAllRows } = require('./sheets-client')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,41 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   const socialReport = loadLatestSocialReport()
   log(`Social report: ${socialReport ? socialReport.filename : 'none'}`)
 
+  log('Loading strategy brief...')
+  const contentDirection = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'strategy-active.md')
+      if (!fs.existsSync(p)) return null
+      const md = fs.readFileSync(p, 'utf8')
+      const m  = md.match(/##\s+Content Direction[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+      return m ? m[1].trim() : null
+    } catch { return null }
+  })()
+  log(`Content direction: ${contentDirection ? contentDirection.length + ' chars' : 'none'}`)
+
+  // Check sheet for an approved Narrative matching this theme — use as brief source if found
+  let approvedNarrative = null
+  try {
+    const conn      = await sheetConnect()
+    const sheetRows = await readAllRows(conn)
+    const themeLower = theme.toLowerCase()
+    const match = sheetRows.find(row => {
+      if (row['Status'] !== 'Approved') return false
+      const narrative = (row['Narrative'] || '').trim()
+      if (!narrative || narrative.startsWith('[DRAFT]')) return false
+      const nameLower = (row['Product Name'] || '').toLowerCase()
+      return nameLower && (themeLower.includes(nameLower) || nameLower.includes(themeLower))
+    })
+    if (match) {
+      approvedNarrative = { name: match['Product Name'], text: match['Narrative'].trim() }
+      log(`Narrative source: matched "${match['Product Name']}" — using approved shelf narrative`)
+    } else {
+      log('Narrative source: no matching approved narrative for this theme')
+    }
+  } catch (err) {
+    log(`Narrative source: sheet unavailable (${err.message}) — generating from scratch`)
+  }
+
   const period    = slot.endsWith('-am') ? 'am' : 'pm'
   const postTime  = period === 'am' ? '09:00 CDT' : '19:00 CDT'
   const dayEnergy = period === 'am'
@@ -193,6 +229,15 @@ YOUTUBE: [Community post. 3–4 sentences. Slightly warmer, direct address. Ends
 TIKTOK: [Hook line for typewriter effect on screen. Then 1–2 line caption. Max 2 hashtags. Hook creates a 3-second stop — names something specific, not a question.]
 ---`
 
+  const narrativeBlock = approvedNarrative
+    ? `## Approved Shelf Narrative — use as brief source
+Product: ${approvedNarrative.name}
+This narrative is live on the BSV shelf. Pull the scene from it. Adapt to platform format. Maintain voice — do not paraphrase into lifestyle copy.
+
+"${approvedNarrative.text}"
+`
+    : ''
+
   const userPrompt = `Write the BSV content brief.
 
 SLOT: ${slot}
@@ -201,7 +246,7 @@ VOICE: ${voiceDef.name}
 POST TIME: ${postTime}
 DAY ENERGY: ${dayEnergy}
 
-${socialReport ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}` : ''}
+${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialReport ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}` : ''}
 
 Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above are not suggestions. The image brief should make a creative director say yes. The captions should make a man stop scrolling and send it to someone who gets it.`
 
