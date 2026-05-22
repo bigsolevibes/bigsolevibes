@@ -68,6 +68,8 @@ const PIPELINE_TARGET = 'pipeline/media'
 function safePushToPipeline(cwd, log) {
   const logFn = log || console.log
   try {
+    execSync(`git fetch origin ${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    execSync(`git rebase origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
     execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
     logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
     return true
