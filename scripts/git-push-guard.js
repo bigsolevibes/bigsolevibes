@@ -14,6 +14,8 @@
 require('dotenv').config()
 const { execSync } = require('child_process')
 const https        = require('https')
+const os           = require('os')
+const path         = require('path')
 
 const TARGET = 'preview/full-site'
 
@@ -64,28 +66,23 @@ function safePushToPreview(cwd, log) {
 }
 
 // Pipeline-only push — processed media goes here, never triggers Cloudflare.
+// Uses a temp worktree + cherry-pick so the current branch is never touched.
+// Only the single media commit just made on HEAD is replayed onto pipeline/media.
 const PIPELINE_TARGET = 'pipeline/media'
 function safePushToPipeline(cwd, log) {
   const logFn = log || console.log
-  let stashed = false
+  const worktreePath = path.join(os.tmpdir(), `bsv-pipeline-${Date.now()}`)
   try {
+    const mediaCommit = execSync('git rev-parse HEAD', { cwd, stdio: 'pipe' }).toString().trim()
     execSync(`git fetch origin ${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
-    // Only stash unstaged changes to tracked files — untracked files never block rebase
-    // and --include-untracked causes pop conflicts when HEAD moves after rebase
-    const hasUnstaged = (() => {
-      try { execSync('git diff --quiet', { cwd, stdio: 'pipe' }); return false } catch { return true }
-    })()
-    if (hasUnstaged) {
-      execSync('git stash', { cwd, stdio: 'pipe' })
-      stashed = true
-    }
-    execSync(`git rebase origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
-    execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
-    if (stashed) execSync('git stash pop', { cwd, stdio: 'pipe' })
+    execSync(`git worktree add "${worktreePath}" origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    execSync(`git cherry-pick ${mediaCommit}`, { cwd: worktreePath, stdio: 'pipe' })
+    execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd: worktreePath, stdio: 'pipe' })
+    execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' })
     logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
     return true
   } catch (err) {
-    if (stashed) { try { execSync('git stash pop', { cwd, stdio: 'pipe' }) } catch {} }
+    try { execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' }) } catch {}
     const msg = err.stderr?.toString().trim() || err.message
     logFn(`ERROR: git push failed — ${msg}`)
     return false
