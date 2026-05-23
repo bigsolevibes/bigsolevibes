@@ -72,6 +72,31 @@ const PERSONA_HASHTAGS = {
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
+// ─── Daily directive loader ───────────────────────────────────────────────────
+// Chief writes Plans/daily-directive-YYYY-MM-DD.md when Big D replies 1/2/3.
+// Falls back to yesterday's directive if today's hasn't been chosen yet.
+
+function loadDailyDirective() {
+  const today = new Date()
+  for (let offset = 0; offset <= 1; offset++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - offset)
+    const stamp = d.toISOString().slice(0, 10)
+    const filename = `daily-directive-${stamp}.md`
+    try {
+      execSync(`rclone copy "${REMOTE}/Plans/${filename}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const p = path.join(TEMP_DIR, filename)
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf8')
+        log(`Daily directive: loaded ${filename}`)
+        return { filename, content }
+      }
+    } catch {}
+  }
+  log('Daily directive: none found — running persona defaults')
+  return null
+}
+
 // ─── Social report loader ─────────────────────────────────────────────────────
 
 function loadLatestSocialReport() {
@@ -186,6 +211,9 @@ function parseSocialReport(content, persona) {
   const themes   = THEME_CALENDAR[targetDay]
   const personas = PERSONA_CALENDAR[targetDay]
 
+  log('Loading daily directive...')
+  const dailyDirective = loadDailyDirective()
+
   log('Loading social intelligence report...')
   const socialReport = loadLatestSocialReport()
   log(`Social report: ${socialReport ? socialReport.filename : 'none — persona context will use defaults'}`)
@@ -208,6 +236,7 @@ function parseSocialReport(content, persona) {
       verbatimPhrases:  parsed?.verbatimPhrases  ?? [],
       storyAngle:       parsed?.storyAngle        ?? null,
       hashtagSignal:    parsed?.hashtagSignal      ?? '',
+      directive:        dailyDirective?.content   ?? null,
     }
 
     log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${theme}"`)

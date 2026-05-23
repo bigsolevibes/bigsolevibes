@@ -66,6 +66,11 @@ function buildPersonaBlock(ctx) {
     `**Content Lane:** ${ctx.lane}`,
     '',
   ]
+  if (ctx.directive) {
+    lines.push('### Today\'s Directive (chosen by Big D this morning)')
+    lines.push(ctx.directive.replace(/^#[^\n]*\n/, '').trim())
+    lines.push('')
+  }
   if (ctx.storyAngle && (ctx.storyAngle.hook || ctx.storyAngle.draftOpeningLine)) {
     lines.push('### Story Angle — from today\'s social intelligence report')
     lines.push('This is the specific angle media-director is briefing for this slot. Execute it.')

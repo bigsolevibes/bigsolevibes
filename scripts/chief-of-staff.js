@@ -1,8 +1,4 @@
 require('dotenv').config()
-// chief-of-staff.js — BSV revenue-first daily brief. Runs at 8AM via launchd.
-// North star: Did BSV make money yesterday? If not, why not, what changes today?
-// Priority order: Revenue → Posts → Agent health → Growth → Drive doc
-
 const Anthropic = require('@anthropic-ai/sdk').default
 const { execSync, spawnSync } = require('child_process')
 const path = require('path')
@@ -25,7 +21,7 @@ const REMOTE   = 'big sole vibes:Big Sole Vibes'
 const _now         = new Date()
 const DATE_STAMP   = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`
 const DAY_NAME     = _now.toLocaleDateString('en-US', { weekday: 'long' })
-const DAY_OF_WEEK  = _now.getDay()
+const DOW_TO_SLUG  = ['sun','mon','tue','wed','thu','fri','sat']
 const HANDOFF_FILENAME = `BSV-Handoff-${DATE_STAMP}.md`
 
 const DAILY_API_CEILING   = 2.00
@@ -88,8 +84,6 @@ function loadLatestHandoff() {
 }
 
 // ─── Priority 1: Revenue ──────────────────────────────────────────────────────
-// Checks CJ commissions API (yesterday + rolling week) and affiliate link
-// deployment in public/shop/index.html. Sets the action for today.
 
 async function checkRevenue() {
   const result = {
@@ -149,7 +143,6 @@ async function checkRevenue() {
     result.error = 'CJ_API_TOKEN or CJ_CID not set'
   }
 
-  // Affiliate link presence in shop
   try {
     const shopHtml = fs.readFileSync(path.join(ROOT, 'public', 'shop', 'index.html'), 'utf8')
     const matches  = shopHtml.match(/amazon\.com[^"']*tag=|impact\.com|shareasale\.com|cj\.com\/redir/g) || []
@@ -159,7 +152,6 @@ async function checkRevenue() {
     result.linksDeployed = false
   }
 
-  // Action for today
   if (!result.linksDeployed) {
     result.action = 'Deploy affiliate links — approve products in the sheet, run sync-shop.js'
   } else if (result.available && result.yesterday.amount === 0) {
@@ -176,9 +168,6 @@ async function checkRevenue() {
 }
 
 // ─── Priority 2: Post confirmation ────────────────────────────────────────────
-// Computes expected slots for yesterday (always) and today (if past post window).
-// Post windows: -am fires after 10:00 local, -pm fires after 20:00 local.
-// Also surfaces any slots stuck in media-only state (caption never arrived).
 
 function checkPosts() {
   const ABBRS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -187,18 +176,15 @@ function checkPosts() {
   const dayAbbr       = ABBRS[yd.getDay()]
   const yesterdayStr  = yd.toISOString().slice(0, 10)
 
-  // Yesterday's slots are always expected
   const expectedSlots = [`${dayAbbr}-am`, `${dayAbbr}-pm`]
 
-  // Today's slots are expected once their post window has passed locally
   const todayAbbr  = ABBRS[_now.getDay()]
   const localHour  = _now.getHours()
   const localMin   = _now.getMinutes()
   const localMins  = localHour * 60 + localMin
-  if (localMins >= 10 * 60)  expectedSlots.push(`${todayAbbr}-am`)   // past 10:00 AM
-  if (localMins >= 20 * 60)  expectedSlots.push(`${todayAbbr}-pm`)   // past 8:00 PM
+  if (localMins >= 10 * 60)  expectedSlots.push(`${todayAbbr}-am`)
+  if (localMins >= 20 * 60)  expectedSlots.push(`${todayAbbr}-pm`)
 
-  // post-state.json: [{slot, platform, postId, timestamp, status}]
   const succeededSlots = new Set()
   try {
     const p = path.join(ROOT, 'logs', 'post-state.json')
@@ -226,8 +212,6 @@ function checkPosts() {
 }
 
 // ─── Priority 3: Agent health ─────────────────────────────────────────────────
-// Scans every agent log for errors and staleness. Returns issues with fix
-// commands. Essential agents get Telegram alerts on error.
 
 const AGENT_ROSTER = [
   { name: 'watch-drive',       essential: true,  weekly: false },
@@ -268,7 +252,6 @@ function checkAgentHealth() {
     const staleMins = agent.weekly ? 7 * 24 * 60 : 120
     const isStale  = ageMins > staleMins && agent.essential
 
-    // Read last 60 lines for errors and output signal
     let lastLines = []
     let errors    = []
     try {
@@ -287,7 +270,6 @@ function checkAgentHealth() {
     }
   }
 
-  // change-agent heartbeat check (separate from log error — it can log clean but go silent)
   try {
     const cs = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'change-state.json'), 'utf8'))
     const heartbeat  = cs.last_heartbeat ? new Date(cs.last_heartbeat) : null
@@ -304,8 +286,6 @@ function checkAgentHealth() {
 }
 
 // ─── Priority 4: Growth ───────────────────────────────────────────────────────
-// Parses the two most recent marketing reports for subscriber counts.
-// Flags flat or declining trends with a specific recommendation.
 
 function checkGrowth() {
   const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null }
@@ -412,28 +392,6 @@ function getReadyToPost() {
   } catch { return '(unavailable)' }
 }
 
-function getPostedLast24h() {
-  const cutoffDate = new Date(_now.getTime() - 24 * 3600000).toISOString().slice(0, 10)
-  try {
-    const dirs = execSync(`rclone lsd "${REMOTE}/Posted/"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim()
-    const lines = []
-    for (const line of dirs.split('\n')) {
-      const folder = line.trim().split(/\s+/).pop()
-      if (!folder || folder < cutoffDate) continue
-      try {
-        const files = execSync(`rclone ls "${REMOTE}/Posted/${folder}"`, {
-          encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim()
-        const names = files.split('\n').map(f => f.trim().split(/\s+/).slice(1).join(' ')).filter(Boolean)
-        lines.push(`${folder}: ${names.join(', ')}`)
-      } catch {}
-    }
-    return lines.join('\n') || '(nothing posted in last 24h)'
-  } catch { return '(unavailable)' }
-}
-
 // ─── Token budget ─────────────────────────────────────────────────────────────
 
 function buildTokenBudget() {
@@ -476,10 +434,100 @@ function buildTokenBudget() {
   return { breakdown, estTotal, officialTotal, reported: officialTotal ?? estTotal, pct: ((officialTotal ?? estTotal) / DAILY_API_CEILING) * 100 }
 }
 
+// ─── Overnight performance ────────────────────────────────────────────────────
+
+function loadPostPerformance(days = 7) {
+  const cutoff = Date.now() - days * 24 * 3600000
+  try {
+    const p = path.join(ROOT, 'logs', 'post-state.json')
+    if (!fs.existsSync(p)) return []
+    const entries = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return (Array.isArray(entries) ? entries : [])
+      .filter(e => e.status === 'success' && e.timestamp && new Date(e.timestamp).getTime() > cutoff)
+      .map(e => {
+        let voice = null, persona = null, lane = null
+        try {
+          const brief = fs.readFileSync(path.join(ROOT, 'posts', 'briefs', `${e.slot}-brief.txt`), 'utf8')
+          const voiceM   = brief.match(/^VOICE(?:_USED)?:\s*(\w+)/m)
+          const personaM = brief.match(/Audience Persona:\s*([^\n]+)/i)
+          const laneM    = brief.match(/Content Lane:\s*([^\n]+)/i)
+          if (voiceM)   voice   = voiceM[1].trim()
+          if (personaM) persona = personaM[1].trim()
+          if (laneM)    lane    = laneM[1].trim()
+        } catch {}
+        return { ...e, voice, persona, lane }
+      })
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+  } catch { return [] }
+}
+
+async function fetchInstagramInsights(mediaId) {
+  const token = process.env.META_ACCESS_TOKEN
+  if (!token || !mediaId) return null
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v18.0/${mediaId}/insights?metric=impressions,reach,saved&period=lifetime&access_token=${token}`
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const metrics = {}
+    for (const item of (data.data || [])) metrics[item.name] = item.values?.[0]?.value ?? item.value
+    return metrics
+  } catch { return null }
+}
+
+// ─── Directive options ────────────────────────────────────────────────────────
+
+function saveDirectiveOptions(options) {
+  const p = path.join(ROOT, 'logs', `chief-options-${DATE_STAMP}.json`)
+  fs.writeFileSync(p, JSON.stringify({ date: DATE_STAMP, sentAt: new Date().toISOString(), options }, null, 2))
+}
+
+function loadDirectiveOptions(dateStamp) {
+  try {
+    const p = path.join(ROOT, 'logs', `chief-options-${dateStamp}.json`)
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  } catch { return null }
+}
+
+function parseDirectiveOptions(standupText) {
+  const options = []
+  const re = /### Option (\d) — ([^\n]+)\n[\s\S]*?\*\*DIRECTIVE:\*\*\s*([^\n]+)/g
+  let m
+  while ((m = re.exec(standupText)) !== null) {
+    const block = standupText.slice(m.index, m.index + 600)
+    const personaM = block.match(/\*\*Persona:\*\*\s*([^|*\n]+)/)
+    const voiceM   = block.match(/\*\*Voice:\*\*\s*([^|*\n]+)/)
+    const laneM    = block.match(/\*\*Lane:\*\*\s*([^|*\n]+)/)
+    options.push({
+      number:    parseInt(m[1]),
+      label:     m[2].trim(),
+      directive: m[3].trim(),
+      persona:   personaM?.[1]?.trim() ?? null,
+      voice:     voiceM?.[1]?.trim() ?? null,
+      lane:      laneM?.[1]?.trim() ?? null,
+    })
+  }
+  return options.slice(0, 3)
+}
+
+function writeDirectiveToDrive(option, dateStamp) {
+  const content = [
+    `# BSV Daily Directive — ${dateStamp}`,
+    ``,
+    `**Option ${option.number} — ${option.label}**`,
+    `Persona: ${option.persona || 'default'} | Voice: ${option.voice || 'default'} | Lane: ${option.lane || 'default'}`,
+    ``,
+    `## Directive`,
+    option.directive,
+  ].join('\n')
+  const localPath = path.join(TEMP_DIR, `daily-directive-${dateStamp}.md`)
+  fs.writeFileSync(localPath, content)
+  execSync(`rclone copyto "${localPath}" "${REMOTE}/Plans/daily-directive-${dateStamp}.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+  log(`Directive → Drive: Plans/daily-directive-${dateStamp}.md`)
+}
+
 // ─── Two-way Telegram inbox ───────────────────────────────────────────────────
-// Fetches new messages from Big D's Telegram replies, logs them, and dispatches
-// keyword actions against the pending items queue.
-// Replaces the Drive approval folder — Big D's phone is the approval interface.
 
 async function processTelegramInbox() {
   log('Telegram inbox: fetching updates...')
@@ -491,11 +539,38 @@ async function processTelegramInbox() {
   let pendingChanged = false
 
   for (const msg of messages) {
+    // Numeric directive choice (1/2/3) — intercept before keyword flow
+    if (/^[123]$/.test(msg.text.trim())) {
+      const numChoice = parseInt(msg.text.trim())
+      log(`Telegram inbox: directive choice "${numChoice}"`)
+      const opts = loadDirectiveOptions(DATE_STAMP)
+      if (opts?.options?.length) {
+        const chosen = opts.options.find(o => o.number === numChoice)
+        if (chosen) {
+          try {
+            writeDirectiveToDrive(chosen, DATE_STAMP)
+            sendTelegram(`✅ Option ${numChoice} — ${chosen.label}\nDirective live for tonight's media-director run.`).then(r => {
+              if (r?.message_id) log(`Directive confirm — message_id: ${r.message_id}`)
+            })
+            log(`Directive: option ${numChoice} "${chosen.label}" written to Drive`)
+          } catch (err) {
+            log(`ERROR: directive write failed — ${err.message}`)
+            sendTelegram(`⚠️ Failed to write directive: ${err.message}`).then(() => {})
+          }
+        } else {
+          log(`No option ${numChoice} in today's options file`)
+        }
+      } else {
+        log(`No options file for ${DATE_STAMP}`)
+        sendTelegram(`⚠️ No options loaded for today. Standup may not have completed.`).then(() => {})
+      }
+      continue
+    }
+
     const keyword = parseInboxKeyword(msg.text)
     log(`Telegram inbox: "${msg.text}" → keyword=${keyword ?? 'none'}`)
     if (!keyword) continue
 
-    // Apply to the oldest unresolved pending item in FIFO order
     const target = pending.find(i => !i._resolved)
     if (!target) { log('Telegram inbox: no pending items to resolve'); continue }
 
@@ -512,7 +587,6 @@ async function processTelegramInbox() {
         const title = target.metadata?.title || ''
         const angle = target.metadata?.angle || ''
         const slug  = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-        // Write directly to blog-calendar-queue so blog-agent picks it up next cycle
         const queuePath = path.join(ROOT, 'logs', 'blog-calendar-queue.json')
         let bQueue = []
         try { if (fs.existsSync(queuePath)) bQueue = JSON.parse(fs.readFileSync(queuePath, 'utf8')) } catch {}
@@ -537,7 +611,7 @@ async function processTelegramInbox() {
       })
     } else if (keyword === 'hold') {
       log(`  HOLD: ${target.id} — deferring to tomorrow`)
-      target._resolved  = false  // unmark so it stays in queue
+      target._resolved  = false
       target.remindAfter = new Date(Date.now() + 24 * 3600000).toISOString()
       pendingChanged = true
       sendTelegram(`⏸ Held: ${target.metadata?.title || target.id} — will resurface tomorrow.`).then(r => {
@@ -552,7 +626,7 @@ async function processTelegramInbox() {
   }
 }
 
-// ─── Chief inbox (Drive Inbox fallback) ───────────────────────────────────────
+// ─── Chief inbox (Drive fallback) ─────────────────────────────────────────────
 
 async function processChiefInbox(client) {
   try {
@@ -584,7 +658,7 @@ async function processChiefInbox(client) {
 async function watchBlogAgent() {
   try {
     const manifestPath = path.join(ROOT, 'public', 'sole-report', 'manifest.json')
-    if (!fs.existsSync(manifestPath)) { log('WATCHDOG: blog-agent never published'); return }
+    if (!fs.existsExists(manifestPath)) { log('WATCHDOG: blog-agent never published'); return }
     const manifest  = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
     const latest    = manifest[0]
     if (!latest) { log('WATCHDOG: blog-agent manifest empty'); return }
@@ -616,258 +690,167 @@ async function watchBlogAgent() {
   const client  = new Anthropic({ apiKey })
   const outFile = `standup-${DATE_STAMP}.md`
 
-  // Process Telegram replies first — Big D's phone is the approval interface
+  // Process Telegram inbox first — directive replies may have arrived overnight
   await processTelegramInbox()
-  await processChiefInbox(client)  // Drive inbox fallback (legacy)
+  await processChiefInbox(client)
 
-  // ── P1: Revenue ───────────────────────────────────────────────────────────
+  // ── Data collection ───────────────────────────────────────────────────────
 
   log('P1: Revenue...')
   const revenue = await checkRevenue()
 
-  // ── P2: Posts ─────────────────────────────────────────────────────────────
-
   log('P2: Posts...')
   const posts = checkPosts()
-
-  // ── P3: Agent health ──────────────────────────────────────────────────────
 
   log('P3: Agent health...')
   const agents = checkAgentHealth()
 
-  // ── P4: Growth ────────────────────────────────────────────────────────────
-
   log('P4: Growth...')
   const growth = checkGrowth()
 
-  // ── Supporting context ────────────────────────────────────────────────────
-
+  // Supporting context
   const tokenBudget   = buildTokenBudget()
   const findings      = getHandoffFindings()
   const directive     = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
   const memory        = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
   const orgChart      = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
   const handoff       = loadLatestHandoff()
-  const watchLog      = getRecentLog('watch-drive.log', 80)
-  const engBotLog     = getRecentLog('eng-bot.log', 30)
-  const mediaLog      = getRecentLog('media-director.log', 30)
-  const postStateRaw  = getPostStateRaw()
-  const outputFiles   = getOutputFiles()
-  const readyToPost   = getReadyToPost()
-  const postedLast24h = getPostedLast24h()
   const socialReport  = loadLatestReport('social-report')
-  const mktReport     = loadLatestReport('marketing')
-  const productDevState = (() => {
-    try {
-      const p = path.join(ROOT, 'logs', 'product-development-state.json')
-      return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
-    } catch { return null }
-  })()
-  const changeState = (() => {
-    try {
-      const p = path.join(ROOT, 'logs', 'change-state.json')
-      return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
-    } catch { return null }
-  })()
   const costState = (() => {
     try {
       const p = path.join(ROOT, 'logs', 'cost-state.json')
       return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
     } catch { return null }
   })()
-  const chiefDirective = (() => {
-    try {
-      const p = path.join(ROOT, 'logs', 'strategy-active.md')
-      if (!fs.existsSync(p)) return null
-      const md = fs.readFileSync(p, 'utf8')
-      const m  = md.match(/##\s+Chief Directive[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
-      return m ? m[1].trim() : null
-    } catch { return null }
-  })()
 
-  log(`Context: directive=${!!directive}, strategy=${!!chiefDirective}, memory=${!!memory}, org=${!!orgChart}, handoff=${!!handoff}, social=${socialReport?.filename || 'none'}, marketing=${mktReport?.filename || 'none'}`)
-  log(`Ready to Post: ${readyToPost}`)
+  log(`Context: directive=${!!directive}, memory=${!!memory}, social=${socialReport?.filename || 'none'}`)
   log(`Token budget: est $${tokenBudget.estTotal.toFixed(4)} (${tokenBudget.pct.toFixed(1)}% of $${DAILY_API_CEILING})`)
 
-  // ── Standup Telegram — generated from data, not Claude ────────────────────
-  // Format: exact spec. Revenue leads. One Telegram message is the full picture.
+  // Post performance — annotated with persona/voice from briefs
+  log('Loading post performance (7 days)...')
+  const performance = loadPostPerformance(7)
+  const overnight   = performance.filter(p => new Date(p.timestamp).getTime() > Date.now() - 24 * 3600000)
+  log(`Performance: ${performance.length} post(s) in 7 days, ${overnight.length} in last 24h`)
 
-  const revenueYd = revenue.available
-    ? `$${revenue.yesterday.amount.toFixed(2)} (${revenue.yesterday.commissions} commission${revenue.yesterday.commissions !== 1 ? 's' : ''})`
-    : 'no data'
-  const revenueWk = revenue.available
-    ? ` | $${revenue.week.amount.toFixed(2)} this week`
-    : ''
-  const linkStatus = revenue.linksDeployed
-    ? `✓ ${revenue.shopLinkCount} in shop`
-    : `✗ NOT DEPLOYED`
-
-  const postLine = `${posts.confirmed.length}/${posts.expectedSlots.length} confirmed`
-    + (posts.gaps.length ? ` | ✗ missed: ${posts.gaps.join(', ')} — caption never arrived` : '')
-    + (posts.stuckMediaSlots.length ? ` | stuck media: ${posts.stuckMediaSlots.join(', ')}` : '')
-
-  const totalSubs  = growth.total != null ? growth.total.toLocaleString() : 'unknown'
-  const audienceLine = `${totalSubs} total | ${growth.trend}`
-
-  const blockerLines = []
-  if (!revenue.linksDeployed) blockerLines.push('Affiliate links not in shop — zero revenue possible')
-  if (posts.gaps.length)     blockerLines.push(`${posts.gaps.join(', ')} missed — caption files never uploaded to Drive`)
-  if (posts.stuckMediaSlots.length) blockerLines.push(`Stuck media: ${posts.stuckMediaSlots.join(', ')}`)
-  for (const i of agents.issues.filter(i => i.severity === 'error').slice(0, 2)) {
-    blockerLines.push(`${i.name}: ${i.msg.slice(0, 80)} → ${i.fix}`)
-  }
-  if (findings) {
-    for (const l of findings.split('\n').filter(Boolean).slice(0, 1)) {
-      blockerLines.push(l.replace(/^\[[\d:TZ.-]+\]\s*/, '').slice(0, 100))
-    }
+  // Best-effort Instagram insights for overnight posts
+  for (const p of overnight.filter(p => p.platform === 'instagram' && p.postId)) {
+    const insights = await fetchInstagramInsights(p.postId)
+    if (insights) p.insights = insights
   }
 
-  const telegramParts = [
-    `*BSV — ${DAY_NAME} ${DATE_STAMP}*`,
-    ``,
-    `💰 *REVENUE:* ${revenueYd}${revenueWk} | Links: ${linkStatus}`,
-    `📲 *POSTS:* ${postLine}`,
-    `👥 *AUDIENCE:* ${audienceLine}`,
-  ]
-  if (agents.issues.length) {
-    telegramParts.push(`🔧 *AGENTS:* ${agents.issues.length} issue(s) — ${agents.issues.slice(0, 3).map(i => i.name).join(', ')}`)
-  }
-  telegramParts.push(
-    `⚠️ *BLOCKERS:* ${blockerLines.length ? blockerLines.slice(0, 3).join('\n• ') : 'None'}`,
-    `🎯 *TODAY:* ${revenue.action}`,
-    ``,
-    `📋 ${outFile} → Drive`,
-  )
-
-  const tgResult = await sendTelegram(telegramParts.join('\n'))
-  if (tgResult?.message_id) log(`Standup Telegram delivered — message_id: ${tgResult.message_id}`)
-  else log('WARNING: Standup Telegram returned no confirmation')
-
-  // Alert on critical agent failures individually
-  for (const issue of agents.issues.filter(i => i.severity === 'error' && AGENT_ROSTER.find(a => a.name === i.name)?.essential)) {
-    const tgAlert = await sendTelegram(`🚨 BSV — ${issue.name} error\n${issue.msg}\n\nFix: \`${issue.fix}\``)
-    if (tgAlert?.message_id) log(`Telegram agent alert (${issue.name}) — message_id: ${tgAlert.message_id}`)
-    else log(`WARNING: Telegram agent alert returned no confirmation (${issue.name})`)
+  // Real blockers only — things actually stopped, not pipeline health
+  const realBlockers = []
+  if (!revenue.linksDeployed) realBlockers.push('Affiliate links not deployed — zero revenue possible')
+  if (posts.gaps.length)      realBlockers.push(`${posts.gaps.join(', ')} missed — caption files never uploaded`)
+  for (const i of agents.issues.filter(i => i.severity === 'error' && AGENT_ROSTER.find(a => a.name === i.name)?.essential).slice(0, 2)) {
+    realBlockers.push(`${i.name} down — ${i.msg.slice(0, 80)}`)
   }
 
-  // ── Claude standup doc (Drive record) ─────────────────────────────────────
-  // Shorter than before — Telegram carries the operational output.
-  // Claude adds context, root-cause analysis, and the "Tonight" schedule.
+  // ── Claude strategic brief ────────────────────────────────────────────────
+  // Claude runs BEFORE Telegram so the three options are available in the message.
 
   const fmtCost = (n) => `$${n.toFixed(4)}`
   const tokenSection = [
-    `Daily ceiling: $${DAILY_API_CEILING.toFixed(2)}`,
-    `Spend: ${tokenBudget.officialTotal != null ? fmtCost(tokenBudget.officialTotal) + ' (official)' : fmtCost(tokenBudget.estTotal) + ' (estimate)'} — ${tokenBudget.pct.toFixed(1)}%`,
+    `Ceiling: $${DAILY_API_CEILING.toFixed(2)} | Spend: ${tokenBudget.officialTotal != null ? fmtCost(tokenBudget.officialTotal) + ' (official)' : fmtCost(tokenBudget.estTotal) + ' (est)'} — ${tokenBudget.pct.toFixed(1)}%`,
     tokenBudget.breakdown.length
-      ? tokenBudget.breakdown.map(a => `  ${a.name}: ${a.calls} call(s), ~${a.tokens.toLocaleString()} tokens, ${fmtCost(a.cost)}`).join('\n')
-      : '  No Claude calls detected today.',
+      ? tokenBudget.breakdown.map(a => `  ${a.name}: ${a.calls} call(s), ${fmtCost(a.cost)}`).join('\n')
+      : '  No Claude calls today.',
   ].join('\n')
 
-  const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
-    + '\n\nYou are the BSV Chief of Staff. You know every agent in your org, their role, and their status. Revenue first. Direct. No padding. No filler sections.'
+  const perfLines = performance.length
+    ? performance.map(p => {
+        const date = new Date(p.timestamp).toISOString().slice(0, 10)
+        const ig = p.insights ? `impressions=${p.insights.impressions ?? '?'} reach=${p.insights.reach ?? '?'} saved=${p.insights.saved ?? '?'}` : 'no engagement data'
+        return `${date} | ${p.slot} | ${p.persona ?? 'unknown'} / ${p.voice ?? 'unknown'} / ${p.lane ?? 'unknown'} | ${ig}`
+      }).join('\n')
+    : '(no post history in last 7 days)'
 
-  const standupUser = `${chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
+  const overnightLines = overnight.length
+    ? overnight.map(p => {
+        const ig = p.insights ? `impressions: ${p.insights.impressions ?? 'n/a'}, reach: ${p.insights.reach ?? 'n/a'}, saved: ${p.insights.saved ?? 'n/a'}` : 'no API data'
+        return `${p.slot} (${p.persona ?? 'unknown'} / ${p.voice ?? 'unknown'}): ${ig}`
+      }).join('\n')
+    : 'No posts in last 24h'
+
+  const tomorrowSlug = DOW_TO_SLUG[(_now.getDay() + 1) % 7]
+
+  const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
+    + `\n\nYou are the BSV Chief of Staff — the Proprietor's most trusted advisor. Your job: name what the data says, present exactly three strategic options, and let him choose. Statements not questions. Confident. Brief. No filler. No "it's worth noting." The Proprietor runs the room.`
+
+  const standupUser = `Today is ${DAY_NAME} ${DATE_STAMP}.
 
 ## Revenue
-Yesterday: ${revenueYd}${revenueWk}
-Affiliate links deployed: ${revenue.linksDeployed ? `YES — ${revenue.shopLinkCount} product(s) in shop` : 'NO — shop has no affiliate links'}
-CJ error: ${revenue.error || 'none'}
-Action today: ${revenue.action}
+Yesterday: ${revenue.available ? `$${revenue.yesterday.amount.toFixed(2)} (${revenue.yesterday.commissions} commissions)` : 'no data'} | Week: ${revenue.available ? `$${revenue.week.amount.toFixed(2)}` : 'no data'}
+Affiliate links: ${revenue.linksDeployed ? `live (${revenue.shopLinkCount} in shop)` : 'NOT deployed'}
 
-## Post Confirmation (${posts.dayAbbr})
-Expected: ${posts.expectedSlots.join(', ')}
-Confirmed: ${posts.confirmed.join(', ') || 'none'}
-Gaps: ${posts.gaps.join(', ') || 'none'}
-Stuck media (caption never arrived): ${posts.stuckMediaSlots.join(', ') || 'none'}
+## Overnight Post Performance (last 24h)
+${overnightLines}
 
-## Agent Issues
-${agents.issues.map(i => `${i.name} [${i.severity}]: ${i.msg} | fix: ${i.fix}`).join('\n') || 'None'}
-Healthy: ${agents.ok.slice(0, 10).join(', ')}
+## 7-Day Post History (persona / voice / lane / engagement)
+${perfLines}
 
 ## Growth
-Total: ${growth.total ?? 'unknown'} (Lounge: ${growth.lounge ?? '?'}, Drop: ${growth.drop ?? '?'}) | ${growth.trend}
-${growth.recommendation ? `Recommendation: ${growth.recommendation}` : ''}
+${growth.total != null ? `${growth.total.toLocaleString()} total subscribers | ${growth.trend}` : `No subscriber data | ${growth.trend}`}
 
-## Pipeline Alerts
-${findings || '(none)'}
+## Social Intelligence (${socialReport?.filename || 'none'})
+${socialReport ? socialReport.content.slice(0, 1400) : '(not available)'}
 
-## Drive State
-Ready to Post: ${readyToPost}
-Posted 24h: ${postedLast24h}
-Output files: ${outputFiles.join(', ') || 'none'}
+## Agent Issues
+${agents.issues.length ? agents.issues.map(i => `${i.name} [${i.severity}]: ${i.msg}`).join('\n') : 'None'}
 
-## Pipeline Logs (watch-drive — last 80 lines)
-\`\`\`
-${watchLog || '(no log)'}
-\`\`\`
-
-## Eng-bot log
-\`\`\`
-${engBotLog || '(no log)'}
-\`\`\`
-
-## Post State
-\`\`\`json
-${postStateRaw?.slice(0, 1500) || '(none)'}
-\`\`\`
-
-## Social Report (${socialReport?.filename || 'none'})
-${socialReport ? socialReport.content.slice(0, 1200) : '(not available)'}
-
-## Marketing Report (${mktReport?.filename || 'none'})
-${mktReport ? mktReport.content.slice(0, 800) : '(not available)'}
-
-## Change State
-\`\`\`json
-${changeState ? JSON.stringify(changeState, null, 2) : '(not available)'}
-\`\`\`
-
-## Token Budget
+## Budget
 ${tokenSection}
-
-## Cost State
-${costState ? `Burn: $${costState.avg_daily_burn?.toFixed(4)}/day | Balance: ${costState.balance != null ? '$' + costState.balance.toFixed(2) : 'unknown'} | Runway: ${costState.runway_hours != null ? costState.runway_hours.toFixed(0) + 'h' : 'unknown'}` : '(not available)'}
+${costState ? `Balance: ${costState.balance != null ? '$' + costState.balance.toFixed(2) : 'unknown'} | Runway: ${costState.runway_hours != null ? costState.runway_hours.toFixed(0) + 'h' : 'unknown'}` : ''}
 
 ---
 
-Produce this exact format:
+Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — they must be present and on one line each.
 
-# BSV Daily Brief — ${DAY_NAME}, ${DATE_STAMP}
+# BSV — ${DAY_NAME}, ${DATE_STAMP}
 
-## The One Question
-Did BSV make money yesterday? One sentence answer — amount if yes, exact reason if no, what changes today.
+## 1 — Overnight Scorecard
+[Each overnight post: slot, persona, voice, performance data or "no data". Never skip this section. If no posts ran, say so.]
 
-## Revenue
-CJ status, link deployment, action. If zero: root cause and specific fix.
+## 2 — What The Data Is Saying
+[One paragraph. Pattern recognition across the 7-day history — which persona performing, which voice converting, which lane flat. If fewer than 7 days of data, say so. No fluff.]
 
-## Posts
-Yesterday's slots — confirmed vs expected. Cause of any gap.
+## 3 — Three Strategic Directions
+[Three options for today. Each option in EXACTLY this format:]
 
-## Agents
-Issues with fix commands — one line each. Healthy: [comma list]. If no issues: "All essential agents healthy."
+### Option 1 — [LABEL IN CAPS]
+- **Prioritizes:** [one sentence]
+- **Trades off:** [one sentence]
+- **Persona:** [name] | **Voice:** [name] | **Lane:** [name]
+- **DIRECTIVE:** [one sentence telling media-director exactly what angle to run today]
 
-## Growth
-Numbers and trend. Recommendation if flat or declining.
+### Option 2 — [LABEL IN CAPS]
+- **Prioritizes:** [one sentence]
+- **Trades off:** [one sentence]
+- **Persona:** [name] | **Voice:** [name] | **Lane:** [name]
+- **DIRECTIVE:** [one sentence directive]
 
-## Tonight
-What runs when. Which slots generate for tomorrow. What to watch.
+### Option 3 — [LABEL IN CAPS]
+- **Prioritizes:** [one sentence]
+- **Trades off:** [one sentence]
+- **Persona:** [name] | **Voice:** [name] | **Lane:** [name]
+- **DIRECTIVE:** [one sentence directive]
 
-## Blockers
-Anything needing Big D. Specific. "Clear" if none.
+## 4 — Blockers Requiring Big D Decision
+[Real blockers only — things stopped that need a human decision. Max 3. If none: "No decisions needed today."]
 
-## Budget
-${tokenSection}`
+## 5 — Tonight's Pipeline
+[Exactly two sentences. What runs, what time, any known risk.]`
 
-  log('Calling Claude for standup doc...')
+  log('Calling Claude for strategic brief...')
   let standupText = ''
   try {
     const stream = await client.messages.stream({
       model:      'claude-sonnet-4-6',
-      max_tokens: 3000,
+      max_tokens: 2500,
       system:     standupSystem,
       messages:   [{ role: 'user', content: standupUser }],
     })
-    process.stdout.write('Generating standup doc')
+    process.stdout.write('Generating brief')
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         standupText += event.delta.text
@@ -876,21 +859,96 @@ ${tokenSection}`
     }
     process.stdout.write('\n')
     const finalMsg = await stream.finalMessage()
-    log(`Standup done — ${finalMsg.usage?.output_tokens ?? '?'} tokens, stop: ${finalMsg.stop_reason}`)
+    log(`Brief done — ${finalMsg.usage?.output_tokens ?? '?'} tokens, stop: ${finalMsg.stop_reason}`)
   } catch (err) {
     process.stdout.write('\n')
-    log(`ERROR: standup API call failed — ${err.message}`)
+    log(`ERROR: strategic brief API call failed — ${err.message}`)
   }
 
+  // Parse and save directive options for Big D's numeric reply
+  let directiveOptions = []
+  if (standupText) {
+    directiveOptions = parseDirectiveOptions(standupText)
+    if (directiveOptions.length) {
+      saveDirectiveOptions(directiveOptions)
+      log(`Options saved: ${directiveOptions.map(o => `${o.number}. ${o.label}`).join(' | ')}`)
+    } else {
+      log('WARNING: no directive options parsed from brief — format may have drifted')
+    }
+  }
+
+  // Upload strategic brief to Drive
   if (standupText.trim()) {
     const localOut = path.join(TEMP_DIR, outFile)
     try {
       fs.writeFileSync(localOut, standupText)
       rcloneCopyTo(localOut, `${REMOTE}/Reports/${outFile}`)
-      log(`Standup uploaded → ${REMOTE}/Reports/${outFile}`)
+      log(`Brief uploaded → ${REMOTE}/Reports/${outFile}`)
     } catch (err) {
-      log(`ERROR: standup upload — ${err.message}`)
+      log(`ERROR: brief upload — ${err.message}`)
     }
+  }
+
+  // ── Telegram standup ──────────────────────────────────────────────────────
+  // Built from raw data + parsed Claude sections. Five sections, advisor tone.
+
+  const extractSection = (text, n) => {
+    const m = text.match(new RegExp(`## ${n} —[^\\n]*\\n([\\s\\S]*?)(?=\\n## \\d|$)`))
+    return m ? m[1].trim() : null
+  }
+
+  const signalParagraph = standupText ? extractSection(standupText, '2') : null
+  const tonightSection  = standupText ? extractSection(standupText, '5') : null
+
+  const optionLines = directiveOptions.length
+    ? directiveOptions.map(o => `${o.number}️⃣ *${o.label}*${[o.persona, o.voice, o.lane].filter(Boolean).length ? ' — ' + [o.persona, o.voice, o.lane].filter(Boolean).join(' / ') : ''}`).join('\n')
+    : '(options unavailable — check logs/chief-of-staff.log)'
+
+  const blockerText = realBlockers.length
+    ? realBlockers.slice(0, 3).map(b => `• ${b}`).join('\n')
+    : 'No decisions needed today.'
+
+  const overnightTg = overnight.length
+    ? overnight.map(p => {
+        const d = p.insights
+          ? `impressions: ${p.insights.impressions ?? 'n/a'}, reach: ${p.insights.reach ?? 'n/a'}`
+          : 'no data'
+        return `${p.slot} (${p.persona ?? '?'} / ${p.voice ?? '?'}): ${d}`
+      }).join('\n')
+    : 'No posts in last 24h.'
+
+  const telegramParts = [
+    `*BSV — ${DAY_NAME} ${DATE_STAMP}*`,
+    ``,
+    `*1 — OVERNIGHT*`,
+    overnightTg,
+    ``,
+    `*2 — SIGNAL*`,
+    signalParagraph ? signalParagraph.split('\n')[0].slice(0, 280) : '(brief unavailable)',
+    ``,
+    `*3 — TODAY'S CALL*`,
+    optionLines,
+    ``,
+    `Reply 1, 2, or 3. No reply by 10AM = yesterday's directive runs.`,
+    ``,
+    `*4 — BLOCKERS*`,
+    blockerText,
+    ``,
+    `*5 — TONIGHT*`,
+    tonightSection
+      ? tonightSection.split('\n').filter(Boolean).slice(0, 2).join(' ')
+      : `social-listening 11PM, media-director 2AM (briefs ${tomorrowSlug}).`,
+  ]
+
+  const tgResult = await sendTelegram(telegramParts.join('\n'))
+  if (tgResult?.message_id) log(`Standup Telegram delivered — message_id: ${tgResult.message_id}`)
+  else log('WARNING: Standup Telegram returned no confirmation')
+
+  // Alert critical agent failures individually
+  for (const issue of agents.issues.filter(i => i.severity === 'error' && AGENT_ROSTER.find(a => a.name === i.name)?.essential)) {
+    const tgAlert = await sendTelegram(`🚨 BSV — ${issue.name} error\n${issue.msg}\n\nFix: \`${issue.fix}\``)
+    if (tgAlert?.message_id) log(`Telegram agent alert (${issue.name}) — message_id: ${tgAlert.message_id}`)
+    else log(`WARNING: Telegram agent alert returned no confirmation (${issue.name})`)
   }
 
   // ── Handoff update ────────────────────────────────────────────────────────
@@ -968,7 +1026,6 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
   }
 
   // ── Lounge content approval ────────────────────────────────────────────────
-  // If Claude's standup includes a Lounge section, queue it for approval.
 
   try {
     const loungeMatch = standupText.match(/## The Lounge[^\n]*\n([\s\S]*?)(?=\n## |\n---|\n# |$)/)
@@ -994,11 +1051,8 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
     log(`WARNING: Lounge approval failed — ${err.message}`)
   }
 
-  // ── Process Telegram inbox again after standup (catch replies that arrived during run) ──
-
+  // Second inbox pass — catch any replies that arrived during the run
   await processTelegramInbox()
-
-  // ── Blog-agent watchdog ────────────────────────────────────────────────────
 
   await watchBlogAgent()
 
