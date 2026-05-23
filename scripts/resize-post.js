@@ -29,10 +29,8 @@ function copyToGDrive(localPath) {
 
 const platforms = [
   { name: 'instagram', width: 1080, height: 1080 },
-  { name: 'facebook', width: 1080, height: 1080 },
-  { name: 'twitter', width: 1600, height: 900 },
   { name: 'youtube', width: 1600, height: 900, format: 'jpeg', quality: 95 },
-  { name: 'tiktok', width: 1080, height: 1920 },
+  // facebook, twitter, tiktok omitted — paused or no API access
 ]
 
 const desktopDir = '/Users/davidgeer/Desktop/bsv-posts'
@@ -70,9 +68,9 @@ const ext = path.extname(inputPath).toLowerCase()
   const startTime = new Date().toISOString()
   log(`START input=${path.basename(inputPath)} type=${ext === '.mp4' ? 'video' : 'image'} platforms=${targets.map(p => p.name).join(',')}`)
 
-  // MP4 input — skip image resizing, copy directly to youtube and tiktok slots
+  // MP4 input — skip image resizing, copy directly to youtube slot
   if (ext === '.mp4') {
-    for (const slot of ['youtube', 'tiktok']) {
+    for (const slot of ['youtube']) {
       const fileName    = `${baseName}-${slot}.mp4`
       const outputPath  = path.join(outputDir,  fileName)
       const desktopPath = path.join(desktopDir, fileName)
