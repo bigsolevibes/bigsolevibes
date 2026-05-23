@@ -441,7 +441,8 @@ function buildTokenBudget() {
   dayStart.setHours(0, 0, 0, 0)
 
   const LOGS = ['eng-bot','social-listening','media-director','brand-manager','marketing-manager',
-    'product-development','product-research','change-agent','blog-agent','update-handoff','chief-of-staff']
+    'product-development','product-research','change-agent','blog-agent','update-handoff','chief-of-staff',
+    'resize-post','brand-image','brand-video']
   const breakdown = []
 
   for (const name of LOGS) {
