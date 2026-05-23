@@ -56,6 +56,37 @@ function loadLatestSocialReport() {
   } catch { return null }
 }
 
+// ─── Persona context block builder ───────────────────────────────────────────
+
+function buildPersonaBlock(ctx) {
+  if (!ctx) return ''
+  const label = ctx.persona.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const lines = [
+    `## Audience Persona: ${label}`,
+    `**Content Lane:** ${ctx.lane}`,
+    '',
+  ]
+  if (ctx.storyAngle && (ctx.storyAngle.hook || ctx.storyAngle.draftOpeningLine)) {
+    lines.push('### Story Angle — from today\'s social intelligence report')
+    lines.push('This is the specific angle media-director is briefing for this slot. Execute it.')
+    if (ctx.storyAngle.hook)             lines.push(`- **Hook:** ${ctx.storyAngle.hook}`)
+    if (ctx.storyAngle.whyThisWeek)      lines.push(`- **Why this week:** ${ctx.storyAngle.whyThisWeek}`)
+    if (ctx.storyAngle.voiceTag)         lines.push(`- **Voice tag:** ${ctx.storyAngle.voiceTag}`)
+    if (ctx.storyAngle.draftOpeningLine) lines.push(`- **Draft opening line:** "${ctx.storyAngle.draftOpeningLine}"`)
+    lines.push('')
+  }
+  if (ctx.verbatimPhrases?.length) {
+    lines.push('### Verbatim Language — write with their words, not BSV\'s words imposed on them')
+    lines.push('These phrases come directly from the community this week. Use them:')
+    ctx.verbatimPhrases.slice(0, 8).forEach(p => lines.push(`- "${p}"`))
+    lines.push('')
+  }
+  if (ctx.hashtags?.length) {
+    lines.push(`### Persona Hashtags: ${ctx.hashtags.join(' ')} #BigSoleVibes`)
+  }
+  return lines.join('\n')
+}
+
 // ─── Voice block builder ──────────────────────────────────────────────────────
 
 function buildVoiceBlock(voiceDef) {
@@ -93,14 +124,19 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   fs.mkdirSync(BRIEFS_DIR, { recursive: true })
 
   // Parse args
-  const slotArg     = process.argv.indexOf('--slot')
-  const themeArg    = process.argv.indexOf('--theme')
-  const voiceArg    = process.argv.indexOf('--voice')
-  const voiceDefArg = process.argv.indexOf('--voice-def')
+  const slotArg        = process.argv.indexOf('--slot')
+  const themeArg       = process.argv.indexOf('--theme')
+  const voiceArg       = process.argv.indexOf('--voice')
+  const voiceDefArg    = process.argv.indexOf('--voice-def')
+  const personaCtxArg  = process.argv.indexOf('--persona-context')
 
   const slot      = slotArg  !== -1 ? process.argv[slotArg  + 1] : null
   const theme     = themeArg !== -1 ? process.argv[themeArg + 1] : null
   const voiceName = voiceArg !== -1 ? process.argv[voiceArg + 1] : null
+
+  const personaContext = personaCtxArg !== -1
+    ? (() => { try { return JSON.parse(process.argv[personaCtxArg + 1]) } catch { return null } })()
+    : null
 
   if (!slot || !theme) {
     log('ERROR: --slot and --theme are required')
@@ -124,7 +160,8 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     log(`WARNING: no valid --voice supplied, defaulting to ${defaultName}`)
   }
 
-  log(`━━━ creative-agent: ${slot} / ${theme} / ${voiceDef.name} ━━━`)
+  const personaLabel = personaContext?.persona ?? 'unassigned'
+  log(`━━━ creative-agent: ${slot} / ${theme} / ${voiceDef.name} / persona=${personaLabel} ━━━`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -182,10 +219,14 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     ? 'Morning. The man before the world starts.'
     : 'Evening. The man who made it through.'
 
-  const voiceBlock = buildVoiceBlock(voiceDef)
+  const voiceBlock   = buildVoiceBlock(voiceDef)
+  const personaBlock = buildPersonaBlock(personaContext)
 
-  // Caption style guidance derived from voice
-  const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Max 4 hashtags including #BigSoleVibes.`
+  // Caption hashtag guidance — use persona-matched tags when available
+  const personaHashtags = personaContext?.hashtags?.length
+    ? personaContext.hashtags.slice(0, 3).join(' ') + ' #BigSoleVibes'
+    : '#BigSoleVibes'
+  const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
   const systemPrompt = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
@@ -238,6 +279,11 @@ This narrative is live on the BSV shelf. Pull the scene from it. Adapt to platfo
 `
     : ''
 
+  // Social report fallback — only used when no persona context was passed
+  const socialFallback = !personaContext && socialReport
+    ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}`
+    : ''
+
   const userPrompt = `Write the BSV content brief.
 
 SLOT: ${slot}
@@ -246,7 +292,7 @@ VOICE: ${voiceDef.name}
 POST TIME: ${postTime}
 DAY ENERGY: ${dayEnergy}
 
-${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialReport ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}` : ''}
+${personaBlock ? `${personaBlock}\n\n` : ''}${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialFallback}
 
 Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above are not suggestions. The image brief should make a creative director say yes. The captions should make a man stop scrolling and send it to someone who gets it.`
 

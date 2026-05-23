@@ -6,11 +6,10 @@ const os   = require('os')
 
 const ROOT       = path.join(__dirname, '..')
 const LOG_FILE   = path.join(ROOT, 'logs', 'media-director.log')
-const STATE_FILE = path.join(ROOT, 'logs', 'voice-state.json')
 const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-media-director')
 const REMOTE     = 'big sole vibes:Big Sole Vibes'
 
-const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
+const { VOICES } = require('../config/bsv-voices')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -32,34 +31,131 @@ const THEME_CALENDAR = {
   sun: { am: 'The Standard',   pm: 'The Invite' },
 }
 
+// ─── Persona assignment ───────────────────────────────────────────────────────
+// Three-persona rotating schedule. AM and PM can differ — both registers
+// reach each audience across the week. No persona runs more than 5 of 14 slots.
+
+const PERSONA_CALENDAR = {
+  mon: { am: 'professional',    pm: 'athlete' },
+  tue: { am: 'style-conscious', pm: 'professional' },
+  wed: { am: 'athlete',         pm: 'style-conscious' },
+  thu: { am: 'professional',    pm: 'athlete' },
+  fri: { am: 'style-conscious', pm: 'professional' },
+  sat: { am: 'athlete',         pm: 'style-conscious' },
+  sun: { am: 'professional',    pm: 'athlete' },
+}
+
+// Voice locked to persona + register. No rotation — persona determines voice.
+//   Professional → The Proprietor (AM) / The Nod (PM)
+//   Athlete      → The Barber (AM) / The Callout (PM)
+//   Style-Con.   → The Standard (AM) / The Nod (PM)
+const PERSONA_VOICE_MAP = {
+  professional:      { am: 'PROPRIETOR', pm: 'NOD' },
+  athlete:           { am: 'BARBER',     pm: 'CALLOUT' },
+  'style-conscious': { am: 'STANDARD',   pm: 'NOD' },
+}
+
+// Content strategy lane per persona
+const PERSONA_LANE = {
+  professional:      'Lane 1 — High-End Drop',
+  athlete:           'Lane 3 — Well-Framed Audit',
+  'style-conscious': 'Lane 2 — Style vs. Mechanics',
+}
+
+// Persona-matched hashtags (from the social-listening brief)
+const PERSONA_HASHTAGS = {
+  professional:      ['#mensstyle', '#bespoke', '#leathergoods', '#shoecare', '#gentlemanstyle'],
+  athlete:           ['#recoverydays', '#athletelife', '#trainhard', '#crossfit', '#runnerscommunity'],
+  'style-conscious': ['#menswear', '#ootd', '#streetstyle', '#complexstyle', '#highsnobiety'],
+}
+
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
-// ─── Voice rotation ───────────────────────────────────────────────────────────
-// AM = Lounge register: PROPRIETOR → BARBER → STANDARD (cycle)
-// PM = Drop register:   CALLOUT → NOD → PROPRIETOR (cycle)
-// Never assign the same voice to consecutive slots across AM/PM boundaries.
+// ─── Social report loader ─────────────────────────────────────────────────────
 
-function loadVoiceState() {
+function loadLatestSocialReport() {
   try {
-    return fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {}
-  } catch { return {} }
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
 }
 
-function saveVoiceState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+// ─── Social report parser ─────────────────────────────────────────────────────
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function pickVoice(pool, lastVoice, indexKey, state) {
-  let idx = state[indexKey] ?? 0
-  let voice = pool[idx % pool.length]
-  // Advance once if this would repeat the last slot's voice
-  if (voice === lastVoice) {
-    idx++
-    voice = pool[idx % pool.length]
+function extractBulletValue(text, label) {
+  const m = text.match(new RegExp(`[-*]\\s*${escapeRegex(label)}[^:\\n]*:\\s*(.+)`))
+  return m ? m[1].trim() : null
+}
+
+function parseSocialReport(content, persona) {
+  if (!content) return null
+
+  const personaHeaders = {
+    professional:      'MAN 1 — THE PROFESSIONAL',
+    athlete:           'MAN 2 — THE ATHLETE',
+    'style-conscious': 'MAN 3 — THE STYLE-CONSCIOUS',
   }
-  state[indexKey] = idx + 1
-  return voice
+  const angleLabels = {
+    professional:      'Angle 1',
+    athlete:           'Angle 2',
+    'style-conscious': 'Angle 3',
+  }
+
+  const result = { verbatimPhrases: [], storyAngle: null, hashtagSignal: '' }
+  const header = personaHeaders[persona]
+  if (!header) return result
+
+  // Extract verbatim phrases from this persona's section
+  const personaSection = content.match(
+    new RegExp(`## ${escapeRegex(header)}[\\s\\S]*?(?=\\n## (?:MAN \\d|Story Angles|Hashtag)|$)`)
+  )
+  if (personaSection) {
+    const verbMatch = personaSection[0].match(/### Verbatim Language\n([\s\S]*?)(?=\n###|\n##|$)/)
+    if (verbMatch) {
+      result.verbatimPhrases = verbMatch[1]
+        .split('\n')
+        .map(l => l.replace(/^[-*•]\s*"?/, '').replace(/"?\s*$/, '').trim())
+        .filter(l => l.length > 3 && !l.startsWith('#') && !l.startsWith('*') && !l.startsWith('_'))
+    }
+  }
+
+  // Extract the story angle for this persona
+  const angleLabel = angleLabels[persona]
+  const anglesSection = content.match(/## Story Angles for Media-Director[\s\S]*?(?=\n## Hashtag|$)/)
+  if (anglesSection) {
+    const angleMatch = anglesSection[0].match(
+      new RegExp(`\\*\\*${escapeRegex(angleLabel)}[^*]*\\*\\*\\n([\\s\\S]*?)(?=\\n\\*\\*Angle \\d|$)`)
+    )
+    if (angleMatch) {
+      const t = angleMatch[1]
+      result.storyAngle = {
+        hook:             extractBulletValue(t, 'Hook'),
+        voiceTag:         extractBulletValue(t, 'BSV voice'),
+        whyThisWeek:      extractBulletValue(t, 'Why this week'),
+        draftOpeningLine: extractBulletValue(t, 'Draft opening line'),
+      }
+    }
+  }
+
+  // Hashtag performance section (truncated — full context passed to creative-agent)
+  const hashtagSection = content.match(/## Hashtag Performance Signal[\s\S]*$/)
+  if (hashtagSection) result.hashtagSignal = hashtagSection[0].slice(0, 600)
+
+  return result
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -87,41 +183,46 @@ function pickVoice(pool, lastVoice, indexKey, state) {
     log(`Defaulting to tomorrow: ${targetDay}`)
   }
 
-  const themes = THEME_CALENDAR[targetDay]
+  const themes   = THEME_CALENDAR[targetDay]
+  const personas = PERSONA_CALENDAR[targetDay]
 
-  // Load rotation state and assign voices
-  const state    = loadVoiceState()
-  const lastVoice = state.lastVoice || null
+  log('Loading social intelligence report...')
+  const socialReport = loadLatestSocialReport()
+  log(`Social report: ${socialReport ? socialReport.filename : 'none — persona context will use defaults'}`)
 
-  const amVoice = pickVoice(AM_VOICE_POOL, lastVoice, 'amIndex', state)
-  const pmVoice = pickVoice(PM_VOICE_POOL, amVoice,   'pmIndex', state)
-
-  state.lastVoice = pmVoice
-  saveVoiceState(state)
-
-  log(`Themes  — AM: "${themes.am}"  PM: "${themes.pm}"`)
-  log(`Voices  — AM: ${amVoice}  PM: ${pmVoice}`)
-
-  // Call creative-agent for each slot with theme + assigned voice
-  const slotVoices = { am: amVoice, pm: pmVoice }
   for (const period of ['am', 'pm']) {
-    const slug       = `${targetDay}-${period}`
-    const theme      = themes[period]
-    const voiceName  = slotVoices[period]
-    const voiceDef   = VOICES[voiceName]
+    const slug     = `${targetDay}-${period}`
+    const theme    = themes[period]
+    const persona  = personas[period]
+    const voice    = PERSONA_VOICE_MAP[persona][period]
+    const lane     = PERSONA_LANE[persona]
+    const hashtags = PERSONA_HASHTAGS[persona]
+    const voiceDef = VOICES[voice]
 
-    // Serialize the full voice definition so creative-agent has it at execution time
-    const voiceJson = JSON.stringify(voiceDef)
+    const parsed = parseSocialReport(socialReport?.content, persona)
+    const personaContext = {
+      persona,
+      lane,
+      voice,
+      hashtags,
+      verbatimPhrases:  parsed?.verbatimPhrases  ?? [],
+      storyAngle:       parsed?.storyAngle        ?? null,
+      hashtagSignal:    parsed?.hashtagSignal      ?? '',
+    }
 
-    log(`Spawning creative-agent --slot ${slug} --theme "${theme}" --voice ${voiceName}...`)
+    log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${theme}"`)
+    if (parsed?.storyAngle?.hook) log(`  angle: "${parsed.storyAngle.hook}"`)
+    if (parsed?.verbatimPhrases?.length) log(`  verbatim phrases: ${parsed.verbatimPhrases.length}`)
+
     const result = spawnSync(
       process.execPath,
       [
         path.join(__dirname, 'creative-agent.js'),
-        '--slot',  slug,
-        '--theme', theme,
-        '--voice', voiceName,
-        '--voice-def', voiceJson,
+        '--slot',            slug,
+        '--theme',           theme,
+        '--voice',           voice,
+        '--voice-def',       JSON.stringify(voiceDef),
+        '--persona-context', JSON.stringify(personaContext),
       ],
       { stdio: 'inherit', env: process.env }
     )
