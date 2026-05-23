@@ -28,6 +28,37 @@ const DAILY_API_CEILING   = 2.00
 const CLAUDE_INPUT_PER_M  = 3.00
 const CLAUDE_OUTPUT_PER_M = 15.00
 
+// ─── Agent ecosystem registry ─────────────────────────────────────────────────
+// Complete upstream → downstream map. Chief knows the whole chain.
+// No agent ships without being added here first.
+
+const AGENT_ECOSYSTEM_REGISTRY = `
+social-listening    → feeds media-director (social-report to Drive/Reports/)
+media-director      → feeds creative-agent; reads social-report and brand-health
+creative-agent      → feeds distribute via Drive; reads media-director brief
+brand-manager       → feeds media-director; audits creative-agent output (brand-health to Drive/Reports/)
+marketing-manager   → feeds chief; informs media-director strategy
+image-gen           → feeds watch-drive via Drive (images to Ready to Post/)
+video-gen           → feeds watch-drive via Drive (videos to Ready to Post/)
+gemini-bridge       → feeds image-gen and video-gen
+watch-drive         → orchestrates resize-post, brand-image, brand-video, distribute
+resize-post         → feeds brand-image; output to posts/output/
+brand-image         → feeds distribute; output to posts/output/
+brand-video         → feeds distribute; output to posts/output/
+distribute          → posts to Instagram, Bluesky
+eng-bot             → reads all logs; alerts chief and Big D on failures
+change-agent        → monitors commits; files GitHub issues; alerts chief
+update-handoff      → writes BSV-Handoff.md nightly to Drive/Handoff/
+cost-report         → tracks API spend; alerts Big D on low balance
+product-research    → feeds Google Sheets; feeds sync-shop
+sync-shop           → generates Locker Room page; pushes to Cloudflare Pages
+blog-agent          → writes Sole Report articles; pushes to GitHub
+promote-sole-report → feeds distribute pipeline
+product-development → feeds Big D decisions
+`.trim()
+
+const ECOSYSTEM_MANDATE = `ECOSYSTEM MANDATE: Every agent exists to serve the ecosystem, not itself. An agent that runs and produces nothing downstream has failed. An agent that runs without being fed has been abandoned. Chief's job is to make sure neither happens. Every morning chief confirms the chain is intact from social-listening all the way to distribute. Every break gets named, its downstream impact gets stated, and Big D gets a decision to make.`
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -87,31 +118,29 @@ function loadLatestHandoff() {
 
 async function checkRevenue() {
   const result = {
-    available:   false,
-    error:       null,
-    yesterday:   { commissions: 0, amount: 0 },
-    week:        { commissions: 0, amount: 0 },
+    available:     false,
+    error:         null,
+    yesterday:     { commissions: 0, amount: 0 },
+    week:          { commissions: 0, amount: 0 },
     linksDeployed: false,
     shopLinkCount: 0,
-    action:      null,
+    action:        null,
   }
 
   const cjToken = process.env.CJ_API_TOKEN
   const cjCid   = process.env.CJ_CID
 
   if (cjToken && cjCid) {
-    const xmlTag = (xml, tag) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`)); return m ? m[1].trim() : null }
+    const xmlTag   = (xml, tag) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`)); return m ? m[1].trim() : null }
     const allBlocks = (xml, tag) => { const re = new RegExp(`<${tag}[\\s\\S]*?</${tag}>`, 'g'); return [...xml.matchAll(re)].map(m => m[0]) }
 
     const fetchCommissions = async (startDate, endDate) => {
       const url = `https://commissions.api.cj.com/v3/commissions?date-type=posting&start-date=${startDate}&end-date=${endDate}&website-id=${cjCid}`
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${cjToken}`, Accept: 'application/xml' },
-      })
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${cjToken}`, Accept: 'application/xml' } })
       const xml = await res.text()
       if (!res.ok) throw new Error(`CJ API ${res.status}: ${xml.slice(0, 200)}`)
       const totalMatch = xml.match(/total-matched="(\d+)"/)
-      const total = totalMatch ? parseInt(totalMatch[1]) : 0
+      const total  = totalMatch ? parseInt(totalMatch[1]) : 0
       const blocks = allBlocks(xml, 'commission')
       const amount = blocks.reduce((sum, b) => {
         const a = xmlTag(b, 'commission-amount')
@@ -121,24 +150,16 @@ async function checkRevenue() {
     }
 
     try {
-      const yd = new Date(_now)
-      yd.setDate(yd.getDate() - 1)
-      const ydStr = yd.toISOString().slice(0, 10)
-      const wkStart = new Date(_now)
-      wkStart.setDate(wkStart.getDate() - 7)
-      const wkStr   = wkStart.toISOString().slice(0, 10)
-      const todayStr = DATE_STAMP
-
+      const yd = new Date(_now); yd.setDate(yd.getDate() - 1)
+      const wk = new Date(_now); wk.setDate(wk.getDate() - 7)
       const [ydData, wkData] = await Promise.all([
-        fetchCommissions(ydStr, ydStr),
-        fetchCommissions(wkStr, todayStr),
+        fetchCommissions(yd.toISOString().slice(0, 10), yd.toISOString().slice(0, 10)),
+        fetchCommissions(wk.toISOString().slice(0, 10), DATE_STAMP),
       ])
-      result.available  = true
-      result.yesterday  = ydData
-      result.week       = wkData
-    } catch (err) {
-      result.error = err.message
-    }
+      result.available = true
+      result.yesterday = ydData
+      result.week      = wkData
+    } catch (err) { result.error = err.message }
   } else {
     result.error = 'CJ_API_TOKEN or CJ_CID not set'
   }
@@ -146,11 +167,9 @@ async function checkRevenue() {
   try {
     const shopHtml = fs.readFileSync(path.join(ROOT, 'public', 'shop', 'index.html'), 'utf8')
     const matches  = shopHtml.match(/amazon\.com[^"']*tag=|impact\.com|shareasale\.com|cj\.com\/redir/g) || []
-    result.shopLinkCount  = matches.length
-    result.linksDeployed  = matches.length > 0
-  } catch {
-    result.linksDeployed = false
-  }
+    result.shopLinkCount = matches.length
+    result.linksDeployed = matches.length > 0
+  } catch { result.linksDeployed = false }
 
   if (!result.linksDeployed) {
     result.action = 'Deploy affiliate links — approve products in the sheet, run sync-shop.js'
@@ -170,20 +189,15 @@ async function checkRevenue() {
 // ─── Priority 2: Post confirmation ────────────────────────────────────────────
 
 function checkPosts() {
-  const ABBRS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
-  const yd    = new Date(_now)
-  yd.setDate(yd.getDate() - 1)
-  const dayAbbr       = ABBRS[yd.getDay()]
-  const yesterdayStr  = yd.toISOString().slice(0, 10)
+  const ABBRS = ['sun','mon','tue','wed','thu','fri','sat']
+  const yd    = new Date(_now); yd.setDate(yd.getDate() - 1)
+  const dayAbbr = ABBRS[yd.getDay()]
 
   const expectedSlots = [`${dayAbbr}-am`, `${dayAbbr}-pm`]
-
-  const todayAbbr  = ABBRS[_now.getDay()]
-  const localHour  = _now.getHours()
-  const localMin   = _now.getMinutes()
-  const localMins  = localHour * 60 + localMin
-  if (localMins >= 10 * 60)  expectedSlots.push(`${todayAbbr}-am`)
-  if (localMins >= 20 * 60)  expectedSlots.push(`${todayAbbr}-pm`)
+  const todayAbbr = ABBRS[_now.getDay()]
+  const localMins = _now.getHours() * 60 + _now.getMinutes()
+  if (localMins >= 600)  expectedSlots.push(`${todayAbbr}-am`)
+  if (localMins >= 1200) expectedSlots.push(`${todayAbbr}-pm`)
 
   const succeededSlots = new Set()
   try {
@@ -208,29 +222,29 @@ function checkPosts() {
   const gaps      = expectedSlots.filter(s => !succeededSlots.has(s))
 
   log(`Posts: ${dayAbbr}/today — confirmed=${confirmed.join(',') || 'none'}, gaps=${gaps.join(',') || 'none'}, stuck media=${stuckMediaSlots.join(',') || 'none'}`)
-  return { expectedSlots, confirmed, gaps, stuckMediaSlots, dayAbbr, yesterdayStr }
+  return { expectedSlots, confirmed, gaps, stuckMediaSlots, dayAbbr }
 }
 
 // ─── Priority 3: Agent health ─────────────────────────────────────────────────
 
 const AGENT_ROSTER = [
-  { name: 'watch-drive',       essential: true,  weekly: false },
-  { name: 'eng-bot',           essential: true,  weekly: false },
-  { name: 'media-director',    essential: true,  weekly: false },
-  { name: 'creative-agent',    essential: true,  weekly: false },
-  { name: 'distribute',        essential: false, weekly: false },
-  { name: 'social-listening',  essential: false, weekly: false },
-  { name: 'gemini-bridge',     essential: false, weekly: false },
-  { name: 'image-gen',         essential: false, weekly: false },
-  { name: 'video-gen',         essential: false, weekly: false },
-  { name: 'update-handoff',    essential: false, weekly: false },
-  { name: 'change-agent',      essential: true,  weekly: false },
-  { name: 'brand-manager',     essential: false, weekly: true  },
-  { name: 'marketing-manager', essential: false, weekly: true  },
-  { name: 'product-research',  essential: false, weekly: true  },
-  { name: 'cj-research',       essential: false, weekly: true  },
-  { name: 'blog-agent',        essential: false, weekly: true  },
-  { name: 'cost-report',       essential: false, weekly: false },
+  { name: 'watch-drive',        essential: true,  weekly: false },
+  { name: 'eng-bot',            essential: true,  weekly: false },
+  { name: 'media-director',     essential: true,  weekly: false },
+  { name: 'creative-agent',     essential: true,  weekly: false },
+  { name: 'distribute',         essential: false, weekly: false },
+  { name: 'social-listening',   essential: false, weekly: false },
+  { name: 'gemini-bridge',      essential: false, weekly: false },
+  { name: 'image-gen',          essential: false, weekly: false },
+  { name: 'video-gen',          essential: false, weekly: false },
+  { name: 'update-handoff',     essential: false, weekly: false },
+  { name: 'change-agent',       essential: true,  weekly: false },
+  { name: 'brand-manager',      essential: false, weekly: true  },
+  { name: 'marketing-manager',  essential: false, weekly: true  },
+  { name: 'product-research',   essential: false, weekly: true  },
+  { name: 'cj-research',        essential: false, weekly: true  },
+  { name: 'blog-agent',         essential: false, weekly: true  },
+  { name: 'cost-report',        essential: false, weekly: false },
 ]
 
 function checkAgentHealth() {
@@ -240,26 +254,18 @@ function checkAgentHealth() {
 
   for (const agent of AGENT_ROSTER) {
     const logPath = path.join(ROOT, 'logs', `${agent.name}.log`)
-
     if (!fs.existsSync(logPath)) {
-      if (agent.essential) {
-        issues.push({ name: agent.name, severity: 'error', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
-      }
+      if (agent.essential) issues.push({ name: agent.name, severity: 'error', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
       continue
     }
-
-    const ageMins  = (now - fs.statSync(logPath).mtimeMs) / 60000
+    const ageMins   = (now - fs.statSync(logPath).mtimeMs) / 60000
     const staleMins = agent.weekly ? 7 * 24 * 60 : 120
-    const isStale  = ageMins > staleMins && agent.essential
-
-    let lastLines = []
-    let errors    = []
+    const isStale   = ageMins > staleMins && agent.essential
+    let errors = []
     try {
       const content = fs.readFileSync(logPath, 'utf8')
-      lastLines = content.trim().split('\n').slice(-60)
-      errors    = lastLines.filter(l => /^\[[^\]]+\]\s*(ERROR|CRASH|FATAL)/i.test(l))
+      errors = content.trim().split('\n').slice(-60).filter(l => /^\[[^\]]+\]\s*(ERROR|CRASH|FATAL)/i.test(l))
     } catch {}
-
     if (isStale) {
       issues.push({ name: agent.name, severity: 'warning', msg: `stale — ${Math.round(ageMins / 60)}h since last activity`, fix: `node scripts/${agent.name}.js` })
     } else if (errors.length) {
@@ -275,7 +281,7 @@ function checkAgentHealth() {
     const heartbeat  = cs.last_heartbeat ? new Date(cs.last_heartbeat) : null
     const hoursSince = heartbeat ? (now - heartbeat.getTime()) / 3600000 : Infinity
     if (hoursSince > 25 && !issues.find(i => i.name === 'change-agent')) {
-      issues.push({ name: 'change-agent', severity: 'warning', msg: `heartbeat ${Math.round(hoursSince)}h ago — change monitoring stale`, fix: 'node scripts/change-agent.js' })
+      issues.push({ name: 'change-agent', severity: 'warning', msg: `heartbeat ${Math.round(hoursSince)}h ago`, fix: 'node scripts/change-agent.js' })
       ok.splice(ok.indexOf('change-agent'), 1)
     }
   } catch {}
@@ -289,120 +295,54 @@ function checkAgentHealth() {
 
 function checkGrowth() {
   const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null }
-
   const parseSubscribers = (content) => {
     if (!content) return null
     const lounge = content.match(/lounge[^:\n]*:\s*([\d,]+)/i)
     const drop   = content.match(/drop[^:\n]*:\s*([\d,]+)/i)
-    return {
-      lounge: lounge ? parseInt(lounge[1].replace(/,/g, '')) : null,
-      drop:   drop   ? parseInt(drop[1].replace(/,/g, ''))   : null,
-    }
+    return { lounge: lounge ? parseInt(lounge[1].replace(/,/g, '')) : null, drop: drop ? parseInt(drop[1].replace(/,/g, '')) : null }
   }
-
   try {
-    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim().split('\n')
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+      .trim().split('\n')
       .map(l => l.trim().split(/\s+/).slice(1).join(' '))
       .filter(f => f.startsWith('marketing-') && f.endsWith('.md'))
       .sort()
-
-    if (!files.length) {
-      result.trend = 'no marketing reports'
-      result.recommendation = 'Run marketing-manager.js to establish subscriber baseline'
-      return result
-    }
-
+    if (!files.length) { result.trend = 'no marketing reports'; result.recommendation = 'Run marketing-manager.js to establish subscriber baseline'; return result }
     const loadReport = (f) => {
-      try {
-        execSync(`rclone copy "${REMOTE}/Reports/${f}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
-        return fs.readFileSync(path.join(TEMP_DIR, f), 'utf8')
-      } catch { return null }
+      try { execSync(`rclone copy "${REMOTE}/Reports/${f}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] }); return fs.readFileSync(path.join(TEMP_DIR, f), 'utf8') } catch { return null }
     }
-
-    const latestContent = loadReport(files[files.length - 1])
-    const prevContent   = files.length >= 2 ? loadReport(files[files.length - 2]) : null
-
-    const latest = parseSubscribers(latestContent)
-    const prev   = parseSubscribers(prevContent)
-
-    if (latest) {
-      result.lounge = latest.lounge
-      result.drop   = latest.drop
-      result.total  = (latest.lounge || 0) + (latest.drop || 0)
-    }
-
+    const latest = parseSubscribers(loadReport(files[files.length - 1]))
+    const prev   = files.length >= 2 ? parseSubscribers(loadReport(files[files.length - 2])) : null
+    if (latest) { result.lounge = latest.lounge; result.drop = latest.drop; result.total = (latest.lounge || 0) + (latest.drop || 0) }
     if (latest && prev) {
-      const latestN = (latest.lounge || 0) + (latest.drop || 0)
-      const prevN   = (prev.lounge || 0) + (prev.drop || 0)
-      const delta   = latestN - prevN
+      const delta = ((latest.lounge || 0) + (latest.drop || 0)) - ((prev.lounge || 0) + (prev.drop || 0))
       if (delta > 0)      result.trend = `+${delta} vs last report`
       else if (delta < 0) { result.trend = `${delta} vs last report`; result.recommendation = 'Subscriber decline — check opt-out rates and post high-engagement content today' }
       else                { result.trend = 'flat vs last report'; result.recommendation = 'Flat growth — post a strong visual with a direct follow/subscribe CTA today' }
-    } else {
-      result.trend = 'only one report — no trend yet'
-    }
-  } catch (err) {
-    log(`Growth check error: ${err.message}`)
-    result.trend = `error: ${err.message.slice(0, 60)}`
-  }
-
+    } else { result.trend = 'only one report — no trend yet' }
+  } catch (err) { log(`Growth check error: ${err.message}`); result.trend = `error: ${err.message.slice(0, 60)}` }
   log(`Growth: total=${result.total ?? 'unknown'} (lounge=${result.lounge ?? '?'}, drop=${result.drop ?? '?'}), trend=${result.trend}`)
   return result
 }
 
 // ─── Local state helpers ──────────────────────────────────────────────────────
 
-function getRecentLog(filename, n = 80) {
-  try {
-    const p = path.join(ROOT, 'logs', filename)
-    if (!fs.existsSync(p)) return null
-    const all = fs.readFileSync(p, 'utf8').trim().split('\n')
-    return all.slice(-n).join('\n')
-  } catch { return null }
-}
-
 function getHandoffFindings() {
-  try {
-    const p = path.join(ROOT, 'logs', 'handoff-findings.md')
-    if (!fs.existsSync(p)) return null
-    return fs.readFileSync(p, 'utf8').trim() || null
-  } catch { return null }
-}
-
-function getPostStateRaw() {
-  try {
-    const p = path.join(ROOT, 'logs', 'post-state.json')
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+  try { const p = path.join(ROOT, 'logs', 'handoff-findings.md'); return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').trim() || null : null } catch { return null }
 }
 
 function getOutputFiles() {
-  try { return fs.readdirSync(path.join(ROOT, 'posts', 'output')).filter(f => !f.startsWith('.')).sort() }
-  catch { return [] }
-}
-
-function getReadyToPost() {
-  try {
-    const out = execSync(`rclone ls --max-depth 1 "${REMOTE}/Ready to Post/"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim()
-    return out ? out.split('\n').map(l => l.trim().split(/\s+/).slice(1).join(' ')).filter(Boolean).join(', ') : '(empty)'
-  } catch { return '(unavailable)' }
+  try { return fs.readdirSync(path.join(ROOT, 'posts', 'output')).filter(f => !f.startsWith('.')).sort() } catch { return [] }
 }
 
 // ─── Token budget ─────────────────────────────────────────────────────────────
 
 function buildTokenBudget() {
-  const dayStart = new Date(_now)
-  dayStart.setHours(0, 0, 0, 0)
-
+  const dayStart = new Date(_now); dayStart.setHours(0, 0, 0, 0)
   const LOGS = ['eng-bot','social-listening','media-director','brand-manager','marketing-manager',
     'product-development','product-research','change-agent','blog-agent','update-handoff','chief-of-staff',
     'resize-post','brand-image','brand-video']
   const breakdown = []
-
   for (const name of LOGS) {
     const p = path.join(ROOT, 'logs', `${name}.log`)
     if (!fs.existsSync(p)) continue
@@ -420,7 +360,6 @@ function buildTokenBudget() {
     breakdown.push({ name, calls, tokens, cost })
   }
   breakdown.sort((a, b) => b.cost - a.cost)
-
   const estTotal = breakdown.reduce((s, r) => s + r.cost, 0)
   let officialTotal = null
   try {
@@ -430,7 +369,6 @@ function buildTokenBudget() {
       if (m) { officialTotal = parseFloat(m[1]); break }
     }
   } catch {}
-
   return { breakdown, estTotal, officialTotal, reported: officialTotal ?? estTotal, pct: ((officialTotal ?? estTotal) / DAILY_API_CEILING) * 100 }
 }
 
@@ -476,6 +414,187 @@ async function fetchInstagramInsights(mediaId) {
   } catch { return null }
 }
 
+// ─── Ecosystem integrity check ────────────────────────────────────────────────
+// Runs before everything else. Checks every agent handoff for breaks.
+// Rogue = ran outside scheduled window without upstream directive.
+// Orphaned = produced output nothing consumed within 24h.
+
+function checkEcosystemIntegrity(agents) {
+  const now  = Date.now()
+  const H24  = 24  * 3600000
+  const H48  = 48  * 3600000
+  const H7D  = 168 * 3600000
+
+  const logAge = (name) => {
+    try {
+      const p = path.join(ROOT, 'logs', `${name}.log`)
+      return fs.existsSync(p) ? now - fs.statSync(p).mtimeMs : Infinity
+    } catch { return Infinity }
+  }
+
+  const logContains = (name, pattern, lastN = 200) => {
+    try {
+      const p = path.join(ROOT, 'logs', `${name}.log`)
+      if (!fs.existsSync(p)) return false
+      return fs.readFileSync(p, 'utf8').trim().split('\n').slice(-lastN).some(l => pattern.test(l))
+    } catch { return false }
+  }
+
+  const checks = []
+  const check  = (label, ok, issue, downstreamImpact, decision) =>
+    checks.push({ ok, label, ...(ok ? {} : { issue, downstreamImpact, decision }) })
+
+  // social-listening → media-director
+  const slAge = logAge('social-listening')
+  if (slAge > H48) {
+    check('social-listening → media-director', false,
+      `social-listening has not run in ${Math.round(slAge / H24)}d`,
+      'media-director briefing without fresh persona intelligence',
+      'Run social-listening manually before tonight\'s brief?')
+  } else if (!logContains('media-director', /social.?report|Social report/i, 100)) {
+    check('social-listening → media-director', false,
+      'social report generated but media-director shows no load confirmation',
+      'Briefs may be running on stale persona signal',
+      'Check media-director.log — social report load may have failed silently')
+  } else {
+    check('social-listening → media-director', true)
+  }
+
+  // brand-manager → media-director (weekly cadence)
+  const bmAge = logAge('brand-manager')
+  if (bmAge > H7D) {
+    check('brand-manager → media-director', false,
+      `brand-manager last ran ${Math.round(bmAge / H24)}d ago`,
+      'media-director briefing on stale brand signal',
+      'Force brand-manager run before tonight\'s brief?')
+  } else {
+    check('brand-manager → media-director', true)
+  }
+
+  // media-director → creative-agent
+  const mdAge = logAge('media-director')
+  const caAge = logAge('creative-agent')
+  const briefsExist = (() => {
+    try { return fs.readdirSync(path.join(ROOT, 'posts', 'briefs')).some(f => f.endsWith('-brief.txt')) } catch { return false }
+  })()
+  if (mdAge > H48) {
+    check('media-director → creative-agent', false,
+      `media-director has not run in ${Math.round(mdAge / H24)}d`,
+      'No briefs generated. Content pipeline stalled.',
+      'Check launchd status for com.bsv.media-director')
+  } else if (mdAge < H24 && caAge > mdAge + 2 * 3600000) {
+    check('media-director → creative-agent', false,
+      'media-director ran but creative-agent did not follow within 2h',
+      'Briefs not written — no content to distribute tonight',
+      'Check creative-agent.log for API failures')
+  } else if (!briefsExist) {
+    check('media-director → creative-agent', false,
+      'No brief files in posts/briefs/',
+      'Nothing for distribute to pick up',
+      'Run creative-agent manually for today\'s slots')
+  } else {
+    check('media-director → creative-agent', true)
+  }
+
+  // watch-drive → distribute
+  const wdAge = logAge('watch-drive')
+  if (wdAge > H24) {
+    check('watch-drive → distribute', false,
+      `watch-drive inactive for ${Math.round(wdAge / H24)}d`,
+      'Nothing moving from Drive through pipeline. No posts distributing.',
+      'Restart: node scripts/watch-drive.js')
+  } else {
+    check('watch-drive → distribute', true)
+  }
+
+  // gemini-bridge → image-gen / video-gen
+  const gbAge = logAge('gemini-bridge')
+  if (gbAge > H48) {
+    check('gemini-bridge → image-gen / video-gen', false,
+      `gemini-bridge has not run in ${Math.round(gbAge / H24)}d`,
+      'No new media assets being generated for the pipeline',
+      'Check gemini-bridge — it runs after media-director briefs slots')
+  } else {
+    check('gemini-bridge → image-gen / video-gen', true)
+  }
+
+  // eng-bot → log triage
+  const ebAge = logAge('eng-bot')
+  if (ebAge > H24) {
+    check('eng-bot → log triage', false,
+      'eng-bot has not run in 24h',
+      'Pipeline errors accumulating without triage or alerts',
+      'Check eng-bot launchd schedule')
+  } else {
+    check('eng-bot → log triage', true)
+  }
+
+  // update-handoff
+  const uhAge = logAge('update-handoff')
+  if (uhAge > H48) {
+    check('update-handoff → Drive', false,
+      'handoff not updated in 48h — BSV-Handoff.md stale',
+      'Context gap on next session start',
+      null)
+  } else {
+    check('update-handoff → Drive', true)
+  }
+
+  // cost-report spend tracking
+  const crAge = logAge('cost-report')
+  if (crAge > H24) {
+    check('cost-report → spend tracking', false,
+      'cost-report not run in 24h — spend untracked',
+      'Balance alerts will not fire',
+      null)
+  } else {
+    check('cost-report → spend tracking', true)
+  }
+
+  // Orphaned brief detection — brief exists, not distributed, >3h old
+  const orphanedBriefs = []
+  try {
+    const briefFiles = fs.readdirSync(path.join(ROOT, 'posts', 'briefs')).filter(f => f.endsWith('-brief.txt'))
+    const postState  = (() => { try { const p = path.join(ROOT, 'logs', 'post-state.json'); return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : [] } catch { return [] } })()
+    const distributed = new Set((Array.isArray(postState) ? postState : []).filter(e => e.status === 'success').map(e => e.slot))
+    for (const brief of briefFiles) {
+      const slot  = brief.replace('-brief.txt', '')
+      const mtime = fs.statSync(path.join(ROOT, 'posts', 'briefs', brief)).mtimeMs
+      if ((now - mtime) > 3 * 3600000 && !distributed.has(slot)) orphanedBriefs.push(slot)
+    }
+  } catch {}
+
+  // Rogue agent detection — placeholder for future signal (requires schedule metadata)
+  const rogueAgents = []
+
+  const allGreen = checks.every(c => c.ok) && orphanedBriefs.length === 0
+  log(`Ecosystem: ${allGreen ? 'all green' : checks.filter(c => !c.ok).length + ' break(s), orphaned=' + orphanedBriefs.join(',') || 'none'}`)
+  return { checks, allGreen, orphanedBriefs, rogueAgents }
+}
+
+function formatEcosystemCheckText(ecosystem) {
+  if (ecosystem.allGreen) return 'Ecosystem intact. All agents connected overnight.'
+  const lines = []
+  for (const c of ecosystem.checks) {
+    if (c.ok) {
+      lines.push(`✅ ${c.label}`)
+    } else {
+      lines.push(`❌ ${c.label}`)
+      lines.push(`   ${c.issue}`)
+      if (c.downstreamImpact) lines.push(`   ${c.downstreamImpact}`)
+      if (c.decision) lines.push(`   Decision needed: ${c.decision}`)
+    }
+  }
+  if (ecosystem.orphanedBriefs.length) {
+    lines.push(`⚠️ Orphaned briefs (written, never distributed): ${ecosystem.orphanedBriefs.join(', ')}`)
+    lines.push(`   Decision needed: check watch-drive and distribute logs for these slots`)
+  }
+  if (ecosystem.rogueAgents.length) {
+    lines.push(`🚨 Rogue agents (ran without upstream directive): ${ecosystem.rogueAgents.join(', ')}`)
+  }
+  return lines.join('\n')
+}
+
 // ─── Directive options ────────────────────────────────────────────────────────
 
 function saveDirectiveOptions(options) {
@@ -495,7 +614,7 @@ function parseDirectiveOptions(standupText) {
   const re = /### Option (\d) — ([^\n]+)\n[\s\S]*?\*\*DIRECTIVE:\*\*\s*([^\n]+)/g
   let m
   while ((m = re.exec(standupText)) !== null) {
-    const block = standupText.slice(m.index, m.index + 600)
+    const block   = standupText.slice(m.index, m.index + 600)
     const personaM = block.match(/\*\*Persona:\*\*\s*([^|*\n]+)/)
     const voiceM   = block.match(/\*\*Voice:\*\*\s*([^|*\n]+)/)
     const laneM    = block.match(/\*\*Lane:\*\*\s*([^|*\n]+)/)
@@ -575,10 +694,10 @@ async function processTelegramInbox() {
     if (!target) { log('Telegram inbox: no pending items to resolve'); continue }
 
     log(`Telegram inbox: resolving ${target.id} → ${keyword}`)
-    target._resolved  = true
-    target._resolvedBy = 'telegram'
-    target._resolvedAt = new Date().toISOString()
-    target._decision   = keyword
+    target._resolved   = true
+    target._resolvedBy  = 'telegram'
+    target._resolvedAt  = new Date().toISOString()
+    target._decision    = keyword
     pendingChanged = true
 
     if (keyword === 'approved') {
@@ -611,7 +730,7 @@ async function processTelegramInbox() {
       })
     } else if (keyword === 'hold') {
       log(`  HOLD: ${target.id} — deferring to tomorrow`)
-      target._resolved  = false
+      target._resolved   = false
       target.remindAfter = new Date(Date.now() + 24 * 3600000).toISOString()
       pendingChanged = true
       sendTelegram(`⏸ Held: ${target.metadata?.title || target.id} — will resurface tomorrow.`).then(r => {
@@ -658,7 +777,7 @@ async function processChiefInbox(client) {
 async function watchBlogAgent() {
   try {
     const manifestPath = path.join(ROOT, 'public', 'sole-report', 'manifest.json')
-    if (!fs.existsExists(manifestPath)) { log('WATCHDOG: blog-agent never published'); return }
+    if (!fs.existsSync(manifestPath)) { log('WATCHDOG: blog-agent never published'); return }
     const manifest  = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
     const latest    = manifest[0]
     if (!latest) { log('WATCHDOG: blog-agent manifest empty'); return }
@@ -709,18 +828,14 @@ async function watchBlogAgent() {
   const growth = checkGrowth()
 
   // Supporting context
-  const tokenBudget   = buildTokenBudget()
-  const findings      = getHandoffFindings()
-  const directive     = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
-  const memory        = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
-  const orgChart      = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
-  const handoff       = loadLatestHandoff()
-  const socialReport  = loadLatestReport('social-report')
+  const tokenBudget = buildTokenBudget()
+  const directive   = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
+  const memory      = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
+  const orgChart    = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
+  const handoff     = loadLatestHandoff()
+  const socialReport = loadLatestReport('social-report')
   const costState = (() => {
-    try {
-      const p = path.join(ROOT, 'logs', 'cost-state.json')
-      return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
-    } catch { return null }
+    try { const p = path.join(ROOT, 'logs', 'cost-state.json'); return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null } catch { return null }
   })()
 
   log(`Context: directive=${!!directive}, memory=${!!memory}, social=${socialReport?.filename || 'none'}`)
@@ -738,7 +853,13 @@ async function watchBlogAgent() {
     if (insights) p.insights = insights
   }
 
-  // Real blockers only — things actually stopped, not pipeline health
+  // P0: Ecosystem integrity — runs first, feeds Section 0
+  log('P0: Ecosystem integrity...')
+  const ecosystem = checkEcosystemIntegrity(agents)
+  const ecosystemCheckText = formatEcosystemCheckText(ecosystem)
+  log(`Ecosystem: ${ecosystem.allGreen ? 'all green' : ecosystem.checks.filter(c => !c.ok).length + ' break(s)'}`)
+
+  // Real blockers — things stopped that need Big D
   const realBlockers = []
   if (!revenue.linksDeployed) realBlockers.push('Affiliate links not deployed — zero revenue possible')
   if (posts.gaps.length)      realBlockers.push(`${posts.gaps.join(', ')} missed — caption files never uploaded`)
@@ -775,9 +896,14 @@ async function watchBlogAgent() {
   const tomorrowSlug = DOW_TO_SLUG[(_now.getDay() + 1) % 7]
 
   const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
-    + `\n\nYou are the BSV Chief of Staff — the Proprietor's most trusted advisor. Your job: name what the data says, present exactly three strategic options, and let him choose. Statements not questions. Confident. Brief. No filler. No "it's worth noting." The Proprietor runs the room.`
+    + `\n\n## Agent Ecosystem Registry\n${AGENT_ECOSYSTEM_REGISTRY}`
+    + `\n\n${ECOSYSTEM_MANDATE}`
+    + `\n\nYou are the BSV Chief of Staff — the Proprietor's most trusted advisor. Your job: confirm the ecosystem is intact, name what the data says, and present exactly three strategic options. He chooses. Then it happens. Statements not questions. Confident. Brief. No filler. The Proprietor runs the room.`
 
   const standupUser = `Today is ${DAY_NAME} ${DATE_STAMP}.
+
+## Pre-Computed Ecosystem Check (Section 0 — use verbatim)
+${ecosystemCheckText}
 
 ## Revenue
 Yesterday: ${revenue.available ? `$${revenue.yesterday.amount.toFixed(2)} (${revenue.yesterday.commissions} commissions)` : 'no data'} | Week: ${revenue.available ? `$${revenue.week.amount.toFixed(2)}` : 'no data'}
@@ -804,9 +930,12 @@ ${costState ? `Balance: ${costState.balance != null ? '$' + costState.balance.to
 
 ---
 
-Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — they must be present and on one line each.
+Produce this EXACT format. Section 0 content is pre-computed above — use it verbatim. DIRECTIVE lines are parsed by the pipeline and must be on one line each.
 
 # BSV — ${DAY_NAME}, ${DATE_STAMP}
+
+## 0 — Ecosystem Integrity Check
+[Insert the pre-computed ecosystem check text verbatim from above]
 
 ## 1 — Overnight Scorecard
 [Each overnight post: slot, persona, voice, performance data or "no data". Never skip this section. If no posts ran, say so.]
@@ -846,7 +975,7 @@ Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — th
   try {
     const stream = await client.messages.stream({
       model:      'claude-sonnet-4-6',
-      max_tokens: 2500,
+      max_tokens: 2800,
       system:     standupSystem,
       messages:   [{ role: 'user', content: standupUser }],
     })
@@ -890,7 +1019,7 @@ Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — th
   }
 
   // ── Telegram standup ──────────────────────────────────────────────────────
-  // Built from raw data + parsed Claude sections. Five sections, advisor tone.
+  // Six sections (0–5). Section 0 is pre-computed locally — no Claude needed.
 
   const extractSection = (text, n) => {
     const m = text.match(new RegExp(`## ${n} —[^\\n]*\\n([\\s\\S]*?)(?=\\n## \\d|$)`))
@@ -908,17 +1037,25 @@ Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — th
     ? realBlockers.slice(0, 3).map(b => `• ${b}`).join('\n')
     : 'No decisions needed today.'
 
+  // Section 0 Telegram summary — failures only (passes are noise on mobile)
+  const ecosystemFails = ecosystem.checks.filter(c => !c.ok)
+  const ecosystemTg = ecosystem.allGreen && !ecosystem.orphanedBriefs.length
+    ? 'Ecosystem intact. All agents connected overnight.'
+    : ecosystemFails.map(c => `❌ ${c.label}: ${c.issue}`).join('\n')
+      + (ecosystem.orphanedBriefs.length ? `\n⚠️ Orphaned briefs: ${ecosystem.orphanedBriefs.join(', ')}` : '')
+
   const overnightTg = overnight.length
     ? overnight.map(p => {
-        const d = p.insights
-          ? `impressions: ${p.insights.impressions ?? 'n/a'}, reach: ${p.insights.reach ?? 'n/a'}`
-          : 'no data'
+        const d = p.insights ? `impressions: ${p.insights.impressions ?? 'n/a'}, reach: ${p.insights.reach ?? 'n/a'}` : 'no data'
         return `${p.slot} (${p.persona ?? '?'} / ${p.voice ?? '?'}): ${d}`
       }).join('\n')
     : 'No posts in last 24h.'
 
   const telegramParts = [
     `*BSV — ${DAY_NAME} ${DATE_STAMP}*`,
+    ``,
+    `*0 — ECOSYSTEM*`,
+    ecosystemTg,
     ``,
     `*1 — OVERNIGHT*`,
     overnightTg,
@@ -954,7 +1091,14 @@ Produce this EXACT format. The DIRECTIVE lines are parsed by the pipeline — th
   // ── Handoff update ────────────────────────────────────────────────────────
 
   log('Handoff update...')
-  const handoffPrompt = `Update the BSV operational handoff.
+  let handoffText = ''
+  try {
+    const msg = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system:     (directive || '') + '\n\nYou are updating the BSV operational handoff. Return the complete document.',
+      messages:   [{
+        role: 'user', content: `Update the BSV operational handoff.
 
 Today's brief:
 ${standupText || '(brief unavailable)'}
@@ -962,21 +1106,12 @@ ${standupText || '(brief unavailable)'}
 Previous handoff:
 ${handoff ? handoff.slice(0, 2000) : '(none)'}
 
-Write the complete ${HANDOFF_FILENAME}. Sections: what BSV is, pipeline state, content queue, platform status, audience, product shelf, known issues, tonight's schedule, agent team. Direct and specific. No padding.`
-
-  let handoffText = ''
-  try {
-    const msg = await client.messages.create({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
-      system:     (directive || '') + '\n\nYou are updating the BSV operational handoff. Return the complete document.',
-      messages:   [{ role: 'user', content: handoffPrompt }],
+Write the complete ${HANDOFF_FILENAME}. Sections: what BSV is, pipeline state, content queue, platform status, audience, product shelf, known issues, tonight's schedule, agent team. Direct and specific. No padding.`,
+      }],
     })
     handoffText = msg.content[0]?.text?.trim() || ''
     log(`Handoff done — ${msg.usage?.output_tokens ?? '?'} tokens`)
-  } catch (err) {
-    log(`ERROR: handoff API — ${err.message}`)
-  }
+  } catch (err) { log(`ERROR: handoff API — ${err.message}`) }
 
   if (handoffText) {
     const localHandoff = path.join(TEMP_DIR, HANDOFF_FILENAME)
@@ -984,9 +1119,7 @@ Write the complete ${HANDOFF_FILENAME}. Sections: what BSV is, pipeline state, c
       fs.writeFileSync(localHandoff, handoffText)
       rcloneCopyTo(localHandoff, `${REMOTE}/Handoff/${HANDOFF_FILENAME}`)
       log(`Handoff uploaded → ${REMOTE}/Handoff/${HANDOFF_FILENAME}`)
-    } catch (err) {
-      log(`ERROR: handoff upload — ${err.message}`)
-    }
+    } catch (err) { log(`ERROR: handoff upload — ${err.message}`) }
   }
 
   // ── Memory update ─────────────────────────────────────────────────────────
@@ -1021,9 +1154,7 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
     } else {
       log('WARNING: memory update missing header — skipping upload')
     }
-  } catch (err) {
-    log(`ERROR: memory API — ${err.message}`)
-  }
+  } catch (err) { log(`ERROR: memory API — ${err.message}`) }
 
   // ── Lounge content approval ────────────────────────────────────────────────
 
@@ -1047,9 +1178,7 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
         }
       }
     }
-  } catch (err) {
-    log(`WARNING: Lounge approval failed — ${err.message}`)
-  }
+  } catch (err) { log(`WARNING: Lounge approval failed — ${err.message}`) }
 
   // Second inbox pass — catch any replies that arrived during the run
   await processTelegramInbox()
