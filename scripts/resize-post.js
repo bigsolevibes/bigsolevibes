@@ -18,7 +18,25 @@ function log(msg) {
 const GDRIVE_REMOTE  = 'big sole vibes'
 const GDRIVE_OUTPUTS = `${GDRIVE_REMOTE}:Big Sole Vibes/Posts/Output`
 
+function waitForFile(filePath, retries = 3, intervalMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const stat = fs.statSync(filePath)
+      if (stat.size > 0) return true
+    } catch {}
+    if (i < retries - 1) {
+      const deadline = Date.now() + intervalMs
+      while (Date.now() < deadline) {} // sync busy-wait — keeps this outside async context
+    }
+  }
+  return false
+}
+
 function copyToGDrive(localPath) {
+  if (!waitForFile(localPath)) {
+    log(`  ERROR: upload skipped — ${path.basename(localPath)} missing or empty after 3 checks`)
+    return
+  }
   try {
     execSync(`rclone copy "${localPath}" "${GDRIVE_OUTPUTS}"`, { stdio: 'pipe' })
     log(`  → synced to Google Drive: ${GDRIVE_OUTPUTS}`)
@@ -114,7 +132,6 @@ const ext = path.extname(inputPath).toLowerCase()
       }
 
       log(`${platform.name}: ${outputPath}`)
-      copyToGDrive(outputPath)
     }
 
     // Brand all output images first, then copy branded versions to publicDir and desktopDir
@@ -130,6 +147,8 @@ const ext = path.extname(inputPath).toLowerCase()
       const desktopPath = path.join(desktopDir, fileName)
       fs.copyFileSync(outputPath, publicPath)
       fs.copyFileSync(outputPath, desktopPath)
+      // Upload branded file to Drive — existence check inside copyToGDrive
+      copyToGDrive(outputPath)
     }
     log(`copied ${targets.length} variant(s) to public/ and Desktop`)
   }
