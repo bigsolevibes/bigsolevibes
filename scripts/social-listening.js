@@ -62,24 +62,6 @@ function loadMemory() {
   } catch { return null }
 }
 
-function loadLatestBrandHealth() {
-  try {
-    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim().split('\n')
-      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
-      .filter(f => f.match(/^brand-health-\d{4}-\d{2}-\d{2}\.md$/))
-      .sort()
-    if (!files.length) return null
-    const latest = files[files.length - 1]
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    const p = path.join(TEMP_DIR, latest)
-    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
-  } catch { return null }
-}
 
 function getPreviousReport() {
   try {
@@ -127,58 +109,109 @@ function getPreviousReport() {
   const previous    = getPreviousReport()
   log(`Previous report: ${previous ? previous.filename : 'none'}`)
 
-  const brandHealth = loadLatestBrandHealth()
-  log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
-
-  // Build voice reference so Claude can tag observations by voice type
   const voiceNames = Object.values(VOICES).map(v => `${v.name} (${v.description})`).join(' | ')
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver signal, not noise.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Intelligence Agent. One job: deliver actionable signal from three specific audience communities.
 
-You monitor conversations across men's lifestyle, grooming, sneaker culture, and the broader cultural moment. You produce a structured intelligence report that media-director and creative-agent read before generating any content. Your output is raw material — what's happening, what men are saying, what's gaining traction.
+BSV serves three men:
+- **The Professional** — invests in quality, cares about craft, owns good leather. Lives in r/malefashionadvice, r/goodyearwelt, r/bootroom, r/suits. Reads Huckberry, Esquire, GQ.
+- **The Athlete** — pushes his body, cares about recovery and performance. Lives in r/running, r/cycling, r/crossfit, r/nba, r/basketball. Foot and lower-body pain points are a direct BSV entry.
+- **The Style-Conscious** — detail-obsessed, ritual-driven, follows drops. Lives in r/streetwear, r/sneakers, r/malefashionadvice. Reads Highsnobiety, Mr Porter, Complex.
 
-You do not generate creative content. You do not suggest copy. You surface intelligence and let the creative agents do their job.
+Your report is read by media-director before it briefs a single content slot. Everything in it must be usable tomorrow morning.
 
-Be specific. Quote real sources (subreddit, handle, platform — no links). A vague trend observation is worthless. A direct quote from a real thread with 400 upvotes is leverage.
+Rules:
+- Quote real language verbatim. Paraphrase is worthless. A phrase from a real thread is leverage.
+- Name the source (subreddit, publication, platform). No links needed.
+- Gaps are named problems with no solution in sight — not vague "unmet needs."
+- Story angles must be specific enough that media-director can brief them without re-researching.
+- If signal is thin on a topic, say so. Do not fabricate.
 
-## BSV Voice Spectrum (for tagging observations)
-When you identify content angles or post performance signals, tag them by which BSV voice is best positioned to execute: ${voiceNames}. Use the voice name in brackets: [CALLOUT], [PROPRIETOR], etc.`
+## BSV Voice Spectrum
+Tag story angles by voice: ${voiceNames}. Use brackets: [PROPRIETOR], [CALLOUT], etc.`
 
-  const userPrompt = `Run the daily BSV intelligence sweep. Today is ${today}.
+  const userPrompt = `Run the BSV audience intelligence sweep. Today is ${today}.
 
-Search Reddit, X/Twitter, TikTok comment culture, and specialty communities. Find signal, not surface noise.
+${previous ? `## Previous report: ${previous.filename}\nFlag any threads still running or language shifts since yesterday.\n${previous.content.slice(0, 1200)}${previous.content.length > 1200 ? '\n[truncated]' : ''}\n\n---\n` : ''}
 
-${brandHealth ? `## Current Audience (from Brand Health Report ${brandHealth.filename})\nUse these numbers to calibrate what counts as significant traction — a community that would matter to an audience of this size.\n${brandHealth.content.split('\n').slice(0, 20).join('\n')}\n` : ''}
-${previous ? `## Previous report: ${previous.filename}\nNote any evolutions or threads worth following.\n${previous.content.slice(0, 1500)}${previous.content.length > 1500 ? '\n[truncated]' : ''}` : '## No previous report — establish baseline.'}
+Search each persona's communities now. Use web search to pull current Reddit threads, publication coverage, and hashtag activity. Prioritize posts and threads from the past 7 days.
 
 ---
 
 # BSV Social Intelligence Report — ${today}
 
-## What Men Are Talking About
-Real threads, real quotes, real language. What are men saying about grooming, foot care, self-maintenance, standards, and the man who takes care of himself? Not what the brands are saying — what the men are saying. Pull from r/malefashionadvice, r/malegrooming, r/sneakers, r/AskMen, r/streetwear and equivalent X/TikTok communities.
+## MAN 1 — THE PROFESSIONAL
+*Communities: r/malefashionadvice, r/goodyearwelt, r/bootroom, r/suits | Sites: Huckberry, Esquire, GQ*
+*Hashtags: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle*
 
-## Formats Getting Shared
-What content formats are performing in men's lifestyle and grooming this week — not as theory, but as observation. What's getting reposted, screenshotted, saved. Be specific: "dark cinematic product shots are getting 3–4× the engagement of talking-head videos in grooming" is useful. "Video content is trending" is not.
+### Top 3 Conversations Right Now
+For each: thread title or headline, platform/source, approximate engagement signal, and what the conversation is actually about underneath the surface topic.
 
-## The Cultural Moment
-What is the specific thing happening in culture right now — a drop, an anniversary, a conversation, a meme format, a news event — that the BSV man would recognize and care about. Flag which BSV voice it belongs to: **The Lounge** or **The Drop**.
+### Verbatim Language
+Exact phrases and words this community is using — not paraphrased. Pull directly from post titles, comments, article subheads. At least 6–8 phrases.
 
-## The Tension BSV Can Enter
-What frustration, debate, or unmet expectation is alive right now that BSV is positioned to say something real about? Not a topic — a tension. The gap between what men want and what they're getting. The thing they're tired of being sold. The standard they're holding themselves to that no brand is acknowledging.
+### Gaps
+What problems are being named in these communities that no product or brand is visibly solving? Be specific — name the exact complaint.
 
-## 3–5 Content Angles
-Each angle must include:
-- The specific hook or entry point
-- Which BSV voice executes it — use the five-voice names: PROPRIETOR / BARBER / CALLOUT / NOD / STANDARD
-- One draft opening line to test the angle
-- Why right now (what makes this timely this week, not just evergreen)
+---
 
-## Voice Performance Signals
-Look at what BSV has been posting (or posts similar to BSV's style in the men's grooming/lifestyle space). Where you can observe: which tone registers are getting traction? Deadpan authority [PROPRIETOR]? Warm recognition [BARBER]? Hard callouts [CALLOUT]? Minimal knowing copy [NOD]? Aspirational identity [STANDARD]? Tag each observation with the voice name. If data is thin, say so — do not fabricate signals.
+## MAN 2 — THE ATHLETE
+*Communities: r/running, r/cycling, r/crossfit, r/nba, r/basketball*
+*Hashtags: #recoverydays #athletelife #trainhard #crossfit #runnerscommunity*
 
-## Signal vs. Noise
-One thing that looks important but probably isn't. One thing easy to miss that matters.`
+### Top 3 Conversations Right Now
+Focus on recovery conversation, foot and lower-body pain points, performance rituals. Same format: source, engagement signal, what's underneath it.
+
+### Verbatim Language
+Exact phrases from posts, threads, comments. Especially language around foot pain, recovery routines, and self-care rituals. At least 6–8 phrases.
+
+### Gaps
+Specific problems being named — especially around foot health, recovery products, and the gap between athletic performance culture and grooming/care culture.
+
+---
+
+## MAN 3 — THE STYLE-CONSCIOUS
+*Communities: r/streetwear, r/sneakers, r/malefashionadvice | Sites: Highsnobiety, Mr Porter, Complex*
+*Hashtags: #menswear #ootd #streetstyle #complexstyle #highsnobiety*
+
+### Top 3 Conversations Right Now
+Focus on boot and shoe care, detail-oriented grooming, ritual and routine. Same format.
+
+### Verbatim Language
+Exact phrases — especially anything about care rituals, product quality, brand trust, and the language of detail-consciousness. At least 6–8 phrases.
+
+### Gaps
+What detail-level problems are named that no brand is addressing with the seriousness this community expects?
+
+---
+
+## Story Angles for Media-Director
+Three angles, one per persona. Each must be briefable tomorrow morning.
+
+**Angle 1 — The Professional**
+- Hook (one sentence, specific)
+- BSV voice: [VOICE NAME]
+- Why this week, not next week
+- Draft opening line
+
+**Angle 2 — The Athlete**
+- Hook (one sentence, specific)
+- BSV voice: [VOICE NAME]
+- Why this week, not next week
+- Draft opening line
+
+**Angle 3 — The Style-Conscious**
+- Hook (one sentence, specific)
+- BSV voice: [VOICE NAME]
+- Why this week, not next week
+- Draft opening line
+
+---
+
+## Hashtag Performance Signal
+Which hashtags from the three persona lists are getting traction this week vs. going quiet? Use search to check recent post volume and engagement patterns. Flag any rising tags not on the list that BSV should be watching.
+
+Hashtags to assess: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle #recoverydays #athletelife #trainhard #crossfit #runnerscommunity #menswear #ootd #streetstyle #complexstyle #highsnobiety`
 
   log('Calling Claude API with web search...')
   const client = new Anthropic({ apiKey })
@@ -196,7 +229,7 @@ One thing that looks important but probably isn't. One thing easy to miss that m
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       system:     systemPrompt,
-      tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 12 }],
+      tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 18 }],
       messages,
     })
 
