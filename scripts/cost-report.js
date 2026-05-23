@@ -17,10 +17,11 @@ const IMAGEN_PER_IMAGE    = 0.020  // $ per image
 const VEO_PER_SECOND      = 0.35   // $ per second of generated video
 const VEO_CLIP_SECONDS    = 7      // default clip length
 
-const MONTHLY_BUDGET    = 10.00
-const COST_STATE_FILE   = path.join(ROOT, 'logs', 'cost-state.json')
+const MONTHLY_BUDGET      = 10.00
+const COST_STATE_FILE     = path.join(ROOT, 'logs', 'cost-state.json')
 const RUNWAY_WARN_HOURS   = 48
 const RUNWAY_URGENT_HOURS = 24
+const LOW_BALANCE_THRESHOLD = 5.00
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -156,9 +157,29 @@ async function fetchBurnHistory(days) {
   return results
 }
 
-// Returns credit balance in dollars. Anthropic has no public balance endpoint —
-// reads ANTHROPIC_CREDIT_BALANCE from .env (set manually after each top-up).
-function fetchAnthropicBalance() {
+// Returns credit balance in dollars. Tries the Anthropic billing API first;
+// falls back to ANTHROPIC_CREDIT_BALANCE in .env if the endpoint is unavailable.
+async function fetchAnthropicBalance() {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (apiKey) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/billing/credit_balance', {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const raw = data.available_credit ?? data.balance ?? data.credit ?? null
+        if (raw !== null && !isNaN(parseFloat(raw))) {
+          log(`Credit balance from API: $${parseFloat(raw).toFixed(4)}`)
+          return parseFloat(raw)
+        }
+      } else {
+        log(`Credit balance API: ${res.status} — falling back to env var`)
+      }
+    } catch (err) {
+      log(`Credit balance API error: ${err.message} — falling back to env var`)
+    }
+  }
   const raw = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
   return (!isNaN(raw) && raw >= 0) ? raw : null
 }
@@ -343,10 +364,14 @@ function buildReport(today, week, month, reportDate) {
     ? burnHistory.reduce((s, d) => s + d.cost, 0) / burnHistory.length
     : todayData.total   // single-day fallback if history unavailable
 
-  const balance     = fetchAnthropicBalance()
+  const balance     = await fetchAnthropicBalance()
   const runwayHours = (balance !== null && avgDailyBurn > 0)
     ? (balance / avgDailyBurn) * 24
     : null
+
+  // Load previous state for balance alert dedup — must happen before costState is written
+  let prevCostState = {}
+  try { prevCostState = JSON.parse(fs.readFileSync(COST_STATE_FILE, 'utf8')) } catch {}
 
   log(`Burn history (${burnHistory.length}d): ${burnHistory.map(d => `${d.date}=${fmt(d.cost)}`).join(', ') || 'unavailable'}`)
   log(`Avg daily burn: ${fmt(avgDailyBurn)} (${burnHistory.length || 1}-day basis)`)
@@ -354,21 +379,47 @@ function buildReport(today, week, month, reportDate) {
   else                   log('Credit balance: unknown — add ANTHROPIC_CREDIT_BALANCE=$X.XX to .env after top-ups')
   if (runwayHours !== null) log(`Projected runway: ${runwayHours.toFixed(1)} hours`)
 
+  // Determine balance alert state before writing cost-state.json
+  const prevBalance       = prevCostState.balance ?? null
+  const prevAlertSentAt   = prevCostState.balance_alert_sent_at ?? null
+  const balanceNowLow     = balance !== null && balance < LOW_BALANCE_THRESHOLD
+  const wasAboveThreshold = prevBalance === null || prevBalance >= LOW_BALANCE_THRESHOLD
+  const shouldSendBalanceAlert = balanceNowLow && (!prevAlertSentAt || wasAboveThreshold)
+
   // Write cost-state.json so chief-of-staff can read runway into the stand-up
   const costState = {
-    date:           reportDate,
-    today_cost:     todayData.total,
-    avg_daily_burn: avgDailyBurn,
-    burn_days:      burnHistory.length,
-    balance:        balance,
-    runway_hours:   runwayHours,
-    burn_history:   burnHistory,
+    date:                   reportDate,
+    today_cost:             todayData.total,
+    avg_daily_burn:         avgDailyBurn,
+    burn_days:              burnHistory.length,
+    balance:                balance,
+    runway_hours:           runwayHours,
+    burn_history:           burnHistory,
+    balance_alert_sent_at:  balanceNowLow
+      ? (shouldSendBalanceAlert ? new Date().toISOString() : prevAlertSentAt)
+      : null,
   }
   try {
     fs.writeFileSync(COST_STATE_FILE, JSON.stringify(costState, null, 2))
     log('Cost state written → logs/cost-state.json')
   } catch (err) {
     log(`ERROR: cost state write failed: ${err.message}`)
+  }
+
+  // Telegram balance alert — fires once when balance drops below $5, suppressed until topped up
+  if (balanceNowLow) {
+    if (shouldSendBalanceAlert) {
+      const msg =
+        `🚨 *BSV — API Credit Balance Low*\n\n` +
+        `Balance: *$${balance.toFixed(2)}* (threshold: $${LOW_BALANCE_THRESHOLD.toFixed(2)})\n` +
+        `Avg daily burn: *${fmt(avgDailyBurn)}*\n\n` +
+        `Top up now to keep the pipeline running:\n` +
+        `https://console.anthropic.com`
+      const sent = await sendTelegramMessage(msg)
+      log(`Telegram low-balance alert ($${balance.toFixed(2)}): ${sent ? 'sent ✓' : 'failed'}`)
+    } else {
+      log(`Balance $${balance.toFixed(2)} below threshold — alert already sent (${prevAlertSentAt}), suppressing`)
+    }
   }
 
   // Telegram runway alerts — fire before report upload so alert lands even on upload failure

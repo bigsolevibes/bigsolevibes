@@ -13,6 +13,8 @@ const ROOT                  = path.join(__dirname, '..')
 const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
 const LOGS_DIR              = path.join(ROOT, 'logs')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
+const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json')
+const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
@@ -277,6 +279,37 @@ function saveSeen({ baselineAt, hashes }) {
   fs.writeFileSync(SEEN_FILE, JSON.stringify({ baselineAt, hashes }, null, 2))
 }
 
+// ─── Telegram alert deduplication (24h window) ────────────────────────────────
+
+function alertKey(source, message) {
+  const normalized = normalizeMessage(message || '')
+  return crypto.createHash('md5').update(`${source}::${normalized}`).digest('hex')
+}
+
+function loadAlertState() {
+  try { return JSON.parse(fs.readFileSync(ALERT_STATE_FILE, 'utf8')) }
+  catch { return {} }
+}
+
+function saveAlertState(state) {
+  fs.writeFileSync(ALERT_STATE_FILE, JSON.stringify(state, null, 2))
+}
+
+// Returns true if this alert key has not been sent in the last 24h.
+function alertAllowed(key, state) {
+  const sentAt = state[key]
+  if (!sentAt) return true
+  return (Date.now() - new Date(sentAt).getTime()) > ALERT_DEDUP_WINDOW_MS
+}
+
+// Prune stale entries (>48h) to prevent unbounded growth.
+function pruneAlertState(state) {
+  const cutoff = Date.now() - 2 * ALERT_DEDUP_WINDOW_MS
+  for (const [key, ts] of Object.entries(state)) {
+    if (new Date(ts).getTime() < cutoff) delete state[key]
+  }
+}
+
 // ─── OMG Protocol — Missed Post First Responder ───────────────────────────────
 
 async function checkMissedPosts() {
@@ -332,8 +365,13 @@ async function checkMissedPosts() {
 
 // ─── OMG Protocol — Critical Failure Targeted Alerts ─────────────────────────
 
-async function sendCriticalAlerts(activeFailures, actionableExhausted) {
+async function sendCriticalAlerts(activeFailures, actionableExhausted, alertState) {
   for (const f of activeFailures) {
+    const key = alertKey(f.source || 'unknown', f.message || '')
+    if (!alertAllowed(key, alertState)) {
+      log(`OMG: recurring-failure alert suppressed (24h dedup) — ${f.platform} / ${f.source}`)
+      continue
+    }
     const msg = [
       `🚨 *BSV — Recurring Failure (Active)*`,
       ``,
@@ -349,11 +387,20 @@ async function sendCriticalAlerts(activeFailures, actionableExhausted) {
       '```',
     ].join('\n')
     const r = await sendTelegram(msg)
-    if (r?.message_id) log(`OMG: recurring-failure alert (${f.platform}) — message_id: ${r.message_id}`)
-    else log(`WARNING: OMG recurring alert (${f.platform}) — no confirmation`)
+    if (r?.message_id) {
+      log(`OMG: recurring-failure alert (${f.platform}) — message_id: ${r.message_id}`)
+      alertState[key] = new Date().toISOString()
+    } else {
+      log(`WARNING: OMG recurring alert (${f.platform}) — no confirmation`)
+    }
   }
 
   for (const e of actionableExhausted) {
+    const key = alertKey(e.source || 'unknown', `EXHAUSTED:${e.slot}/${e.platform}`)
+    if (!alertAllowed(key, alertState)) {
+      log(`OMG: exhausted-slot alert suppressed (24h dedup) — ${e.slot}/${e.platform}`)
+      continue
+    }
     const msg = [
       `🚨 *BSV — Slot Exhausted: ${e.slot}/${e.platform}*`,
       ``,
@@ -367,8 +414,12 @@ async function sendCriticalAlerts(activeFailures, actionableExhausted) {
       '```',
     ].join('\n')
     const r = await sendTelegram(msg)
-    if (r?.message_id) log(`OMG: exhausted-slot alert (${e.slot}/${e.platform}) — message_id: ${r.message_id}`)
-    else log(`WARNING: OMG exhausted alert (${e.slot}/${e.platform}) — no confirmation`)
+    if (r?.message_id) {
+      log(`OMG: exhausted-slot alert (${e.slot}/${e.platform}) — message_id: ${r.message_id}`)
+      alertState[key] = new Date().toISOString()
+    } else {
+      log(`WARNING: OMG exhausted alert (${e.slot}/${e.platform}) — no confirmation`)
+    }
   }
 }
 
@@ -634,7 +685,13 @@ async function attemptAutonomousFix(failure) {
 }
 
 // Escalate a chief-level failure — affects posts/schedule/content; Chief decides.
-async function escalateToChief(failure, proposedFix) {
+async function escalateToChief(failure, proposedFix, alertState) {
+  const key = alertKey(failure.source || 'unknown', failure.message || '')
+  if (!alertAllowed(key, alertState)) {
+    const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
+    log(`Chief escalation suppressed (24h dedup) — ${scriptName}`)
+    return
+  }
   const today      = new Date().toISOString().slice(0, 10)
   const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
   const msg = [
@@ -650,8 +707,12 @@ async function escalateToChief(failure, proposedFix) {
     `*Full report:* Drive → eng-report-${today}.md`,
   ].filter(Boolean).join('\n')
   const r = await sendTelegram(msg)
-  if (r?.message_id) log(`Chief escalation sent — ${scriptName} — message_id: ${r.message_id}`)
-  else log(`WARNING: Chief escalation — no Telegram confirmation for ${scriptName}`)
+  if (r?.message_id) {
+    log(`Chief escalation sent — ${scriptName} — message_id: ${r.message_id}`)
+    alertState[key] = new Date().toISOString()
+  } else {
+    log(`WARNING: Chief escalation — no Telegram confirmation for ${scriptName}`)
+  }
 }
 
 // Handles a FIX-authorized issue that requires manual or code work — logs ticket
@@ -791,6 +852,9 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const baseline = process.argv.includes('--baseline')
 
   log(`━━━ eng-bot start${baseline ? ' [baseline]' : ''} ━━━`)
+
+  const alertState = loadAlertState()
+  pruneAlertState(alertState)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey && !baseline) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -962,7 +1026,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
   // ── OMG: Critical alerts fire first, targeted, awaited ───────────────────────
   try {
-    await sendCriticalAlerts(activeFailures, actionableExhausted)
+    await sendCriticalAlerts(activeFailures, actionableExhausted, alertState)
   } catch (err) {
     log(`WARNING: sendCriticalAlerts failed: ${err.message}`)
   }
@@ -999,7 +1063,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
 
       // ── Tier 2: Chief — affects posts/schedule/content; Chief decides ─────
       if (category === 'chief') {
-        try { await escalateToChief(failure, proposedFix) } catch (err) {
+        try { await escalateToChief(failure, proposedFix, alertState) } catch (err) {
           log(`WARNING: escalateToChief failed: ${err.message}`)
         }
         continue
@@ -1048,6 +1112,8 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   newFailures.forEach(f => { seenData.hashes[failureHash(f)] = now })
   saveSeen(seenData)
   log(`Saved ${newFailures.length} new hash(es) to eng-seen.json`)
+  saveAlertState(alertState)
+  log(`Alert state saved → eng-bot-alert-state.json`)
 
   // Telegram digest — send alongside (not replacing) the Drive report
   try {
