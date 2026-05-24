@@ -4,7 +4,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { connect, ensureHeaders, readAllRows, appendPick } = require('./sheets-client')
+const { connect, ensureHeaders, readAllRows, appendPick, archiveApproved } = require('./sheets-client')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'product-research.log')
@@ -378,12 +378,13 @@ End with one quiet line that makes the reader want it without asking them to buy
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
-  const skipResearch = process.argv.includes('--skip-research')
-  const dryRun       = process.argv.includes('--dry-run')
-  const targetsArg   = process.argv.indexOf('--targets')
-  const targetsFile  = targetsArg !== -1 ? process.argv[targetsArg + 1] : null
+  const skipResearch  = process.argv.includes('--skip-research')
+  const dryRun        = process.argv.includes('--dry-run')
+  const clearApproved = process.argv.includes('--clear-approved')
+  const targetsArg    = process.argv.indexOf('--targets')
+  const targetsFile   = targetsArg !== -1 ? process.argv[targetsArg + 1] : null
 
-  log(`━━━ product-research start ━━━${targetsFile ? ' [targets]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
+  log(`━━━ product-research start ━━━${clearApproved ? ' [clear-approved]' : ''}${targetsFile ? ' [targets]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -402,6 +403,23 @@ End with one quiet line that makes the reader want it without asking them to buy
     log(`Sheet: ${sheetRows.length} existing row(s)`)
   } catch (err) {
     log(`WARNING: could not read sheet — ${err.message}`)
+  }
+
+  // ─── --clear-approved: archive all approved rows before new write ────────────
+  if (clearApproved) {
+    log('Archiving approved rows...')
+    try {
+      if (!conn) { conn = await connect(); await ensureHeaders(conn) }
+      const archived = await archiveApproved(conn)
+      log(`Archived ${archived} approved row(s) → Status: Archived`)
+      // Reload sheet state so existingAsins reflects the now-archived rows
+      sheetRows = await readAllRows(conn)
+    } catch (err) {
+      log(`ERROR: archiveApproved failed — ${err.message}`)
+      process.exit(1)
+    }
+    log('━━━ product-research complete (--clear-approved) ━━━\n')
+    return
   }
 
   const existingAsins = new Set(sheetRows.map(r => r['ASIN']).filter(Boolean))

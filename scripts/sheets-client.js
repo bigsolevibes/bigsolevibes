@@ -141,4 +141,44 @@ async function appendPick({ sheets, spreadsheetId }, pick, { status = 'Pending' 
   })
 }
 
-module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick }
+// Sets Status = 'Archived' for every row currently marked 'Approved'.
+// Returns the count of rows archived.
+async function archiveApproved({ sheets, spreadsheetId }) {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Sheet1!A:Z',
+  })
+  const rows = res.data.values || []
+  if (rows.length < 2) return 0
+
+  const headers    = rows[0]
+  const statusCol  = headers.indexOf('Status')
+  if (statusCol === -1) return 0
+
+  const statusColLetter = colLetter(statusCol + 1)
+  const updates = []
+
+  for (let i = 1; i < rows.length; i++) {
+    const status = (rows[i][statusCol] || '').trim()
+    if (status.toLowerCase() === 'approved') {
+      updates.push({
+        range: `Sheet1!${statusColLetter}${i + 1}`,
+        values: [['Archived']],
+      })
+    }
+  }
+
+  if (!updates.length) return 0
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: 'RAW',
+      data: updates,
+    },
+  })
+
+  return updates.length
+}
+
+module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick, archiveApproved }
