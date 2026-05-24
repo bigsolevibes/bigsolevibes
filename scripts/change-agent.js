@@ -498,6 +498,13 @@ function validateAutoCommit(commit, files) {
   const postCommit = process.argv.includes('--post-commit')
   log(`━━━ change-agent start${postCommit ? ' [post-commit]' : ' [daily]'} ━━━`)
 
+  log('Loading directive...')
+  const directive = loadDriveFile(`${REMOTE}/BSV-Directive.md`)
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = loadDriveFile(`${REMOTE}/BSV-Memory.md`)
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   // ── Always: ensure post-commit hook is installed ──────────────────────────────
   ensurePostCommitHook()
 

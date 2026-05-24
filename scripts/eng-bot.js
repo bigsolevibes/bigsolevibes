@@ -20,6 +20,24 @@ const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
 const ORG_CHART_TEMP        = path.join(os.tmpdir(), 'bsv-eng-bot')
 
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${GDRIVE_DRIVE_ROOT}/BSV-Directive.md" "${ORG_CHART_TEMP}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(ORG_CHART_TEMP, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${GDRIVE_DRIVE_ROOT}/BSV-Memory.md" "${ORG_CHART_TEMP}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(ORG_CHART_TEMP, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -805,12 +823,14 @@ ${failureText}`
 
   log(`Sending diagnosis request — ${dedupedFailures.length} failure(s), ${userContent.length} chars`)
 
+  const engBotSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
+
+Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`
+
   const response = await client.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 2500,
-    system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
-
-Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`,
+    system:     engBotSystem,
     messages: [{ role: 'user', content: userContent }],
   })
 
@@ -852,6 +872,14 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const baseline = process.argv.includes('--baseline')
 
   log(`━━━ eng-bot start${baseline ? ' [baseline]' : ''} ━━━`)
+
+  fs.mkdirSync(ORG_CHART_TEMP, { recursive: true })
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const alertState = loadAlertState()
   pruneAlertState(alertState)

@@ -20,7 +20,9 @@ const { sendTelegram } = require('./telegram')
 const ROOT         = path.join(__dirname, '..')
 const LOG_FILE     = path.join(ROOT, 'logs', 'promote-sole-report.log')
 const WORKTREE_DIR = path.join(os.tmpdir(), 'bsv-promote-main')
+const TEMP_DIR     = path.join(os.tmpdir(), 'bsv-promote-sole-report')
 const SITE_URL     = 'https://bigsolevibes.com'
+const REMOTE       = 'big sole vibes:Big Sole Vibes'
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,24 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
 }
 
 // ─── Worktree cleanup ─────────────────────────────────────────────────────────
@@ -43,6 +63,14 @@ function cleanupWorktree() {
 
 ;(async function run() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+  fs.mkdirSync(TEMP_DIR, { recursive: true })
+
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const slug = process.argv[2]
   if (!slug) {

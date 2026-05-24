@@ -72,6 +72,32 @@ const PERSONA_HASHTAGS = {
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+// ─── Social format map ────────────────────────────────────────────────────────
+// Three social formats defined in BSV-Memory.md. Persona determines default.
+const SOCIAL_FORMAT_MAP = {
+  professional:      'Tall Tale',
+  athlete:           'The Scene',
+  'style-conscious': 'Simple Modern Man',
+}
+
 // ─── Daily directive loader ───────────────────────────────────────────────────
 // Chief writes Plans/daily-directive-YYYY-MM-DD.md when Big D replies 1/2/3.
 // Falls back to yesterday's directive if today's hasn't been chosen yet.
@@ -191,6 +217,13 @@ function parseSocialReport(content, persona) {
 
   log('━━━ media-director start ━━━')
 
+  log('Loading directive...')
+  const bsvDirective = loadDirective()
+  log(`Directive: ${bsvDirective ? bsvDirective.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const bsvMemory = loadMemory()
+  log(`Memory: ${bsvMemory ? bsvMemory.length + ' chars' : 'not found'}`)
+
   // Determine target day — explicit --day flag or default to tomorrow
   let targetDay
   const dayArg = process.argv.indexOf('--day')
@@ -233,6 +266,7 @@ function parseSocialReport(content, persona) {
       lane,
       voice,
       hashtags,
+      socialFormat:     SOCIAL_FORMAT_MAP[persona] ?? 'Tall Tale',
       verbatimPhrases:  parsed?.verbatimPhrases  ?? [],
       storyAngle:       parsed?.storyAngle        ?? null,
       hashtagSignal:    parsed?.hashtagSignal      ?? '',

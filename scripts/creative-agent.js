@@ -224,6 +224,9 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     ? 'Morning. The man before the world starts.'
     : 'Evening. The man who made it through.'
 
+  const socialFormat = personaContext?.socialFormat ?? 'Tall Tale'
+  log(`Social format: ${socialFormat}`)
+
   const voiceBlock   = buildVoiceBlock(voiceDef)
   const personaBlock = buildPersonaBlock(personaContext)
 
@@ -252,6 +255,13 @@ ${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` :
 - Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
 
 ${SCENE_BLOCK}
+
+## Assigned Social Format: ${socialFormat}
+This format is assigned by media-director based on the audience persona for this slot. The three formats are defined in BSV-Memory.md above — follow the one assigned here exactly.
+- **Tall Tale** — narrative arc, specific scene, a man in a moment. The detail does the work. Reads like a short story in two sentences.
+- **Simple Modern Man** — minimal language, declarative, no ornamentation. Every word earns its place. Reads like a product label written by someone who reads Hemingway.
+- **The Scene** — visual and kinetic. Set the stage, describe the moment, name the feeling. Reads like the opening of a film.
+Apply ${socialFormat} to the INSTAGRAM and BLUESKY captions. The format governs rhythm and structure, not content — voice guardrails still apply.
 
 ## Brief Format
 

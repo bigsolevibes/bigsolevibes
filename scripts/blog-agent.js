@@ -534,6 +534,7 @@ function gitPush(files) {
   const weeklyPlan    = loadLatestDriveFile('Plans')
   const brandReport   = loadLatestDriveFile('Brand')
   const socialReport  = loadLatestDriveFile('Reports', /^social-report-\d{4}-\d{2}-\d{2}\.md$/)
+  const directive     = loadDriveFile('BSV-Directive.md')
   const memory        = loadDriveFile('BSV-Memory.md')
 
   // Load latest dated handoff
@@ -556,6 +557,7 @@ function gitPush(files) {
   log(`Weekly plan:    ${weeklyPlan    ? weeklyPlan.filename    : 'none'}`)
   log(`Brand report:   ${brandReport   ? brandReport.filename   : 'none'}`)
   log(`Social report:  ${socialReport  ? socialReport.filename  : 'none'}`)
+  log(`Directive:      ${directive ? directive.length + ' chars' : 'none'}`)
   log(`Memory:         ${memory ? memory.length + ' chars' : 'none'}`)
   log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
 
@@ -594,7 +596,10 @@ function gitPush(files) {
       ].filter(Boolean).join('\n')).join('\n\n')
     : 'No approved products on shelf yet.'
 
-  const systemPrompt = `${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+
+## Article Structure
+Every Sole Report article MUST use the six-step chapter structure defined in BSV-Memory.md above. Follow the sequence exactly as written there. Do not default to generic article structure (intro → body → conclusion). If the structure is not yet in memory, use: (1) The Hook, (2) The Diagnosis, (3) The Standard, (4) The Evidence, (5) The Move, (6) The Close.
 
 ## Tone — this supersedes "Proprietor voice" for blog posts
 Inviting, not judgmental. Confident, not preachy. There is a quiet knowing smile behind every sentence — like the man who already figured this out and is holding the door open for you without making a big deal of it.

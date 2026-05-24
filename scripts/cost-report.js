@@ -2,10 +2,12 @@ require('dotenv').config()
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
+const os   = require('os')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'cost-report.log')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
+const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-cost-report')
 
 // ─── Pricing (update when rates change) ──────────────────────────────────────
 // claude-sonnet-4-x  https://www.anthropic.com/pricing
@@ -336,11 +338,37 @@ function buildReport(today, week, month, reportDate) {
   ].join('\n')
 }
 
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+  fs.mkdirSync(TEMP_DIR, { recursive: true })
   log('━━━ cost-report start ━━━')
+
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const reportDate = isoDate(new Date())
   const mdirLog = readLog('media-director.log')

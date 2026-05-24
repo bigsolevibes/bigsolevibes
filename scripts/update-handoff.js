@@ -9,6 +9,7 @@ const ROOT        = path.join(__dirname, '..')
 const LOG_FILE    = path.join(ROOT, 'logs', 'update-handoff.log')
 const TEMP_DIR    = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'
+const REMOTE      = 'big sole vibes:Big Sole Vibes'
 
 const today = new Date()
 const dateStamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
@@ -20,6 +21,24 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+function loadMemory() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
 }
 
 // ─── Project state collectors ─────────────────────────────────────────────────
@@ -173,6 +192,13 @@ function getExistingHandoff() {
 
   log('━━━ update-handoff start ━━━')
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     log('ERROR: ANTHROPIC_API_KEY not set in .env')
@@ -263,7 +289,7 @@ ${handoffFindings ? `## Pipeline Alerts (from logs/handoff-findings.md)\n${hando
 - **Drive folder:** Big Sole Vibes/Product Development/ — manufacturer research, formulation notes, packaging concepts
 `.trim()
 
-  const systemPrompt = `You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
 BSV is a premium men's foot care brand. The system automates social content creation, branding, and distribution.
 
 Your job is to produce a complete, current, developer-ready handoff document in Markdown.
