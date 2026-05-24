@@ -422,7 +422,10 @@ End with one quiet line that makes the reader want it without asking them to buy
     return
   }
 
-  const existingAsins = new Set(sheetRows.map(r => r['ASIN']).filter(Boolean))
+  // Only block duplicates for active (non-Archived) rows — Archived rows are cleared and can be re-added
+  const existingAsins = new Set(
+    sheetRows.filter(r => (r['Status'] || '').toLowerCase() !== 'archived').map(r => r['ASIN']).filter(Boolean)
+  )
   const sheetSummary  = sheetRows.length
     ? sheetRows.map(r => `- ${r['ASIN']} (${r['Status'] || 'Unknown'}): ${r['Name'] || ''}`.trim()).join('\n')
     : 'None yet.'

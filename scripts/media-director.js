@@ -72,6 +72,36 @@ const PERSONA_HASHTAGS = {
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
+// ─── Lounge social cadence ────────────────────────────────────────────────────
+// Wednesday drops that retell the active Lounge chapter in campfire format.
+// Indexed from launch week (week 0 = 2026-05-26). Runs wed-pm slot only.
+const LOUNGE_LAUNCH_MONDAY = new Date('2026-05-26T00:00:00.000Z')
+
+const LOUNGE_SOCIAL_CADENCE = [
+  { week: 0, format: 'Tall Tale',         chapter: 1, articleType: 'hub',   ref: 'the-upgrade-path',   angle: 'The man in the evening light, the mirror, the soap in his hand at 9pm — the moment the reckoning began.' },
+  { week: 1, format: 'The Scene',         chapter: 1, articleType: 'spoke', ref: 'the-cleanser',       angle: 'The soap watching from the edge of the tub. The new cleanser, the silence, the quality of it.' },
+  { week: 2, format: 'Simple Modern Man', chapter: 1, articleType: 'spoke', ref: 'the-moisturizer',    angle: 'The oil-change observation. Maintenance is not vanity. Two minutes, the whole thing.' },
+  { week: 3, format: 'Tall Tale',         chapter: 1, articleType: 'spoke', ref: 'the-label',          angle: 'He turned the bottle over. Sodium tallowate. The moment the soap stopped being a habit and became a question.' },
+  { week: 4, format: 'The Scene',         chapter: 2, articleType: 'hub',   ref: 'the-one-bottle',     angle: 'Parking lot, two bottles. The wrong one he\'d been wearing for years. The right one, once.' },
+  { week: 5, format: 'Simple Modern Man', chapter: 2, articleType: 'spoke', ref: 'top-notes-trap',     angle: 'The strip was a rumor. The bottle was a different conversation.' },
+  { week: 6, format: 'Tall Tale',         chapter: 2, articleType: 'spoke', ref: 'skin-chemistry',     angle: 'Marcus at dinner. The room noticed. Nobody said anything. He didn\'t need them to.' },
+]
+
+function getLoungeWedCadence(targetDateStr) {
+  // targetDateStr is the day being briefed (e.g. "wed")
+  if (targetDateStr !== 'wed') return null
+  // Compute which Lounge week we're in based on today's date
+  const today = new Date()
+  const todayMonday = new Date(today)
+  const dow = todayMonday.getDay()
+  todayMonday.setDate(todayMonday.getDate() - (dow === 0 ? 6 : dow - 1))
+  todayMonday.setHours(0, 0, 0, 0)
+  const diffMs    = todayMonday.getTime() - LOUNGE_LAUNCH_MONDAY.getTime()
+  const diffWeeks = Math.floor(diffMs / (7 * 24 * 3600 * 1000))
+  if (diffWeeks < 0 || diffWeeks >= LOUNGE_SOCIAL_CADENCE.length) return null
+  return LOUNGE_SOCIAL_CADENCE[diffWeeks]
+}
+
 // ─── Drive context loaders ────────────────────────────────────────────────────
 
 function loadDirective() {
@@ -261,19 +291,39 @@ function parseSocialReport(content, persona) {
     const voiceDef = VOICES[voice]
 
     const parsed = parseSocialReport(socialReport?.content, persona)
+
+    // Lounge social cadence override — applies to wed-pm only when within cadence window
+    const loungeSlot = period === 'pm' ? getLoungeWedCadence(targetDay) : null
+    if (loungeSlot) {
+      log(`[${slug}] Lounge cadence: Week ${loungeSlot.week} — ${loungeSlot.ref} (${loungeSlot.format})`)
+    }
+
     const personaContext = {
       persona,
       lane,
       voice,
       hashtags,
-      socialFormat:     SOCIAL_FORMAT_MAP[persona] ?? 'Tall Tale',
+      socialFormat:     loungeSlot ? loungeSlot.format : (SOCIAL_FORMAT_MAP[persona] ?? 'Tall Tale'),
       verbatimPhrases:  parsed?.verbatimPhrases  ?? [],
       storyAngle:       parsed?.storyAngle        ?? null,
       hashtagSignal:    parsed?.hashtagSignal      ?? '',
       directive:        dailyDirective?.content   ?? null,
+      ...(loungeSlot ? {
+        loungeOverride: {
+          chapter:     loungeSlot.chapter,
+          articleType: loungeSlot.articleType,
+          ref:         loungeSlot.ref,
+          angle:       loungeSlot.angle,
+          format:      loungeSlot.format,
+        },
+      } : {}),
     }
 
-    log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${theme}"`)
+    const effectiveTheme = loungeSlot
+      ? `The Lounge — Chapter ${loungeSlot.chapter} campfire retelling`
+      : theme
+
+    log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${effectiveTheme}"`)
     if (parsed?.storyAngle?.hook) log(`  angle: "${parsed.storyAngle.hook}"`)
     if (parsed?.verbatimPhrases?.length) log(`  verbatim phrases: ${parsed.verbatimPhrases.length}`)
 
@@ -282,7 +332,7 @@ function parseSocialReport(content, persona) {
       [
         path.join(__dirname, 'creative-agent.js'),
         '--slot',            slug,
-        '--theme',           theme,
+        '--theme',           effectiveTheme,
         '--voice',           voice,
         '--voice-def',       JSON.stringify(voiceDef),
         '--persona-context', JSON.stringify(personaContext),

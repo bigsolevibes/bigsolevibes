@@ -646,6 +646,78 @@ function writeDirectiveToDrive(option, dateStamp) {
   log(`Directive → Drive: Plans/daily-directive-${dateStamp}.md`)
 }
 
+// ─── Lounge article approval → MDX write + git push ──────────────────────────
+
+async function approveLoungeArticle(pendingItem) {
+  const meta     = pendingItem.metadata || {}
+  const slug     = meta.slug
+  const draftFile = pendingItem.driveFile   // e.g. "the-upgrade-path-DRAFT.md"
+  const tempDir  = path.join(os.homedir(), 'tmp', 'bsv-chief-lounge')
+  fs.mkdirSync(tempDir, { recursive: true })
+
+  log(`  Lounge approve: downloading ${draftFile}...`)
+  try {
+    execSync(`rclone copy "${REMOTE}/The Lounge/${draftFile}" "${tempDir}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000,
+    })
+  } catch (err) {
+    throw new Error(`rclone download failed — ${err.message}`)
+  }
+
+  const localDraft = path.join(tempDir, draftFile)
+  if (!fs.existsSync(localDraft)) throw new Error(`DRAFT.md not found locally after download`)
+
+  const draftContent = fs.readFileSync(localDraft, 'utf8')
+
+  // Extract H1 title
+  const titleMatch = draftContent.match(/^#\s+(.+)$/m)
+  const title      = titleMatch ? titleMatch[1].trim() : meta.title || slug
+
+  // Body = everything after the H1 line, minus leading blank lines
+  const h1End = draftContent.indexOf('\n', draftContent.indexOf(title))
+  const body  = draftContent.slice(h1End + 1).replace(/^\n+/, '')
+
+  // Build MDX
+  const tags = (meta.tags || []).map(t => `"${t}"`).join(', ')
+  const mdx  = [
+    '---',
+    `title: "${title.replace(/"/g, '\\"')}"`,
+    `slug: ${slug}`,
+    `date: "${meta.publishDate}"`,
+    `excerpt: "${(meta.excerpt || '').replace(/"/g, '\\"')}"`,
+    `chapter: ${meta.chapter}`,
+    `type: ${meta.articleType}`,
+    `tags: [${tags}]`,
+    '---',
+    '',
+    body.trim(),
+  ].join('\n')
+
+  const mdxPath = path.join(ROOT, 'content', 'lounge', `${slug}.mdx`)
+  fs.writeFileSync(mdxPath, mdx)
+  log(`  Lounge approve: wrote ${mdxPath}`)
+
+  // Git commit + push
+  try {
+    execSync(`git add "${path.join('content', 'lounge', `${slug}.mdx`)}"`, { cwd: ROOT, stdio: 'pipe' })
+    const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }).trim()
+    if (status) {
+      execSync(`git commit -m "feat: lounge article approved — ${slug} (${meta.publishDate})"`, { cwd: ROOT, stdio: 'pipe' })
+      require('./git-push-guard').safePushToPreview(ROOT, log)
+      log(`  Lounge approve: pushed ${slug}.mdx`)
+    } else {
+      log(`  Lounge approve: no diff — MDX already matches draft`)
+    }
+  } catch (err) {
+    log(`WARNING: git push failed — ${err.message}`)
+  }
+
+  await sendTelegram(
+    `✅ *Lounge article approved and published*\n*${title}*\nChapter ${meta.chapter} — ${meta.articleType}\nPublishes: ${meta.publishDate}\n/the-lounge/${slug}`
+  )
+  log(`  Lounge approve: complete for ${slug}`)
+}
+
 // ─── Two-way Telegram inbox ───────────────────────────────────────────────────
 
 async function processTelegramInbox() {
@@ -722,9 +794,36 @@ async function processTelegramInbox() {
         sendTelegram(`✅ Fix approved: ${target.metadata?.problem}\nFix: ${target.metadata?.fix}`).then(r => {
           if (r?.message_id) log(`Telegram fix confirm — message_id: ${r.message_id}`)
         })
+      } else if (target.type === 'lounge-draft') {
+        approveLoungeArticle(target).then(() => {}).catch(err => {
+          log(`ERROR: lounge-draft approval failed — ${err.message}`)
+          sendTelegram(`⚠️ Lounge article commit failed: ${err.message}`).then(() => {})
+        })
+      } else if (target.type === 'social-draft') {
+        const slot      = target.metadata?.slot || ''
+        const briefDir  = path.join(ROOT, 'posts', 'briefs')
+        const pendingDir = path.join(briefDir, 'pending')
+        const pendingPath = path.join(pendingDir, `${slot}-brief.txt`)
+        const livePath   = path.join(briefDir, `${slot}-brief.txt`)
+        if (fs.existsSync(pendingPath)) {
+          fs.mkdirSync(briefDir, { recursive: true })
+          fs.renameSync(pendingPath, livePath)
+          log(`  Social draft approved: moved ${slot}-brief.txt to briefs/`)
+        }
+        sendTelegram(`✅ Social draft approved: ${slot}\nBrief is live for next gemini-bridge run.`).then(r => {
+          if (r?.message_id) log(`Telegram social-draft confirm — message_id: ${r.message_id}`)
+        })
       }
     } else if (keyword === 'denied') {
       log(`  DENIED: ${target.id}`)
+      if (target.type === 'social-draft') {
+        const slot        = target.metadata?.slot || ''
+        const pendingPath = path.join(ROOT, 'posts', 'briefs', 'pending', `${slot}-brief.txt`)
+        const livePath    = path.join(ROOT, 'posts', 'briefs', `${slot}-brief.txt`)
+        if (fs.existsSync(pendingPath)) { try { fs.unlinkSync(pendingPath) } catch {} }
+        if (fs.existsSync(livePath))    { try { fs.unlinkSync(livePath) }   catch {} }
+        log(`  Social-draft denied: brief removed for slot ${slot}`)
+      }
       sendTelegram(`❌ Denied: ${target.metadata?.title || target.id}`).then(r => {
         if (r?.message_id) log(`Telegram deny confirm — message_id: ${r.message_id}`)
       })
@@ -1037,6 +1136,16 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     ? realBlockers.slice(0, 3).map(b => `• ${b}`).join('\n')
     : 'No decisions needed today.'
 
+  const pendingEditorial = loadPendingItems().filter(i => ['lounge-draft', 'social-draft'].includes(i.type))
+  const editorialTg = pendingEditorial.length
+    ? pendingEditorial.map(i => {
+        const ageH  = Math.floor((Date.now() - new Date(i.sentAt).getTime()) / 3600000)
+        const emoji = i.type === 'lounge-draft' ? '📖' : '📣'
+        const flag  = ageH > 48 ? ' ⚠️ OVERDUE' : ''
+        return `${emoji} ${i.metadata?.title || i.id} (${ageH}h)${flag}`
+      }).join('\n')
+    : null
+
   // Section 0 Telegram summary — failures only (passes are noise on mobile)
   const ecosystemFails = ecosystem.checks.filter(c => !c.ok)
   const ecosystemTg = ecosystem.allGreen && !ecosystem.orphanedBriefs.length
@@ -1070,6 +1179,12 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     ``,
     `*4 — BLOCKERS*`,
     blockerText,
+    ...(editorialTg ? [
+      ``,
+      `*4b — EDITORIAL QUEUE*`,
+      editorialTg,
+      `Reply APPROVE or send edit notes for each.`,
+    ] : []),
     ``,
     `*5 — TONIGHT*`,
     tonightSection

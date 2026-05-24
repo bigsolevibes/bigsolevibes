@@ -13,6 +13,8 @@ const REMOTE     = 'big sole vibes:Big Sole Vibes'
 
 const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
 const { connect: sheetConnect, readAllRows } = require('./sheets-client')
+const { addPendingItem } = require('./telegram-queue')
+const { sendTelegram }   = require('./telegram')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -88,6 +90,15 @@ function buildPersonaBlock(ctx) {
   }
   if (ctx.hashtags?.length) {
     lines.push(`### Persona Hashtags: ${ctx.hashtags.join(' ')} #BigSoleVibes`)
+  }
+  if (ctx.loungeOverride) {
+    const lo = ctx.loungeOverride
+    lines.push('')
+    lines.push('### Lounge Campfire Retelling')
+    lines.push(`This brief is a *campfire retelling* from The Lounge, Chapter ${lo.chapter} (${lo.ref}).`)
+    lines.push(`Social format: **${lo.format}** — apply exactly as defined in BSV-Memory.md.`)
+    lines.push(`Angle: ${lo.angle}`)
+    lines.push('The post retells this specific moment in the assigned format. Short, specific, striking. This is not about foot care — it is about the man who looked at his cabinet and decided to do something about it. The product is the resolution, not the subject.')
   }
   return lines.join('\n')
 }
@@ -335,9 +346,50 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
     log('WARNING: VOICE_USED field missing from brief output')
   }
 
-  const briefPath = path.join(BRIEFS_DIR, `${slot}-brief.txt`)
-  fs.writeFileSync(briefPath, brief)
-  log(`Saved → ${briefPath}`)
+  // Write brief to pending/ staging — awaits editorial APPROVE before live
+  const pendingDir  = path.join(BRIEFS_DIR, 'pending')
+  fs.mkdirSync(pendingDir, { recursive: true })
+  const pendingPath = path.join(pendingDir, `${slot}-brief.txt`)
+  fs.writeFileSync(pendingPath, brief)
+  log(`Saved (pending) → ${pendingPath}`)
+
+  // Save to Drive for editorial record
+  const dateStamp   = new Date().toISOString().slice(0, 10)
+  const draftName   = `social-draft-${dateStamp}-${slot}.md`
+  const draftLocal  = path.join(TEMP_DIR, draftName)
+  fs.writeFileSync(draftLocal, brief)
+  try {
+    execSync(`rclone copyto "${draftLocal}" "${REMOTE}/Lounge/Social Drafts/${draftName}"`, {
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000,
+    })
+    log(`Drive: saved social draft → Lounge/Social Drafts/${draftName}`)
+  } catch (err) {
+    log(`WARNING: Drive save failed — ${err.message}`)
+  }
+
+  // Send Telegram for editorial gate
+  const tgMsg = [
+    `📣 *SOCIAL DRAFT READY*`,
+    `*Format:* ${socialFormat}`,
+    `*Slot:* ${slot} / ${voiceDef.name}`,
+    `*Theme:* ${theme}`,
+    ``,
+    brief.slice(0, 800) + (brief.length > 800 ? '\n[truncated]' : ''),
+    ``,
+    `Reply *APPROVE* to queue or send edit notes.`,
+  ].join('\n')
+
+  await sendTelegram(tgMsg).catch(err => log(`WARNING: Telegram send failed — ${err.message}`))
+  log(`Telegram: social draft approval requested for ${slot}`)
+
+  addPendingItem({
+    id:       `social-draft-${slot}-${dateStamp}`,
+    type:     'social-draft',
+    driveFile: draftName,
+    sentAt:   new Date().toISOString(),
+    metadata: { slot, theme, voice: voiceDef.name, socialFormat, title: `${slot} — ${theme}` },
+    originalMessage: tgMsg,
+  })
 
   log(`━━━ creative-agent complete: ${slot} / ${voiceDef.name} ━━━\n`)
 })()
