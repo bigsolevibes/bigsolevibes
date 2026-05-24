@@ -6,9 +6,9 @@ import { usePathname } from 'next/navigation'
 
 const navLinks = [
   { label: 'Home',            href: '/' },
-  { label: 'The Sole Report', href: '/sole-report' },
+  { label: 'The Lounge',      href: '/the-lounge' },
   { label: 'The Locker Room', href: '/shop' },
-  { label: 'The Lounge',      href: '/lounge' },
+  { label: 'Join',            href: '/lounge' },
   { label: 'Get on the List', href: '/#email-capture' },
 ]
 

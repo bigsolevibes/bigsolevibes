@@ -154,8 +154,13 @@ function buildProductCard(product) {
     ctaText = isAmazon ? 'SHOP ON AMAZON ↗' : 'SHOP NOW ↗'
   }
 
+  const cardId = (product['Product Name'] || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
   return `
-        <article class="locker-card">
+        <article class="locker-card" id="${cardId}">
           ${heroHtml}
           <div class="card-body">
             ${category}

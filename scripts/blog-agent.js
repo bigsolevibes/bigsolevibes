@@ -5,7 +5,7 @@ require('dotenv').config()
 // Runs Sunday 11:30PM via launchd, after brand-manager completes.
 // Reads Plans, Brand, social-listening from Drive + approved shelf products
 // from Google Sheets. Calls Claude to generate a Proprietor-voice post
-// targeting BSV SEO terms. Outputs static HTML to public/sole-report/.
+// targeting BSV SEO terms. Outputs static HTML to public/the-lounge/.
 // Chief reads blog-agent.log in the Monday morning stand-up.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -20,14 +20,14 @@ const { sendTelegram } = require('./telegram')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
-const BLOG_DIR  = path.join(ROOT, 'public', 'sole-report')
+const BLOG_DIR  = path.join(ROOT, 'public', 'the-lounge')
 const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-blog-agent')
 const REMOTE    = 'big sole vibes:Big Sole Vibes'
 const AFFILIATE = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
 const SITE_URL  = 'https://bigsolevibes.com'
 
 // ─── Content Calendar ─────────────────────────────────────────────────────────
-// Ordered list of queued Sole Report pieces. blog-agent checks the manifest for
+// Ordered list of queued The Lounge pieces. blog-agent checks the manifest for
 // published slugs and injects the first unwritten entry into the userPrompt.
 // After all entries are published, the agent falls back to hub article direction.
 const CONTENT_CALENDAR = [
@@ -38,7 +38,7 @@ const CONTENT_CALENDAR = [
   },
   {
     // Piece 2 — The Seven Steps Stop at the Ankle (approved 2026-05-21)
-    // This is a Sole Report ARTICLE, not a social post brief.
+    // This is a Lounge article, not a social post brief.
     // Voice: The Lounge — long-form warmth. GQ editorial angle, not lifestyle fluff.
     slug: 'the-seven-steps-stop-at-the-ankle',
     titleDirection: '"The Seven Steps Stop at the Ankle." Fixed title — do not deviate. This is the argument, not the observation: the ankle line is arbitrary. It is not biological, not medical, not inevitable. Men built a seven-step grooming standard over the last decade and drew the line at the ankle because nobody told them to go further. Name that precisely. Make the argument — not the lifestyle take, the actual argument.',
@@ -142,7 +142,7 @@ function escapeHtml(str) {
 }
 
 function buildPostHtml(post, dateStr) {
-  const canonicalUrl = `${SITE_URL}/sole-report/${post.slug}.html`
+  const canonicalUrl = `${SITE_URL}/the-lounge/${post.slug}.html`
   const wordCount    = (post.openingHtml + post.sections.map(s => s.html).join('') + post.closingHtml)
     .replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length
   const readMinutes  = Math.max(1, Math.ceil(wordCount / 200))
@@ -302,7 +302,7 @@ function buildPostHtml(post, dateStr) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge/index.html" class="active">The Lounge</a></li>
         <li><a href="/shop">The Locker Room</a></li>
         <li><a href="/lounge">The Lounge</a></li>
       </ul>
@@ -311,7 +311,7 @@ function buildPostHtml(post, dateStr) {
 
   <header class="post-hero">
     <div class="post-hero-inner">
-      <a href="/sole-report/index.html" class="back-link">← THE SOLE REPORT</a>
+      <a href="/the-lounge/index.html" class="back-link">← THE LOUNGE</a>
       <div class="post-meta">
         <span>${publishDate}</span>
         <span class="post-meta-sep">·</span>
@@ -333,7 +333,7 @@ function buildPostHtml(post, dateStr) {
 
       <div class="post-footer">
         <a href="/shop" class="shop-cta-btn">THE LOCKER ROOM →</a>
-        <a href="/sole-report/index.html" class="blog-link">← The Sole Report</a>
+        <a href="/the-lounge/index.html" class="blog-link">← The Lounge</a>
       </div>
     </div>
   </article>
@@ -348,7 +348,7 @@ function buildPostHtml(post, dateStr) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge/index.html">The Lounge</a></li>
         <li><a href="/shop">The Locker Room</a></li>
         <li><a href="/lounge">The Lounge</a></li>
       </ul>
@@ -370,10 +370,10 @@ function buildIndexHtml(posts) {
           <article class="post-card">
             <div class="post-card-meta">${escapeHtml(d)}</div>
             <h2 class="post-card-title">
-              <a href="/sole-report/${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>
+              <a href="/the-lounge/${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>
             </h2>
             <p class="post-card-excerpt">${escapeHtml(p.excerpt)}</p>
-            <a href="/sole-report/${escapeHtml(p.slug)}.html" class="post-card-link">READ MORE →</a>
+            <a href="/the-lounge/${escapeHtml(p.slug)}.html" class="post-card-link">READ MORE →</a>
           </article>`
   }).join('\n')
 
@@ -382,9 +382,9 @@ function buildIndexHtml(posts) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Sole Report — Big Sole Vibes</title>
+  <title>The Lounge — Big Sole Vibes</title>
   <meta name="description" content="Proprietor-approved writing on men's grooming, foot care, and the standard. No fluff. No problem-solving. The practice, documented.">
-  <link rel="canonical" href="${SITE_URL}/sole-report/index.html">
+  <link rel="canonical" href="${SITE_URL}/the-lounge/index.html">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -433,7 +433,7 @@ function buildIndexHtml(posts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge/index.html" class="active">The Lounge</a></li>
         <li><a href="/shop">The Locker Room</a></li>
         <li><a href="/lounge">The Lounge</a></li>
       </ul>
@@ -442,7 +442,7 @@ function buildIndexHtml(posts) {
 
   <header class="blog-hero">
     <p class="hero-eyebrow">THE PROPRIETOR'S DESK</p>
-    <h1 class="hero-title">The Sole Report</h1>
+    <h1 class="hero-title">The Lounge</h1>
     <p class="hero-sub">The practice, documented. No problem-solving. No padding. The standard, in writing.</p>
   </header>
 
@@ -458,7 +458,7 @@ function buildIndexHtml(posts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge/index.html">The Lounge</a></li>
         <li><a href="/shop">The Locker Room</a></li>
         <li><a href="/lounge">The Lounge</a></li>
       </ul>
@@ -599,7 +599,7 @@ function gitPush(files) {
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
 
 ## Article Structure
-Every Sole Report article MUST use the six-step chapter structure defined in BSV-Memory.md above. Follow the sequence exactly as written there. Do not default to generic article structure (intro → body → conclusion). If the structure is not yet in memory, use: (1) The Hook, (2) The Diagnosis, (3) The Standard, (4) The Evidence, (5) The Move, (6) The Close.
+Every Lounge article MUST use the six-step chapter structure defined in BSV-Memory.md above. Follow the sequence exactly as written there. Do not default to generic article structure (intro → body → conclusion). If the structure is not yet in memory, use: (1) The Hook, (2) The Diagnosis, (3) The Standard, (4) The Evidence, (5) The Move, (6) The Close.
 
 ## Tone — this supersedes "Proprietor voice" for blog posts
 Inviting, not judgmental. Confident, not preachy. There is a quiet knowing smile behind every sentence — like the man who already figured this out and is holding the door open for you without making a big deal of it.
@@ -951,7 +951,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
     const driveFile = `blog-${post.slug}-decision.md`
 
     const telegramMsg = [
-      `📝 *NEW SOLE REPORT DRAFT*`,
+      `📝 *NEW LOUNGE DRAFT*`,
       `*Title:* ${post.title}`,
       `*Voice:* ${voice}`,
       `*Est. read time:* ${readTime} min`,
@@ -998,7 +998,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
       // Timed out — save draft to Drive Inbox for next run
       log('No approval decision received in 4 hours — saving draft to Drive Inbox')
       await saveDraftToDrive(post)
-      await sendTelegram(`⏰ *Sole Report draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
+      await sendTelegram(`⏰ *The Lounge draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
       log('━━━ blog-agent complete (awaiting approval) ━━━\n')
       return
     }
@@ -1089,7 +1089,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
   log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)
 
   // Notify Big D
-  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/sole-report/${post.slug}.html`)
+  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/the-lounge/${post.slug}.html`)
 
   log(`━━━ blog-agent complete — "${post.title}" ━━━\n`)
 })()
