@@ -95,6 +95,245 @@ function getLatestDriveFile(folder) {
   } catch { return null }
 }
 
+const AFFILIATE_TAG = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+
+// Pillar → sheet Category column value
+const PILLAR_CATEGORY = {
+  1: 'Skincare',
+  2: 'Body Care',
+  3: 'Recovery',
+  4: 'Grooming Tools',
+  5: 'Grooming Tools',
+}
+
+// ─── JSON extraction helper — bracket-balanced, handles surrounding commentary ─
+
+function extractJsonArray(text) {
+  const stripped = text.replace(/```json\s*/gi, '').replace(/```/g, '')
+  const start = stripped.indexOf('[')
+  if (start === -1) throw new Error('no JSON array found')
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < stripped.length; i++) {
+    const ch = stripped[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '[') depth++
+    else if (ch === ']') { depth--; if (depth === 0) return JSON.parse(stripped.slice(start, i + 1)) }
+  }
+  throw new Error('unbalanced JSON array')
+}
+
+// ─── Targets mode: Amazon validation via web_search (batches of 5) ───────────
+
+async function validateBatch(client, batch) {
+  const productList = batch.map((t, i) => `${i + 1}. ${t.name} (brand: ${t.brand})`).join('\n')
+
+  let messages = [{
+    role: 'user',
+    content: `Search Amazon for each product below. For each one: find the exact listing, confirm it is In Stock, record the ASIN and current price.
+
+${productList}
+
+After searching, output ONLY this JSON array — no introduction, no explanation, nothing else before or after the brackets:
+[{"name":"...","asin":"B0XXXXXXX or null","price":"$XX.XX or null","available":true,"note":""}]
+
+Rules: asin must be real (B0... format). If not found or unavailable set asin to null and available to false.`,
+  }]
+
+  let result = null
+  let turns = 0
+
+  while (turns < 8) {
+    turns++
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2048,
+      tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+      messages,
+    })
+
+    messages.push({ role: 'assistant', content: response.content })
+
+    if (response.stop_reason === 'end_turn') {
+      const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      try {
+        result = extractJsonArray(text)
+      } catch (err) {
+        log(`WARNING: batch JSON parse failed — ${err.message} — raw: ${text.slice(0, 200)}`)
+      }
+      break
+    }
+
+    if (response.stop_reason === 'tool_use') {
+      const toolResults = response.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }))
+      messages.push({ role: 'user', content: toolResults })
+    } else {
+      break
+    }
+  }
+
+  return result || batch.map(t => ({ name: t.name, asin: null, price: null, available: false, note: 'search failed' }))
+}
+
+async function validateOnAmazon(client, targets) {
+  log('Amazon validation: searching for ASINs via web_search (batches of 5)...')
+  const BATCH_SIZE = 5
+  const allResults = []
+
+  for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+    const batch = targets.slice(i, i + BATCH_SIZE)
+    log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.map(t => t.name).join(', ').slice(0, 80)}...`)
+    const batchResults = await validateBatch(client, batch)
+    allResults.push(...batchResults)
+    log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1} done: ${batchResults.filter(r => r.asin).length}/${batch.length} found`)
+  }
+
+  // Merge back with target metadata — match by position (batches preserve order)
+  return targets.map((t, i) => {
+    const r = allResults[i] || {}
+    return { ...t, asin: r.asin || null, price: r.price || null, available: r.available || false, note: r.note || '' }
+  })
+}
+
+// ─── Targets mode: brand story generation (chapter voice from BSV-Memory.md) ──
+
+async function generateBrandStories(client, targets, memory, directive) {
+  const chapterDescriptions = {
+    1: 'The man who takes care of his face with the same seriousness he brings to everything else. Skincare is not vanity — it is the same standard applied to a different surface.',
+    2: 'The man who knows what he smells like matters. Fragrance is not performance — it is the quiet signal that arrives before he does.',
+    3: 'The man who treats recovery like training. The body is a system — what he puts in and on it between sessions is part of the work.',
+    4: 'The man who carries only what earns its place. Every object in his pocket has been chosen, not accumulated.',
+    5: 'The man who shaves like his grandfather taught him — not because it is faster, but because the ritual is the point.',
+  }
+
+  const productLines = targets.map((t, i) =>
+    `${i + 1}. "${t.name}" by ${t.brand} — Chapter ${t.chapter}: ${chapterDescriptions[t.chapter] || ''}`
+  ).join('\n')
+
+  log('Brand story generation: calling Claude API...')
+  const resp = await client.messages.create({
+    model:      'claude-sonnet-4-6',
+    max_tokens: 3000,
+    system:     `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You write BSV brand stories — one sentence per product, chapter voice. The sentence captures the moment the man found this product, not what the product does. It belongs in the room. It doesn't announce itself. Present tense. The Proprietor's voice — deadpan, certain, slightly amused.`,
+    messages: [{
+      role: 'user',
+      content: `Write a brand_story sentence for each product below. One sentence per product. Chapter voice as described. The sentence is the moment — not a description, not a headline. The man found it. That's all we need to know.
+
+${productLines}
+
+Return ONLY a valid JSON array (no markdown, no commentary):
+[
+  { "name": "exact product name", "brand_story": "one sentence in chapter voice" }
+]`,
+    }],
+  })
+
+  const text = (resp.content.find(b => b.type === 'text')?.text || '').trim()
+  try {
+    const stories = extractJsonArray(text)
+    const storyMap = {}
+    stories.forEach(s => { storyMap[s.name] = s.brand_story })
+    return targets.map(t => ({ ...t, brand_story: storyMap[t.name] || '' }))
+  } catch (err) {
+    log(`WARNING: brand story JSON parse failed — ${err.message}`)
+    return targets.map(t => ({ ...t, brand_story: '' }))
+  }
+}
+
+// ─── Targets mode: main orchestrator ─────────────────────────────────────────
+
+async function runTargetsMode(targetsPath, client, memory, directive, dryRun, conn, existingAsins) {
+  log(`Loading targets from ${targetsPath}...`)
+  let targets
+  try {
+    targets = JSON.parse(fs.readFileSync(targetsPath, 'utf8'))
+    if (!Array.isArray(targets) || !targets.length) throw new Error('empty or invalid targets array')
+    log(`Targets: ${targets.length} products`)
+  } catch (err) {
+    log(`ERROR: could not read targets file — ${err.message}`)
+    process.exit(1)
+  }
+
+  // Step 1: Amazon validation
+  const withAsin = await validateOnAmazon(client, targets)
+  const available  = withAsin.filter(t => t.asin && t.available)
+  const unavailable = withAsin.filter(t => !t.asin || !t.available)
+
+  log(`Amazon validation complete: ${available.length} available, ${unavailable.length} unavailable/not found`)
+  unavailable.forEach(t => log(`  SKIP: "${t.name}" — ${t.note || 'unavailable'}`))
+
+  if (!available.length) {
+    log('ERROR: no products available on Amazon — nothing to write')
+    return
+  }
+
+  // Step 2: Brand story generation (chapter voice)
+  const withStories = await generateBrandStories(client, available, memory, directive)
+
+  // Step 3: Generate narrative drafts + build final picks
+  log(`Building picks and generating narrative drafts for ${withStories.length} products...`)
+  const picks = []
+  for (const t of withStories) {
+    const affiliateUrl = `https://www.amazon.com/dp/${t.asin}?tag=${AFFILIATE_TAG}`
+    const pick = {
+      name:        t.name,
+      asin:        t.asin,
+      price:       t.price || '',
+      category:    PILLAR_CATEGORY[t.pillar] || 'Body Care',
+      score:       '90/100',
+      description: '',
+      reasoning:   `Pre-curated target — Pillar ${t.pillar}, Lane ${t.lane}, Chapter ${t.chapter}. Curation complete.`,
+      brand_story: t.brand_story || '',
+      imageUrl:    'NEEDS_RENDER',
+      affiliateUrl,
+    }
+
+    if (!dryRun) {
+      pick.narrative = await generateNarrative(client, t.name)
+      if (pick.narrative) log(`  Narrative: "${pick.narrative.slice(0, 60)}..."`)
+    }
+
+    picks.push(pick)
+  }
+
+  // Step 4: Write to sheet or dry-run log
+  log(`\n${'─'.repeat(60)}`)
+  log(dryRun ? 'DRY-RUN OUTPUT — nothing will be written to sheet' : 'Writing to sheet...')
+  log('─'.repeat(60))
+
+  let written = 0
+  let skipped = 0
+  for (const pick of picks) {
+    if (existingAsins.has(pick.asin)) {
+      log(`  SKIP (already in sheet): ${pick.asin} — "${pick.name}"`)
+      skipped++
+      continue
+    }
+    if (dryRun) {
+      log(`  ✓ "${pick.name}"`)
+      log(`    ASIN:        ${pick.asin}`)
+      log(`    Price:       ${pick.price}`)
+      log(`    Affiliate:   ${pick.affiliateUrl}`)
+      log(`    Category:    ${pick.category}`)
+      log(`    Brand story: ${pick.brand_story}`)
+      log(`    Status:      Approved`)
+    } else {
+      await appendPick(conn, pick, { status: 'Approved' })
+      log(`  Sheet: "${pick.name}" (${pick.asin}) → Approved`)
+    }
+    written++
+  }
+
+  log('─'.repeat(60))
+  log(`Targets mode complete: ${written} ${dryRun ? 'would be written' : 'written'}, ${skipped} skipped (already in sheet), ${unavailable.length} unavailable`)
+}
+
 // ─── Image sourcing rules — never violate ─────────────────────────────────────
 // 1. Never download and re-host brand images without explicit permission
 // 2. Never use Amazon product images under any circumstances (ToS violation)
@@ -141,8 +380,10 @@ End with one quiet line that makes the reader want it without asking them to buy
 
   const skipResearch = process.argv.includes('--skip-research')
   const dryRun       = process.argv.includes('--dry-run')
+  const targetsArg   = process.argv.indexOf('--targets')
+  const targetsFile  = targetsArg !== -1 ? process.argv[targetsArg + 1] : null
 
-  log(`━━━ product-research start ━━━${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
+  log(`━━━ product-research start ━━━${targetsFile ? ' [targets]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -175,6 +416,14 @@ End with one quiet line that makes the reader want it without asking them to buy
   log('Loading memory...')
   const memory = loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
+  // ─── --targets mode: curated list, skip discovery, go straight to validation ─
+  if (targetsFile) {
+    const client = new Anthropic({ apiKey })
+    await runTargetsMode(targetsFile, client, memory, directive, dryRun, conn, existingAsins)
+    log('━━━ product-research complete ━━━\n')
+    return
+  }
 
   log('Loading product development brief...')
   const productBrief = loadProductBrief()

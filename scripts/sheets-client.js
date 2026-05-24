@@ -108,7 +108,8 @@ async function readAllRows({ sheets, spreadsheetId }) {
 
 // Appends a single pick row. Reads the live header row to determine column
 // positions — safe regardless of whether columns have been reordered or added.
-async function appendPick({ sheets, spreadsheetId }, pick) {
+// Pass { status: 'Approved' } as the third argument to override the default 'Pending'.
+async function appendPick({ sheets, spreadsheetId }, pick, { status = 'Pending' } = {}) {
   const headerRes = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: 'Sheet1!A1:Z1',
@@ -122,7 +123,7 @@ async function appendPick({ sheets, spreadsheetId }, pick) {
     'Description':  pick.description || '',
     'Narrative':    pick.narrative   || '',
     'Score':        pick.score       || '',
-    'Status':       'Pending',
+    'Status':       status,
     'Brand Story':  pick.brand_story || '',
     'Price':        pick.price       || '',
     'Reasoning':    pick.reasoning   || '',
