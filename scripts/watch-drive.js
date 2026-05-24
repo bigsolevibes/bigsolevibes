@@ -5,6 +5,7 @@ const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 const { sendTelegram } = require('./telegram')
+const { addPendingItem } = require('./telegram-queue')
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -16,8 +17,9 @@ const POST_STATE_FILE = path.join(ROOT, 'logs', 'post-state.json')
 const OUTPUT_DIR      = path.join(ROOT, 'posts', 'output')
 const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
 
-const REMOTE_READY  = 'big sole vibes:Big Sole Vibes/Ready to Post'
-const REMOTE_POSTED = 'big sole vibes:Big Sole Vibes/Posted'
+const REMOTE_READY          = 'big sole vibes:Big Sole Vibes/Ready to Post'
+const REMOTE_POSTED         = 'big sole vibes:Big Sole Vibes/Posted'
+const APPROVED_SLOTS_FILE   = path.join(ROOT, 'logs', 'approved-slots.json')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +55,10 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+}
+
+function loadApprovedSlots() {
+  try { return JSON.parse(fs.readFileSync(APPROVED_SLOTS_FILE, 'utf8')) } catch { return {} }
 }
 
 // Initialize a slot's platform entries. Idempotent — never overwrites existing entries.
@@ -525,6 +531,24 @@ async function run() {
       } else {
         // ready=true and held at least one cycle — clear sentinel and fire
         delete state[base]._hold_since
+      }
+
+      // Content approval gate — nothing distributes without Big D's explicit approval
+      const approvedSlots = loadApprovedSlots()
+      if (!approvedSlots[base]) {
+        if (!state[base]._approval_requested) {
+          const preview = captionText.slice(0, 200).replace(/[_*`[\]]/g, '').trim()
+          sendTelegram(
+            `🔒 *CONTENT GATE — REVIEW REQUIRED*\n*Slot:* \`${base}\`\n*Caption:*\n${preview}\n\nReply \`approve\` or \`deny\` to release or hold this slot.`
+          ).catch(() => {})
+          addPendingItem({ type: 'content-gate', id: `content-gate-${base}`, metadata: { slot: base } })
+          state[base]._approval_requested = true
+          saveState(state)
+          log(`${base}: content gate — held, approval requested via Telegram`)
+        } else {
+          log(`${base}: content gate — awaiting Big D approval`)
+        }
+        continue
       }
 
       const captions    = parseCaptions(captionText)

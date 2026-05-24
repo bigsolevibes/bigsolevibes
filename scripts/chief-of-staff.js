@@ -57,7 +57,9 @@ promote-sole-report → feeds distribute pipeline
 product-development → feeds Big D decisions
 `.trim()
 
-const ECOSYSTEM_MANDATE = `ECOSYSTEM MANDATE: Every agent exists to serve the ecosystem, not itself. An agent that runs and produces nothing downstream has failed. An agent that runs without being fed has been abandoned. Chief's job is to make sure neither happens. Every morning chief confirms the chain is intact from social-listening all the way to distribute. Every break gets named, its downstream impact gets stated, and Big D gets a decision to make.`
+const ECOSYSTEM_MANDATE = `ECOSYSTEM MANDATE: Every agent exists to serve the ecosystem, not itself. An agent that runs and produces nothing downstream has failed. An agent that runs without being fed has been abandoned. Chief's job is to make sure neither happens. Every morning chief confirms the chain is intact from social-listening all the way to distribute. Every break gets named, its downstream impact gets stated, and Big D gets a decision to make.
+
+QUALITY GATE AUTHORITY: Your job is not to report on what happened. Your job is to ensure that what happens meets the standard before it happens. You have authority to hold any piece of content, any distribution, any pipeline output. When in doubt — hold it and ask. Never let poor quality go out because nobody stopped it.`
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -813,6 +815,31 @@ async function processTelegramInbox() {
         sendTelegram(`✅ Social draft approved: ${slot}\nBrief is live for next gemini-bridge run.`).then(r => {
           if (r?.message_id) log(`Telegram social-draft confirm — message_id: ${r.message_id}`)
         })
+      } else if (target.type === 'content-gate') {
+        const slot = target.metadata?.slot || ''
+        const approvedSlotsFile = path.join(ROOT, 'logs', 'approved-slots.json')
+        let approvedSlots = {}
+        try { if (fs.existsSync(approvedSlotsFile)) approvedSlots = JSON.parse(fs.readFileSync(approvedSlotsFile, 'utf8')) } catch {}
+        approvedSlots[slot] = new Date().toISOString()
+        fs.writeFileSync(approvedSlotsFile, JSON.stringify(approvedSlots, null, 2))
+        log(`  Content gate approved: ${slot} added to approved-slots.json`)
+        sendTelegram(`✅ Content approved: \`${slot}\`\nWill distribute on next poll.`).then(r => {
+          if (r?.message_id) log(`Telegram content-gate confirm — message_id: ${r.message_id}`)
+        })
+      } else if (target.type === 'video-gate') {
+        const slot      = target.metadata?.slot || ''
+        const stagePath = `big sole vibes:Big Sole Vibes/Video Review/${slot}.mp4`
+        const destPath  = `big sole vibes:Big Sole Vibes/Ready to Post/${slot}.mp4`
+        try {
+          execSync(`rclone moveto "${stagePath}" "${destPath}"`, { stdio: 'pipe' })
+          log(`  Video gate approved: ${slot}.mp4 moved to Ready to Post`)
+          sendTelegram(`✅ Video approved: \`${slot}.mp4\` moved to Ready to Post.\nWill process on next watch-drive poll.`).then(r => {
+            if (r?.message_id) log(`Telegram video-gate confirm — message_id: ${r.message_id}`)
+          })
+        } catch (err) {
+          log(`  WARNING: video-gate move failed — ${err.message}`)
+          sendTelegram(`⚠️ Video approval failed: ${err.message.slice(0, 120)}`).then(() => {})
+        }
       }
     } else if (keyword === 'denied') {
       log(`  DENIED: ${target.id}`)
@@ -823,6 +850,18 @@ async function processTelegramInbox() {
         if (fs.existsSync(pendingPath)) { try { fs.unlinkSync(pendingPath) } catch {} }
         if (fs.existsSync(livePath))    { try { fs.unlinkSync(livePath) }   catch {} }
         log(`  Social-draft denied: brief removed for slot ${slot}`)
+      } else if (target.type === 'content-gate') {
+        const slot = target.metadata?.slot || ''
+        log(`  Content gate denied: ${slot} — slot will not distribute until re-uploaded`)
+        sendTelegram(`❌ Content denied: \`${slot}\`\nRemove and re-upload to Drive to requeue.`).then(() => {})
+      } else if (target.type === 'video-gate') {
+        const slot      = target.metadata?.slot || ''
+        const stagePath = `big sole vibes:Big Sole Vibes/Video Review/${slot}.mp4`
+        try {
+          execSync(`rclone delete "${stagePath}"`, { stdio: 'pipe' })
+          log(`  Video gate denied: ${slot}.mp4 deleted from Video Review`)
+        } catch {}
+        sendTelegram(`❌ Video rejected: \`${slot}.mp4\` deleted from Video Review.`).then(() => {})
       }
       sendTelegram(`❌ Denied: ${target.metadata?.title || target.id}`).then(r => {
         if (r?.message_id) log(`Telegram deny confirm — message_id: ${r.message_id}`)
@@ -997,7 +1036,7 @@ async function watchBlogAgent() {
   const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
     + `\n\n## Agent Ecosystem Registry\n${AGENT_ECOSYSTEM_REGISTRY}`
     + `\n\n${ECOSYSTEM_MANDATE}`
-    + `\n\nYou are the BSV Chief of Staff — the Proprietor's most trusted advisor. Your job: confirm the ecosystem is intact, name what the data says, and present exactly three strategic options. He chooses. Then it happens. Statements not questions. Confident. Brief. No filler. The Proprietor runs the room.`
+    + `\n\nYou are the BSV Chief of Staff — the Proprietor's most trusted advisor and the standard-bearer for everything that leaves this pipeline. Your job: confirm the ecosystem is intact, surface what is waiting for review, name what the data says, and present exactly three strategic options. He chooses. Then it happens. Statements not questions. Confident. Brief. No filler. Nothing ships without your clearance. The Proprietor runs the room.`
 
   const standupUser = `Today is ${DAY_NAME} ${DATE_STAMP}.
 
@@ -1136,13 +1175,25 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     ? realBlockers.slice(0, 3).map(b => `• ${b}`).join('\n')
     : 'No decisions needed today.'
 
-  const pendingEditorial = loadPendingItems().filter(i => ['lounge-draft', 'social-draft'].includes(i.type))
+  const allPendingNow    = loadPendingItems()
+  const pendingEditorial = allPendingNow.filter(i => ['lounge-draft', 'social-draft'].includes(i.type))
+  const pendingGates     = allPendingNow.filter(i => ['content-gate', 'video-gate'].includes(i.type))
+
   const editorialTg = pendingEditorial.length
     ? pendingEditorial.map(i => {
         const ageH  = Math.floor((Date.now() - new Date(i.sentAt).getTime()) / 3600000)
         const emoji = i.type === 'lounge-draft' ? '📖' : '📣'
         const flag  = ageH > 48 ? ' ⚠️ OVERDUE' : ''
         return `${emoji} ${i.metadata?.title || i.id} (${ageH}h)${flag}`
+      }).join('\n')
+    : null
+
+  const contentGateTg = pendingGates.length
+    ? pendingGates.map(i => {
+        const ageH  = Math.floor((Date.now() - new Date(i.sentAt).getTime()) / 3600000)
+        const emoji = i.type === 'video-gate' ? '🎬' : '🔒'
+        const label = i.type === 'video-gate' ? `Video: ${i.metadata?.slot}` : `Content: ${i.metadata?.slot}`
+        return `${emoji} ${label} (${ageH}h) — reply APPROVE or DENY`
       }).join('\n')
     : null
 
@@ -1177,14 +1228,19 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     ``,
     `Reply 1, 2, or 3. No reply by 10AM = yesterday's directive runs.`,
     ``,
+    ...(contentGateTg ? [
+      `*🔴 HOLDING FOR YOUR REVIEW*`,
+      contentGateTg,
+      ``,
+    ] : []),
+    ...(editorialTg ? [
+      `*🟡 PENDING EDITORIAL APPROVAL*`,
+      editorialTg,
+      `Reply APPROVE or DENY.`,
+      ``,
+    ] : []),
     `*4 — BLOCKERS*`,
     blockerText,
-    ...(editorialTg ? [
-      ``,
-      `*4b — EDITORIAL QUEUE*`,
-      editorialTg,
-      `Reply APPROVE or send edit notes for each.`,
-    ] : []),
     ``,
     `*5 — TONIGHT*`,
     tonightSection
