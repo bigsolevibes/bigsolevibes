@@ -968,7 +968,7 @@ async function watchBlogAgent() {
   // Supporting context
   const tokenBudget = buildTokenBudget()
   const directive   = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
-  const memory      = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
+  const memory      = await (require('./lib/memory').loadMemoryById())
   const orgChart    = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
   const handoff     = loadLatestHandoff()
   const socialReport = loadLatestReport('social-report')
@@ -1297,7 +1297,7 @@ Write the complete ${HANDOFF_FILENAME}. Sections: what BSV is, pipeline state, c
 
   log('Memory update...')
   try {
-    const currentMem = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
+    const currentMem = await (require('./lib/memory').loadMemoryById())
     const memMsg = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 4096,
@@ -1318,10 +1318,8 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
     const updatedMem = memMsg.content[0]?.text?.trim() || ''
     log(`Memory done — ${memMsg.usage?.output_tokens ?? '?'} tokens`)
     if (updatedMem.includes('# BSV-Memory.md')) {
-      const localMem = path.join(TEMP_DIR, 'BSV-Memory.md')
-      fs.writeFileSync(localMem, updatedMem)
-      rcloneCopyTo(localMem, `${REMOTE}/BSV-Memory.md`)
-      log(`Memory uploaded → ${REMOTE}/BSV-Memory.md`)
+      await require('./lib/memory').writeMemoryById(updatedMem)
+      log(`Memory uploaded via memory.js`)
     } else {
       log('WARNING: memory update missing header — skipping upload')
     }

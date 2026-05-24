@@ -29,12 +29,9 @@ function loadDirective() {
   } catch { return null }
 }
 
-function loadMemory() {
-  try {
-    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 function getPreviousResearch() {
@@ -435,7 +432,7 @@ End with one quiet line that makes the reader want it without asking them to buy
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
   log('Loading memory...')
-  const memory = loadMemory()
+  const memory = await loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   // ─── --targets mode: curated list, skip discovery, go straight to validation ─

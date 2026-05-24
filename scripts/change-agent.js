@@ -399,14 +399,12 @@ async function writePostMortem(commit, reason, rollbackHash) {
     ``,
   ].join('\n')
 
-  const memoryDir  = path.join(os.homedir(), 'tmp', 'bsv-memory')
-  const memoryFile = path.join(memoryDir, 'BSV-Memory.md')
   try {
-    fs.mkdirSync(memoryDir, { recursive: true })
-    fs.appendFileSync(memoryFile, content)
-    log(`Post-mortem appended to BSV-Memory.md`)
-    execSync(`rclone copyto "${memoryFile}" "${REMOTE}/BSV-Memory.md"`, { stdio: 'pipe' })
-    log(`Post-mortem uploaded to Drive`)
+    const { loadMemoryById, writeMemoryById } = require('./lib/memory')
+    const currentMem = await loadMemoryById() || ''
+    const updatedMem = currentMem + '\n' + content
+    await writeMemoryById(updatedMem)
+    log(`Post-mortem appended and uploaded to Drive via memory.js`)
   } catch (err) {
     log(`WARNING: post-mortem write/upload failed: ${err.message}`)
   }
@@ -502,7 +500,7 @@ function validateAutoCommit(commit, files) {
   const directive = loadDriveFile(`${REMOTE}/BSV-Directive.md`)
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
   log('Loading memory...')
-  const memory = loadDriveFile(`${REMOTE}/BSV-Memory.md`)
+  const memory = await (require('./lib/memory').loadMemoryById())
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   // ── Always: ensure post-commit hook is installed ──────────────────────────────

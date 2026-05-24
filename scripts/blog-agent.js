@@ -535,7 +535,7 @@ function gitPush(files) {
   const brandReport   = loadLatestDriveFile('Brand')
   const socialReport  = loadLatestDriveFile('Reports', /^social-report-\d{4}-\d{2}-\d{2}\.md$/)
   const directive     = loadDriveFile('BSV-Directive.md')
-  const memory        = loadDriveFile('BSV-Memory.md')
+  const memory        = await (require('./lib/memory').loadMemoryById())
 
   // Load latest dated handoff
   let handoff = null

@@ -30,12 +30,9 @@ function loadDirective() {
   } catch { return null }
 }
 
-function loadMemory() {
-  try {
-    execSync(`rclone copy "${GDRIVE_DRIVE_ROOT}/BSV-Memory.md" "${ORG_CHART_TEMP}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    const p = path.join(ORG_CHART_TEMP, 'BSV-Memory.md')
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
@@ -878,7 +875,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
   log('Loading memory...')
-  const memory = loadMemory()
+  const memory = await loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const alertState = loadAlertState()

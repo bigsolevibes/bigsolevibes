@@ -309,7 +309,7 @@ async function sendApprovalRequest(config, reconciled) {
   const client = new Anthropic({ apiKey })
 
   log('Loading voice standard (BSV-Memory.md)...')
-  const memory = loadRootFile('BSV-Memory.md')
+  const memory = await (require('./lib/memory').loadMemoryById())
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   log('Loading tonal frame (lounge-introduction.md)...')
