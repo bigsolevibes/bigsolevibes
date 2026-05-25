@@ -9,6 +9,7 @@ const ROOT        = path.join(__dirname, '..')
 const LOG_FILE    = path.join(ROOT, 'logs', 'update-handoff.log')
 const TEMP_DIR    = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'
+const REMOTE      = 'big sole vibes:Big Sole Vibes'
 
 const today = new Date()
 const dateStamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
@@ -20,6 +21,21 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 // ─── Project state collectors ─────────────────────────────────────────────────
@@ -131,6 +147,22 @@ function getLatestBrandHealth() {
   } catch { return null }
 }
 
+function getHandoffFindings() {
+  try {
+    const p = path.join(ROOT, 'logs', 'handoff-findings.md')
+    if (!fs.existsSync(p)) return null
+    const content = fs.readFileSync(p, 'utf8').trim()
+    return content || null
+  } catch { return null }
+}
+
+function clearHandoffFindings() {
+  try {
+    const p = path.join(ROOT, 'logs', 'handoff-findings.md')
+    if (fs.existsSync(p)) fs.writeFileSync(p, '')
+  } catch {}
+}
+
 function getExistingHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -157,6 +189,13 @@ function getExistingHandoff() {
 
   log('━━━ update-handoff start ━━━')
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = await loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     log('ERROR: ANTHROPIC_API_KEY not set in .env')
@@ -165,16 +204,17 @@ function getExistingHandoff() {
 
   // Collect state
   log('Collecting project state...')
-  const envKeys       = getEnvKeyNames()
-  const recentLogs    = getRecentLogs(30)
-  const pipelineState = getPipelineState()
-  const outputFiles   = getOutputFiles()
-  const contentFiles  = getContentFiles()
-  const gitLog        = getGitLog()
-  const driveStructure = getDriveStructure()
+  const envKeys         = getEnvKeyNames()
+  const recentLogs      = getRecentLogs(30)
+  const pipelineState   = getPipelineState()
+  const outputFiles     = getOutputFiles()
+  const contentFiles    = getContentFiles()
+  const gitLog          = getGitLog()
+  const driveStructure  = getDriveStructure()
   const existingHandoff = getExistingHandoff()
-  const tokenExpiry   = await checkMetaTokenExpiry()
-  const brandHealth   = getLatestBrandHealth()
+  const tokenExpiry     = await checkMetaTokenExpiry()
+  const brandHealth     = getLatestBrandHealth()
+  const handoffFindings = getHandoffFindings()
   const now = new Date().toISOString()
 
   log(`Env keys: ${envKeys.join(', ')}`)
@@ -235,6 +275,7 @@ ${gitLog}
 ${fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort().map(s => `- scripts/${s}`).join('\n')}
 
 ${brandHealth?.metrics ? `## Audience — Current Follower Counts (from ${brandHealth.filename})\n${brandHealth.metrics}\n` : ''}
+${handoffFindings ? `## Pipeline Alerts (from logs/handoff-findings.md)\n${handoffFindings}\n` : ''}
 ## Phase 2 — BSV Own Product Line (fixed strategy, always include)
 - **First product:** Proprietor's Foot Balm — private label, custom formulation
 - **Packaging:** Midnight #0D1B2A and Bourbon #C17D2E colorway
@@ -245,7 +286,7 @@ ${brandHealth?.metrics ? `## Audience — Current Follower Counts (from ${brandH
 - **Drive folder:** Big Sole Vibes/Product Development/ — manufacturer research, formulation notes, packaging concepts
 `.trim()
 
-  const systemPrompt = `You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
 BSV is a premium men's foot care brand. The system automates social content creation, branding, and distribution.
 
 Your job is to produce a complete, current, developer-ready handoff document in Markdown.
@@ -322,6 +363,10 @@ Do not invent or fabricate information not present in the context.`
   try {
     execSync(`rclone copyto "${localOutput}" "${REMOTE_HANDOFF}/${HANDOFF_FILE}"`, { stdio: ['pipe','pipe','pipe'] })
     log(`Uploaded → ${REMOTE_HANDOFF}/${HANDOFF_FILE}`)
+    if (handoffFindings) {
+      clearHandoffFindings()
+      log('Cleared logs/handoff-findings.md after successful upload')
+    }
   } catch (err) {
     log(`ERROR: rclone upload failed: ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)

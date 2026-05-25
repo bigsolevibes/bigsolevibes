@@ -155,6 +155,8 @@ async function generateImage(apiKey, prompt) {
       'FORBIDDEN: collage, grid, 2x2 panel, split-screen, mood board, multiple frames, multiple poses, multiple outfits, multiple settings, before/after, side-by-side.',
       'If you are about to generate more than one frame or panel, STOP. Generate only the primary scene.',
       'Style: dark cinematic editorial photography. Shot on 35mm. One consistent color grade.',
+      'HEAD TO TOE RULE: A bare foot must appear somewhere in the frame — corner, edge of shot, soft focus, partially visible. The foot is never the subject unless the featured product is foot care. When foot care is the product, the foot is center frame, sharp focus, fully lit. Otherwise: the foot is the wink, not the headline. Never center the foot unless explicitly instructed.',
+      'TONE: Lived-in, not staged. The man looks complete but slightly caught — not posed. There is always a story happening just outside the frame. Casual confidence, never try-hard. Lounge aesthetic where the scene allows — dark wood, leather, low light.',
       'Subject: ' + visualPrompt,
     ].join('\n')
 

@@ -40,10 +40,10 @@ export default function HomePage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                href="/sole-report"
+                href="/the-lounge"
                 className="px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
               >
-                THE SOLE REPORT
+                THE LOUNGE
               </Link>
               <Link
                 href="/shop"
@@ -61,15 +61,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── SOLE REPORT ───────────────────────────────────────────────── */}
+        {/* ── THE LOUNGE ────────────────────────────────────────────────── */}
         <section className="py-24 border-t border-white/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-baseline justify-between mb-12">
               <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
-                THE SOLE REPORT
+                THE LOUNGE
               </h2>
               <Link
-                href="/sole-report"
+                href="/the-lounge"
                 className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
               >
                 VIEW ALL →
@@ -78,8 +78,6 @@ export default function HomePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
               {posts.map((post, i) => {
-                // 1 post: full width. 2 posts: featured (col-span-2) + one beside it.
-                // 3 posts: equal thirds (col-span-1 each).
                 const spanClass  = posts.length === 2 && i === 0 ? 'md:col-span-2' : ''
                 const borderClass = i < posts.length - 1
                   ? 'border-b md:border-b-0 md:border-r border-white/10'
@@ -108,7 +106,7 @@ export default function HomePage() {
 
             <div className="mt-8 sm:hidden">
               <Link
-                href="/sole-report"
+                href="/the-lounge"
                 className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
               >
                 VIEW ALL →

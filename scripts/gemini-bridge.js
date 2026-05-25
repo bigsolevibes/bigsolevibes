@@ -116,6 +116,11 @@ Post-game or post-practice. Locker room bench, concrete floor, harsh overhead li
 
 VISUAL LANGUAGE: warm amber light (#C17D2E), deep navy shadows (#0D1B2A), cinematic grain, masculine restraint. No product placement. No logos in the generated image. No text. Square 1:1 for images unless otherwise specified.
 
+HEAD TO TOE — CAMPAIGN VISUAL RULE (applies to every image and video unless the brief explicitly states otherwise):
+A bare foot must appear somewhere in the frame — corner of shot, edge of frame, soft focus, partially visible. The foot is never the subject unless the product being featured is foot care. When foot care is the featured product, the foot moves to center frame, sharp focus, fully lit — this is the reveal moment. In all other cases: the foot is present, incidental, slightly visible — the wink, not the headline. Never center the foot unless the brief explicitly calls for it.
+
+TONE — every image feels lived-in, not staged. The man looks complete but slightly caught — not posed. There is always a story happening just outside the frame. Casual confidence, never try-hard. Dark wood, leather, low light where the scene allows — the lounge aesthetic.
+
 `
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

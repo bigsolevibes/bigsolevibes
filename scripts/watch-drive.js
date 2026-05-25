@@ -4,6 +4,8 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+const { sendTelegram } = require('./telegram')
+const { addPendingItem } = require('./telegram-queue')
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -15,8 +17,9 @@ const POST_STATE_FILE = path.join(ROOT, 'logs', 'post-state.json')
 const OUTPUT_DIR      = path.join(ROOT, 'posts', 'output')
 const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
 
-const REMOTE_READY  = 'big sole vibes:Big Sole Vibes/Ready to Post'
-const REMOTE_POSTED = 'big sole vibes:Big Sole Vibes/Posted'
+const REMOTE_READY          = 'big sole vibes:Big Sole Vibes/Ready to Post'
+const REMOTE_POSTED         = 'big sole vibes:Big Sole Vibes/Posted'
+const APPROVED_SLOTS_FILE   = path.join(ROOT, 'logs', 'approved-slots.json')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,10 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+}
+
+function loadApprovedSlots() {
+  try { return JSON.parse(fs.readFileSync(APPROVED_SLOTS_FILE, 'utf8')) } catch { return {} }
 }
 
 // Initialize a slot's platform entries. Idempotent — never overwrites existing entries.
@@ -317,10 +324,34 @@ function extractLastError(output, platform) {
   return 'no error detail captured'
 }
 
-// ─── Timing ───────────────────────────────────────────────────────────────────
+// ─── Post cleanup ─────────────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 15 * 60 * 1000  // 15 minutes between polls
-const CRASH_RESTART_MS = 30 * 1000       // 30-second delay after a crash
+// Move all Drive files for a given slot base to Posted/YYYY-MM-DD/.
+// Covers: {base}.png, {base}-flow.png, {base}.md, {base}-prompt.txt,
+//         {base}-flow-prompt.txt, {base}-video.mp4, {base}-image.jpg, etc.
+// Also deletes matching local copies from TEMP_DIR.
+function archiveSlot(base, allDriveFiles, today) {
+  const dest = `${REMOTE_POSTED}/${today}`
+  const pattern = new RegExp(`^${base}(?:-flow|-video|-image|-prompt|-flow-prompt)?(?:\\.[a-z0-9]+)?$`, 'i')
+  const matching = allDriveFiles.filter(f => {
+    // strip extension for matching
+    const noExt = f.name.replace(/\.[^.]+$/, '')
+    return pattern.test(noExt)
+  })
+  for (const file of matching) {
+    try {
+      execSync(`rclone move "${REMOTE_READY}/${file.name}" "${dest}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+      log(`  moved → ${dest}/${file.name}`)
+    } catch (err) {
+      log(`  ERROR: failed to move ${file.name}: ${err.stderr?.toString().trim() || err.message}`)
+    }
+    // Delete local copy if present
+    const local = path.join(TEMP_DIR, file.name)
+    if (fs.existsSync(local)) {
+      try { fs.rmSync(local) } catch {}
+    }
+  }
+}
 
 // ─── Shop sync ────────────────────────────────────────────────────────────────
 // Tracks the approved ASIN set between polls. null = not yet initialized.
@@ -386,9 +417,10 @@ async function run() {
   const state = loadState()
   const today = localDateString()
 
-  // Filter out supporting files that are not post assets
+  // Fetch raw list for archiving, then filter to post assets for grouping
   const IGNORE = /(-(prompt|flow-prompt)\.txt|gemini-(weekly-brief|brief-week-\d{4}-\d{2})\.md)$/i
-  const files = listDrive(REMOTE_READY).filter(f => !IGNORE.test(f.name))
+  const allDriveFiles = listDrive(REMOTE_READY)
+  const files = allDriveFiles.filter(f => !IGNORE.test(f.name))
   if (files.length === 0) {
     log('Ready to Post/ is empty — nothing to do')
     log('━━━ poll end ━━━\n')
@@ -417,7 +449,27 @@ async function run() {
 
     // Media only — process but don't distribute yet
     if (media && !caption) {
-      log(`${base}: media present, no caption — processing media only`)
+      // Track how long caption has been missing — alert if post window is likely missed
+      if (!state[base]._media_since) {
+        state[base]._media_since = new Date().toISOString()
+        saveState(state)
+      }
+      const hoursWaiting = (Date.now() - new Date(state[base]._media_since).getTime()) / (1000 * 60 * 60)
+      if (hoursWaiting >= 3 && !state[base]._media_alerted) {
+        const h = Math.round(hoursWaiting)
+        log(`⚠️ ${base}: media ready for ${h}h with no caption — post window likely missed`)
+        sendTelegram(`⚠️ BSV — ${base} has media ready but no caption for ${h}h. Caption file missing from Drive. Post window likely missed.`)
+          .then(r => {
+            if (r?.message_id) log(`Telegram missed-caption alert delivered — message_id: ${r.message_id}`)
+            else log('WARNING: Telegram missed-caption alert returned no confirmation')
+          })
+        const finding = `[${new Date().toISOString()}] MISSED POST — ${base}: media ready for ${h}h, caption never arrived in Drive. Post window likely missed.\n`
+        try { fs.appendFileSync(path.join(ROOT, 'logs', 'handoff-findings.md'), finding) } catch {}
+        state[base]._media_alerted = true
+        saveState(state)
+      } else {
+        log(`${base}: media present${hoursWaiting >= 1 ? ` for ${hoursWaiting.toFixed(1)}h` : ''}, no caption — processing media only`)
+      }
       if (!downloadFile(`${REMOTE_READY}/${media.name}`, TEMP_DIR)) continue
       const localPath = path.join(TEMP_DIR, media.name)
       try {
@@ -447,29 +499,56 @@ async function run() {
 
       const captionText = fs.readFileSync(localCaption, 'utf8')
 
-      // Scheduling gate — only distribute at or after post_time.
-      // Uses _hold_since to detect cross-day stale holds: if today's UTC date is
-      // after the date this slug was first held, post_time is overdue — fire immediately.
+      // Scheduling gate — hold every new slot for at least one full poll cycle before
+      // distributing. This prevents the timezone race where the pipeline runs at ~10 PM
+      // local time and sees post_time 09:00 as already passed, firing immediately with
+      // whatever media happened to be in Drive at that moment (possibly stale/wrong image).
+      // On first encounter: always hold regardless of ready state.
+      // On subsequent encounters: fire if ready=true, or if held since a prior day (overdue).
       const { postTime, ready } = parsePostTime(captionText)
-      if (!ready) {
-        if (!state[base]) state[base] = {}
-        const holdSince = state[base]._hold_since
-        if (holdSince && holdSince < today) {
-          log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
-          // fall through to distribution
-        } else {
-          if (!holdSince) {
-            state[base]._hold_since = today
-            saveState(state)
-          }
-          const now = new Date()
-          const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-          log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
-          continue
-        }
-      } else if (state[base] && state[base]._hold_since) {
-        // post_time reached normally — clear the hold sentinel
+      if (!state[base]) state[base] = {}
+      const holdSince = state[base]._hold_since
+
+      if (!holdSince) {
+        // First time we've seen this slot — hold for at least one cycle
+        state[base]._hold_since = today
+        saveState(state)
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: first seen — holding until post_time ${postTime} confirmed on next poll (current time ${currentTime})`)
+        continue
+      } else if (holdSince < today) {
+        // Held since a prior day and still not posted — overdue, fire immediately
+        log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
         delete state[base]._hold_since
+        // fall through to distribution
+      } else if (!ready) {
+        // Held today but post_time not yet reached — keep waiting
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
+        continue
+      } else {
+        // ready=true and held at least one cycle — clear sentinel and fire
+        delete state[base]._hold_since
+      }
+
+      // Content approval gate — nothing distributes without Big D's explicit approval
+      const approvedSlots = loadApprovedSlots()
+      if (!approvedSlots[base]) {
+        if (!state[base]._approval_requested) {
+          const preview = captionText.slice(0, 200).replace(/[_*`[\]]/g, '').trim()
+          sendTelegram(
+            `🔒 *CONTENT GATE — REVIEW REQUIRED*\n*Slot:* \`${base}\`\n*Caption:*\n${preview}\n\nReply \`approve\` or \`deny\` to release or hold this slot.`
+          ).catch(() => {})
+          addPendingItem({ type: 'content-gate', id: `content-gate-${base}`, metadata: { slot: base } })
+          state[base]._approval_requested = true
+          saveState(state)
+          log(`${base}: content gate — held, approval requested via Telegram`)
+        } else {
+          log(`${base}: content gate — awaiting Big D approval`)
+        }
+        continue
       }
 
       const captions    = parseCaptions(captionText)
@@ -520,7 +599,9 @@ async function run() {
         saveState(state)
         for (const p of effectivePlatforms) {
           if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
-            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${err.message.slice(0, 160)}`)
+            const errSummary = err.message.slice(0, 160)
+            log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${errSummary}`)
+            sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* ${errSummary}`).catch(() => {})
           }
         }
         continue
@@ -537,6 +618,7 @@ async function run() {
         for (const p of effectivePlatforms) {
           if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
             log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: no distribute results written`)
+            sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* no distribute results written`).catch(() => {})
           }
         }
         continue
@@ -550,6 +632,7 @@ async function run() {
         if (state[base][p]?.status === 'exhausted' && !preExhausted.has(p)) {
           const lastError = extractLastError(distributeOutput, p)
           log(`EXHAUSTED: ${base} / ${p} — ${MAX_ATTEMPTS} attempts, all failed. Last error: ${lastError}`)
+          sendTelegram(`✗ *BSV distribute failure*\n*Slot:* ${base}\n*Platform:* ${p}\n*Error:* ${lastError}`).catch(() => {})
         }
       }
 
@@ -559,9 +642,8 @@ async function run() {
         const parts = []
         if (succeeded.length) parts.push(`✓ ${succeeded.join(', ')}`)
         if (exhausted.length) parts.push(`✗ exhausted: ${exhausted.join(', ')}`)
-        log(`${base}: done — ${parts.join(' | ')} — moving to Posted/${today}/`)
-        moveToPosted(media.name,   today)
-        moveToPosted(caption.name, today)
+        log(`${base}: done — ${parts.join(' | ')} — archiving to Posted/${today}/`)
+        archiveSlot(base, allDriveFiles, today)
         delete state[base]
         saveState(state)
         log(`${base}: archived`)
@@ -590,23 +672,44 @@ async function run() {
   await checkAndSyncShop()
 }
 
-// ─── Loop (crash guard + interval) ───────────────────────────────────────────
-// launchd KeepAlive restarts the whole process if Node exits.
-// This inner loop catches poll-level errors and retries after 30s without
-// taking down the process, so transient failures don't interrupt the schedule.
+// ─── FSEvents trigger ─────────────────────────────────────────────────────────
+// drive-sync.js (run every 5 min via launchd StartInterval plist) pulls Drive
+// files into TEMP_DIR. fs.watch detects the new files and fires run() within
+// 3 seconds without this process needing to poll Drive directly.
+// launchd KeepAlive: true restarts this process if it ever exits.
 
-function schedulePoll(delayMs) {
-  setTimeout(async function () {
-    try {
-      await run()
-    } catch (err) {
-      log(`CRASH: unhandled error in poll — ${err.stack || err.message}`)
-      log(`CRASH: restarting poll in ${CRASH_RESTART_MS / 1000}s`)
-      schedulePoll(CRASH_RESTART_MS)
-      return
+let runPending = false
+let runActive  = false
+
+async function triggerRun() {
+  if (runActive) { runPending = true; return }
+  runActive = true
+  try {
+    await run()
+  } catch (err) {
+    log(`CRASH: unhandled error in run — ${err.stack || err.message}`)
+  } finally {
+    runActive = false
+    if (runPending) {
+      runPending = false
+      setTimeout(triggerRun, 0)
     }
-    schedulePoll(POLL_INTERVAL_MS)
-  }, delayMs)
+  }
 }
 
-schedulePoll(0)  // first poll fires immediately on process start
+let debounceTimer = null
+function onDirChange() {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(triggerRun, 3000)
+}
+
+// Fire once at startup to process anything already in TEMP_DIR
+triggerRun()
+
+const watcher = fs.watch(TEMP_DIR, { persistent: true }, onDirChange)
+watcher.on('error', err => log(`fs.watch error: ${err.message}`))
+
+process.on('SIGTERM', () => { watcher.close(); process.exit(0) })
+process.on('SIGINT',  () => { watcher.close(); process.exit(0) })
+
+log(`Watching ${TEMP_DIR} for changes (drive-sync.js feeds this via launchd)`)

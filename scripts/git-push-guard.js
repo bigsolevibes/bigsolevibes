@@ -14,6 +14,8 @@
 require('dotenv').config()
 const { execSync } = require('child_process')
 const https        = require('https')
+const os           = require('os')
+const path         = require('path')
 
 const TARGET = 'preview/full-site'
 
@@ -64,14 +66,24 @@ function safePushToPreview(cwd, log) {
 }
 
 // Pipeline-only push — processed media goes here, never triggers Cloudflare.
-const PIPELINE_TARGET = 'pipeline/media'
+// Uses a temp worktree + cherry-pick so the current branch is never touched.
+// Only the single media commit just made on HEAD is replayed onto media-cache.
+// Branch named media-cache is excluded from Cloudflare Pages branch control.
+const PIPELINE_TARGET = 'media-cache'
 function safePushToPipeline(cwd, log) {
   const logFn = log || console.log
+  const worktreePath = path.join(os.tmpdir(), `bsv-pipeline-${Date.now()}`)
   try {
-    execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
-    logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
+    const mediaCommit = execSync('git rev-parse HEAD', { cwd, stdio: 'pipe' }).toString().trim()
+    execSync(`git fetch origin ${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    execSync(`git worktree add "${worktreePath}" origin/${PIPELINE_TARGET}`, { cwd, stdio: 'pipe' })
+    execSync(`git cherry-pick ${mediaCommit}`, { cwd: worktreePath, stdio: 'pipe' })
+    execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd: worktreePath, stdio: 'pipe' })
+    execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' })
+    logFn(`Git: pushed → ${PIPELINE_TARGET} (media-cache — no Cloudflare build)`)
     return true
   } catch (err) {
+    try { execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' }) } catch {}
     const msg = err.stderr?.toString().trim() || err.message
     logFn(`ERROR: git push failed — ${msg}`)
     return false

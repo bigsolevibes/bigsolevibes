@@ -5,7 +5,7 @@ require('dotenv').config()
 // Runs Sunday 11:30PM via launchd, after brand-manager completes.
 // Reads Plans, Brand, social-listening from Drive + approved shelf products
 // from Google Sheets. Calls Claude to generate a Proprietor-voice post
-// targeting BSV SEO terms. Outputs static HTML to public/sole-report/.
+// targeting BSV SEO terms. Outputs static HTML to public/the-lounge/.
 // Chief reads blog-agent.log in the Monday morning stand-up.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -15,17 +15,19 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+const { addPendingItem, readDecisionFromDrive } = require('./telegram-queue')
+const { sendTelegram } = require('./telegram')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
-const BLOG_DIR  = path.join(ROOT, 'public', 'sole-report')
+const BLOG_DIR  = path.join(ROOT, 'public', 'the-lounge')
 const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-blog-agent')
 const REMOTE    = 'big sole vibes:Big Sole Vibes'
 const AFFILIATE = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
 const SITE_URL  = 'https://bigsolevibes.com'
 
 // ─── Content Calendar ─────────────────────────────────────────────────────────
-// Ordered list of queued Sole Report pieces. blog-agent checks the manifest for
+// Ordered list of queued The Lounge pieces. blog-agent checks the manifest for
 // published slugs and injects the first unwritten entry into the userPrompt.
 // After all entries are published, the agent falls back to hub article direction.
 const CONTENT_CALENDAR = [
@@ -35,7 +37,30 @@ const CONTENT_CALENDAR = [
     title: 'The Standard Doesn\'t Stop at the Ankle',
   },
   {
-    // Piece 2 — Hammer & Nails validation
+    // Piece 2 — The Seven Steps Stop at the Ankle (approved 2026-05-21)
+    // This is a Lounge article, not a social post brief.
+    // Voice: The Lounge — long-form warmth. GQ editorial angle, not lifestyle fluff.
+    slug: 'the-seven-steps-stop-at-the-ankle',
+    titleDirection: '"The Seven Steps Stop at the Ankle." Fixed title — do not deviate. This is the argument, not the observation: the ankle line is arbitrary. It is not biological, not medical, not inevitable. Men built a seven-step grooming standard over the last decade and drew the line at the ankle because nobody told them to go further. Name that precisely. Make the argument — not the lifestyle take, the actual argument.',
+    voice: 'The Lounge — long-form warmth. This is the full essay, not the one-liner. Write the way a man talks when he\'s thought carefully about something and finally decided to say it clearly. Not deadpan. Not a list. Not a tweet with line breaks. Warm, considered, and specific. GQ editorial register: technical mastery without condescension.',
+    contentDirection: [
+      'Hook: Open on the seven-step routine in motion — the man who actually does all of it. Hair, beard, face, body, fragrance, nails, skin. He\'s disciplined. He\'s serious. And then he puts his shoes on and the standard ends.',
+      'The argument: The ankle line is not biological. It is not where the body stops mattering. It is where the culture stopped telling men to care — and men complied. That line is arbitrary, and it\'s starting to move.',
+      'The evidence: The grooming industry spent 20 years expanding the standard upward — skincare, then fragrance, then nails. The pattern is there. The ankle is next, not because BSV says so, but because the logic already points there. Name it as an argument. Use the pattern as evidence.',
+      'The close: Not a summary. The Proprietor\'s last word on it — quiet and certain. The man who reads this either already knows it or just realized it. Either way, the shelf is there. One soft sentence pointing to bigsolevibes.com/shop: "The shelf is there when you\'re ready."',
+    ],
+    ctaBox: {
+      text: 'The shelf is there when you\'re ready.',
+      subtext: '',
+      linkHref: '/shop',
+      linkText: 'The Locker Room',
+    },
+    seoTargets: ['mens foot care routine', 'premium foot care men', 'men grooming below the ankle'],
+    lengthWords: '800–1,200',
+    structureNote: 'Hook → the argument → the evidence → the close. No listicles. No subheads that read like BuzzFeed. If you use subheads, make them one declarative sentence — the kind a man would actually say. This is an essay.',
+  },
+  {
+    // Piece 3 — Hammer & Nails validation
     slugPattern: /hammer.*nails|29-days|barberspa/i,
     titleDirection: 'Concept-first. The concept is the gap between visits. Working titles: "29 Days: What the Man Does Between Appointments" or "The BarberSpa That Finally Gets It: What Happens After You Leave." The concept leads — H&N is the proof it matters, not the subject.',
     voice: 'Validation, not competition. Warm and knowing. The tone of a man who respects H&N\'s in-person standard and is quietly filling the gap they leave open. Never critical of H&N — they built something worth referencing. BSV is what happens after the chair.',
@@ -117,7 +142,7 @@ function escapeHtml(str) {
 }
 
 function buildPostHtml(post, dateStr) {
-  const canonicalUrl = `${SITE_URL}/sole-report/${post.slug}.html`
+  const canonicalUrl = `${SITE_URL}/the-lounge/${post.slug}.html`
   const wordCount    = (post.openingHtml + post.sections.map(s => s.html).join('') + post.closingHtml)
     .replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length
   const readMinutes  = Math.max(1, Math.ceil(wordCount / 200))
@@ -277,16 +302,16 @@ function buildPostHtml(post, dateStr) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="post-hero">
     <div class="post-hero-inner">
-      <a href="/sole-report/index.html" class="back-link">← THE SOLE REPORT</a>
+      <a href="/sole-report" class="back-link">← THE SOLE REPORT</a>
       <div class="post-meta">
         <span>${publishDate}</span>
         <span class="post-meta-sep">·</span>
@@ -308,7 +333,7 @@ function buildPostHtml(post, dateStr) {
 
       <div class="post-footer">
         <a href="/shop" class="shop-cta-btn">THE LOCKER ROOM →</a>
-        <a href="/sole-report/index.html" class="blog-link">← The Sole Report</a>
+        <a href="/sole-report" class="blog-link">← THE SOLE REPORT</a>
       </div>
     </div>
   </article>
@@ -323,9 +348,9 @@ function buildPostHtml(post, dateStr) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">
@@ -359,7 +384,7 @@ function buildIndexHtml(posts) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Sole Report — Big Sole Vibes</title>
   <meta name="description" content="Proprietor-approved writing on men's grooming, foot care, and the standard. No fluff. No problem-solving. The practice, documented.">
-  <link rel="canonical" href="${SITE_URL}/sole-report/index.html">
+  <link rel="canonical" href="${SITE_URL}/sole-report">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -408,15 +433,15 @@ function buildIndexHtml(posts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="blog-hero">
-    <p class="hero-eyebrow">THE PROPRIETOR'S DESK</p>
+    <p class="hero-eyebrow">THE SOLE REPORT</p>
     <h1 class="hero-title">The Sole Report</h1>
     <p class="hero-sub">The practice, documented. No problem-solving. No padding. The standard, in writing.</p>
   </header>
@@ -433,9 +458,9 @@ function buildIndexHtml(posts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">
@@ -480,13 +505,37 @@ function gitPush(files) {
   const today   = new Date().toISOString().slice(0, 10)
   const dateObj = new Date()
 
+  // ─── Check for pending draft from previous timed-out run ─────────────────
+  let resumedPost = null
+  try {
+    const draftFiles = execSync(`rclone ls "${REMOTE}/Inbox"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^blog-draft-.+\.json$/.test(f))
+      .sort()
+    if (draftFiles.length) {
+      const draftFile = draftFiles[draftFiles.length - 1]
+      log(`Found pending draft: ${draftFile} — restoring for approval loop`)
+      execSync(`rclone copy "${REMOTE}/Inbox/${draftFile}" "${TEMP_DIR}/"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      const localDraft = path.join(TEMP_DIR, path.basename(draftFile))
+      if (fs.existsSync(localDraft)) {
+        resumedPost = JSON.parse(fs.readFileSync(localDraft, 'utf8'))
+        log(`Resumed post: "${resumedPost.title}" → /${resumedPost.slug}`)
+      }
+    }
+  } catch { /* Drive may be unavailable — continue to normal generation */ }
+
   // ─── Load Drive context ───────────────────────────────────────────────────
   log('Loading Drive context...')
 
   const weeklyPlan    = loadLatestDriveFile('Plans')
   const brandReport   = loadLatestDriveFile('Brand')
   const socialReport  = loadLatestDriveFile('Reports', /^social-report-\d{4}-\d{2}-\d{2}\.md$/)
-  const memory        = loadDriveFile('BSV-Memory.md')
+  const directive     = loadDriveFile('BSV-Directive.md')
+  const memory        = await (require('./lib/memory').loadMemoryById())
 
   // Load latest dated handoff
   let handoff = null
@@ -508,8 +557,94 @@ function gitPush(files) {
   log(`Weekly plan:    ${weeklyPlan    ? weeklyPlan.filename    : 'none'}`)
   log(`Brand report:   ${brandReport   ? brandReport.filename   : 'none'}`)
   log(`Social report:  ${socialReport  ? socialReport.filename  : 'none'}`)
+  log(`Directive:      ${directive ? directive.length + ' chars' : 'none'}`)
   log(`Memory:         ${memory ? memory.length + ' chars' : 'none'}`)
   log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
+
+  // ─── --sole-report mode ───────────────────────────────────────────────────
+  // Writes a shorter Proprietor assessment article for The Sole Report.
+  // No six-step chapter structure. Saves draft to Drive Sole Report/drafts/.
+  // Updates _sole_report_state.status to DRAFT SAVED in watch-drive-state.json.
+  if (process.argv.includes('--sole-report')) {
+    log('Mode: --sole-report')
+
+    // Load topic from state
+    let srs = { week: 1, topic_area: 'Face', title: 'The Bar of Soap Is Not Fine: What Men\'s Face Care Actually Looks Like in 2026', status: 'DRAFT NEEDED', updated: today }
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      if (fs.existsSync(statePath)) {
+        const raw = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+        if (raw._sole_report_state) srs = { ...srs, ...raw._sole_report_state }
+      }
+    } catch {}
+    log(`Sole Report topic: Week ${srs.week} — ${srs.topic_area} — "${srs.title}"`)
+
+    const client = new Anthropic({ apiKey })
+
+    const srSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Sole Report writer. You write short, sharp editorial assessments — Proprietor voice, not blog voice. No six-step chapter structure. No listicles. No subheads that read like article outlines. This is a single clear argument, delivered in 400–600 words, in the voice of a man who has thought carefully about something and is now saying it plainly. Confident. Dry where appropriate. Never preachy. The reader is already the kind of man who takes himself seriously — you are adding one more piece of intelligence to his stack.`
+
+    const srUser = `Write The Sole Report entry for Week ${srs.week}.
+
+Topic area: ${srs.topic_area}
+Working title: ${srs.title}
+
+Format:
+- Title (use the working title or tighten it — do not deviate from the concept)
+- Deck: one sentence. The argument in plain language.
+- Body: 400–600 words. Proprietor assessment voice. 3–4 paragraphs. No subheads. No bullet points. Make the argument, name the gap, close with quiet certainty.
+- No CTA. No product links. No affiliate language. This is editorial intelligence, not a product recommendation.
+
+Output the article in markdown. Title as # heading. Deck as italic paragraph. Body as plain paragraphs.`
+
+    log('Calling Claude for Sole Report draft...')
+    let draft = ''
+    try {
+      const stream = client.messages.stream({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system:     srSystem,
+        messages:   [{ role: 'user', content: srUser }],
+      })
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          draft += event.delta.text
+        }
+      }
+    } catch (err) {
+      log(`ERROR: Claude call failed — ${err.message}`)
+      process.exit(1)
+    }
+
+    if (!draft.trim()) { log('ERROR: empty draft from Claude'); process.exit(1) }
+    log(`Draft generated — ${draft.length} chars`)
+
+    // Save locally and upload to Drive
+    const draftFilename = `sole-report-${today}.md`
+    const localDraft    = path.join(TEMP_DIR, draftFilename)
+    fs.writeFileSync(localDraft, draft)
+    try {
+      execSync(`rclone copyto "${localDraft}" "${REMOTE}/Sole Report/drafts/${draftFilename}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      log(`Draft uploaded → ${REMOTE}/Sole Report/drafts/${draftFilename}`)
+    } catch (err) {
+      log(`WARNING: Drive upload failed — ${err.message}`)
+    }
+
+    // Update state
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      const raw = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+      raw._sole_report_state = { ...srs, status: 'DRAFT SAVED', updated: today }
+      fs.writeFileSync(statePath, JSON.stringify(raw, null, 2))
+      log(`State updated: status → DRAFT SAVED`)
+    } catch (err) {
+      log(`WARNING: could not update state — ${err.message}`)
+    }
+
+    log('━━━ --sole-report complete ━━━')
+    return
+  }
 
   // ─── Load approved shelf products ─────────────────────────────────────────
   log('Loading approved shelf products from Google Sheets...')
@@ -546,7 +681,10 @@ function gitPush(files) {
       ].filter(Boolean).join('\n')).join('\n\n')
     : 'No approved products on shelf yet.'
 
-  const systemPrompt = `${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+
+## Article Structure
+Every Lounge article MUST use the six-step chapter structure defined in BSV-Memory.md above. Follow the sequence exactly as written there. Do not default to generic article structure (intro → body → conclusion). If the structure is not yet in memory, use: (1) The Hook, (2) The Diagnosis, (3) The Standard, (4) The Evidence, (5) The Move, (6) The Close.
 
 ## Tone — this supersedes "Proprietor voice" for blog posts
 Inviting, not judgmental. Confident, not preachy. There is a quiet knowing smile behind every sentence — like the man who already figured this out and is holding the door open for you without making a big deal of it.
@@ -581,8 +719,22 @@ The feeling is: the door is open, the room is warm, the drink is already poured.
 - Generic lifestyle content
 - Anything that explains what BSV is
 
+## PRODUCT INTEGRATION RULE — NON-NEGOTIABLE
+
+Every product that appears in this article must earn its mention through the narrative.
+Products are never introduced as review subjects, features, or recommendations.
+They appear as details that complete the man in the scene.
+
+Wrong: "The FootLogix Mousse is a fast-absorbing formula with urea..."
+Right: "He reached for the mousse — not because he'd researched it, but because it was the only thing on the shelf that didn't announce itself."
+
+The product brief informs what's in the scene. The scene is never about the product.
+If the product cannot appear naturally in a scene, it does not appear in this article.
+No listicles. No feature callouts. No "here's why we picked this."
+The story is the argument. The product is the evidence.
+
 ## Affiliate link anchor text rule
-Every shelf product reference must link to its URL using context-rich anchor text that describes the product's specific quality or mechanism. The link is a natural extension of the sentence — never an ad placement.
+Every product that earns a scene mention must be linked using context-rich anchor text that names the specific quality or mechanism that belongs in that scene — not ad copy.
 
 Good: <a href="URL" rel="sponsored">Gehwol's fast-acting formula</a>
 Good: <a href="URL" rel="sponsored">FootLogix's zero-residue mousse</a>
@@ -630,8 +782,18 @@ The brief must specify: which scene, the specific light quality, what the man is
    Good: "The Standard Doesn't Stop at the Ankle" (then introduce the shelf)
    Never: "FootLogix Review: Is This the Best Foot Mousse for Men?"
 
-## SEO requirements (weave in naturally — no keyword stuffing)
-Primary targets: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium pedicure tools Solingen steel", "fast absorbing foot treatment men", "dry cracked heel treatment athletes", "luxury shoe friction prevention balm", "premium foot care men"
+## SEO — one term per post, chosen from the social report
+
+Before writing, scan the social intelligence report for the search phrase with the highest signal upside for BSV: something men are actually typing, with clear intent, that fits the article angle and the shelf. If the social report is unavailable, pick from the evergreen list below.
+
+Term placement rules:
+- Exact phrase (or a close natural variant) must appear in the title OR the first paragraph — one of these is required
+- Once more in an h2 heading — naturally woven in, never forced
+- If it sounds stuffed, rework the sentence. Voice always wins over keyword placement.
+
+Evergreen fallback: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium pedicure tools Solingen steel", "fast absorbing foot treatment men", "dry cracked heel treatment athletes", "luxury shoe friction prevention balm", "premium foot care men"
+
+Add a "seoTerm" field to your JSON output — the exact phrase you targeted.
 
 Every post must:
 - Open with something that stops the scroll — no "welcome to the blog" energy
@@ -647,6 +809,7 @@ Every post must:
   "slug": "url-slug-lowercase-hyphens",
   "metaDescription": "Under 160 characters. Primary keyword. Written for the man, not the algorithm.",
   "excerpt": "2–3 sentences for the post listing. Reads like the Proprietor wrote it — not a summary.",
+  "seoTerm": "the exact search phrase you targeted — one line, no explanation",
   "keywords": ["primary kw", "secondary kw", "tertiary kw"],
   "openingHtml": "<p>...</p><p>...</p>  (3–5 paragraphs, no h2, no intro heading — just opens strong)",
   "sections": [
@@ -668,7 +831,32 @@ Every post must:
   }
   const publishedSlugs = new Set(earlyManifest.map(m => m.slug))
 
-  const nextCalendarEntry = CONTENT_CALENDAR.find(entry => {
+  // Merge chief-approved Lounge items from sidecar queue (written at Telegram approval time)
+  const sidecarPath = path.join(ROOT, 'logs', 'blog-calendar-queue.json')
+  let sidecarEntries = []
+  try {
+    if (fs.existsSync(sidecarPath)) {
+      const raw = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'))
+      sidecarEntries = raw
+        .filter(e => e.slug && !publishedSlugs.has(e.slug))
+        .map(e => ({
+          slug:             e.slug,
+          titleDirection:   `"${e.title}." ${e.angle}`.trim(),
+          voice:            'The Lounge — long-form warmth. Full essay, not a one-liner. GQ editorial register: technical mastery without condescension.',
+          contentDirection: [],
+          ctaBox:           { text: 'The shelf is there when you\'re ready.', subtext: '', linkHref: '/shop', linkText: 'The Locker Room' },
+          seoTargets:       [],
+          lengthWords:      '800–1,200',
+        }))
+      if (sidecarEntries.length) log(`Calendar sidecar: ${sidecarEntries.length} approved item(s) — ${sidecarEntries.map(e => e.slug).join(', ')}`)
+    }
+  } catch (err) {
+    log(`WARNING: could not read blog-calendar-queue — ${err.message}`)
+  }
+  // Sidecar entries run before hardcoded calendar so approvals publish first
+  const effectiveCalendar = [...sidecarEntries, ...CONTENT_CALENDAR]
+
+  const nextCalendarEntry = effectiveCalendar.find(entry => {
     if (entry.slugPattern) return !Array.from(publishedSlugs).some(s => entry.slugPattern.test(s))
     return !publishedSlugs.has(entry.slug) && entry.titleDirection
   })
@@ -679,9 +867,10 @@ Title direction: ${nextCalendarEntry.titleDirection}
 Voice: ${nextCalendarEntry.voice}
 Content direction:
 ${nextCalendarEntry.contentDirection.map((b, i) => `${i + 1}. ${b}`).join('\n')}
-CTA box: "${nextCalendarEntry.ctaBox.text}" / "${nextCalendarEntry.ctaBox.subtext}" — link href="${nextCalendarEntry.ctaBox.linkHref}" text="${nextCalendarEntry.ctaBox.linkText}"
+${nextCalendarEntry.structureNote ? `Structure: ${nextCalendarEntry.structureNote}` : ''}
+CTA box: "${nextCalendarEntry.ctaBox.text}"${nextCalendarEntry.ctaBox.subtext ? ` / "${nextCalendarEntry.ctaBox.subtext}"` : ''} — link href="${nextCalendarEntry.ctaBox.linkHref}" text="${nextCalendarEntry.ctaBox.linkText}"
 SEO targets: ${nextCalendarEntry.seoTargets.join(', ')}
-Length: ${nextCalendarEntry.lengthWords} words`
+Length: ${nextCalendarEntry.lengthWords} words`.replace(/\n\n+/g, '\n')
     : `## Post requirements
 - Voice: Proprietor — statements, deadpan, confident. Never preachy.
 - Target: "luxury apothecary foot balm", "non greasy absorbent foot lotion men", "premium foot care men"
@@ -699,14 +888,17 @@ Length: ${nextCalendarEntry.lengthWords} words`
 
   const userPrompt = `Write the BSV blog post for this week.
 
-## Week context
-${weeklyPlan ? `Weekly content plan (${weeklyPlan.filename}):\n${weeklyPlan.content.slice(0, 1500)}` : 'No weekly plan available — write a hub post on the premium foot care standard.'}
+## Media director plan (${weeklyPlan ? weeklyPlan.filename : 'unavailable'})
+${weeklyPlan ? weeklyPlan.content.slice(0, 1500) : 'No media plan available — write a hub post on the premium foot care standard.'}
+The article angle should reinforce this week's content theme. If a theme is named in the plan, anchor the post to it.
 
 ## Brand signals
 ${brandReport ? brandReport.content.slice(0, 800) : 'No brand report available.'}
 
 ## Social intelligence
 ${socialReport ? socialReport.content.slice(0, 600) : 'No social report available.'}
+
+**SEO:** Before writing, identify the one search phrase from the social intelligence above with the highest signal upside for BSV. Set it in "seoTerm". Place it naturally in the title or first paragraph, and once more in an h2 heading.
 
 ## Approved shelf products — reference these naturally with their URLs as affiliate links
 ${shelfBlock}
@@ -715,52 +907,56 @@ ${postRequirementsBlock}
 
 Return ONLY the JSON object. No preamble, no explanation.`
 
-  // ─── Call Claude ──────────────────────────────────────────────────────────
-  log('Calling Claude API to generate blog post...')
-  const client   = new Anthropic({ apiKey })
-  const response = await client.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 6000,
-    system:     systemPrompt,
-    messages:   [{ role: 'user', content: userPrompt }],
-  })
+  // ─── Call Claude (skipped if resumedPost exists) ─────────────────────────
+  const client = new Anthropic({ apiKey })
+  let rawText  = ''
 
-  const rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
-  log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+  if (!resumedPost) {
+    log('Calling Claude API to generate blog post...')
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 6000,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    })
+    rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+    log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+  }
 
   // ─── Parse JSON ───────────────────────────────────────────────────────────
   let post
-  try {
-    const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
-    const start = stripped.indexOf('{')
-    const end   = stripped.lastIndexOf('}')
-    if (start === -1 || end === -1) throw new Error('no JSON object found')
-    post = JSON.parse(stripped.slice(start, end + 1))
-    if (!post.title || !post.slug || !post.openingHtml) throw new Error('missing required fields')
-    log(`Post: "${post.title}" → /${post.slug}`)
-    if (post.imageBrief) log(`Image brief: ${post.imageBrief}`)
-    else log('WARNING: no imageBrief in response')
-  } catch (err) {
-    log(`ERROR: JSON parse failed — ${err.message}`)
-    log(`Raw (first 500): ${rawText.slice(0, 500)}`)
-    process.exit(1)
+  if (resumedPost) {
+    // Restored from pending draft — skip generation
+    post = resumedPost
+    log(`Using resumed post: "${post.title}" → /${post.slug}`)
+  } else {
+    try {
+      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+      const start = stripped.indexOf('{')
+      const end   = stripped.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('no JSON object found')
+      post = JSON.parse(stripped.slice(start, end + 1))
+      if (!post.title || !post.slug || !post.openingHtml) throw new Error('missing required fields')
+      log(`Post: "${post.title}" → /${post.slug}`)
+      if (post.imageBrief) log(`Image brief: ${post.imageBrief}`)
+      else log('WARNING: no imageBrief in response')
+    } catch (err) {
+      log(`ERROR: JSON parse failed — ${err.message}`)
+      log(`Raw (first 500): ${rawText.slice(0, 500)}`)
+      process.exit(1)
+    }
   }
 
-  // ─── Build and write HTML ─────────────────────────────────────────────────
+  // ─── Build manifest context (needed for both dry-run and approval loop) ───
   const filename  = `${today}-${post.slug}.html`
   const postPath  = path.join(BLOG_DIR, filename)
   const indexPath = path.join(BLOG_DIR, 'index.html')
   const manifestPath = path.join(BLOG_DIR, 'manifest.json')
 
-  const postHtml = buildPostHtml(post, today)
-
-  // Load or init manifest
   let manifest = []
   if (fs.existsSync(manifestPath)) {
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) } catch {}
   }
-
-  // Prepend new post (dedup by slug)
   manifest = manifest.filter(m => m.slug !== post.slug)
   manifest.unshift({
     slug:        post.slug,
@@ -772,16 +968,194 @@ Return ONLY the JSON object. No preamble, no explanation.`
     imageStatus: 'pending',
   })
 
-  const indexHtml = buildIndexHtml(manifest)
-
+  // ─── Dry-run exits before approval loop ──────────────────────────────────
   if (dryRun) {
+    const postHtmlDry = buildPostHtml(post, today)
     const preview = path.join(ROOT, 'logs', 'blog-preview.html')
-    fs.writeFileSync(preview, postHtml)
+    fs.writeFileSync(preview, postHtmlDry)
     log(`[dry-run] Post HTML written to logs/blog-preview.html`)
     log(`[dry-run] Manifest would have ${manifest.length} posts`)
     log('━━━ blog-agent complete ━━━\n')
     return
   }
+
+  // ─── Approval loop (up to 3 EDIT revisions) ──────────────────────────────
+
+  const MAX_EDITS    = 3
+  let   editAttempts = 0
+  let   approvalDecision = null
+
+  // Helper: strip HTML tags for read-time and preview
+  function stripHtml(html) {
+    return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+  // Helper: save draft to Drive Inbox for later resumption
+  async function saveDraftToDrive(postObj) {
+    const draftName = `blog-draft-${postObj.slug}.json`
+    const tmpDraft  = path.join(os.tmpdir(), draftName)
+    fs.writeFileSync(tmpDraft, JSON.stringify(postObj, null, 2))
+    try {
+      execSync(`rclone copyto "${tmpDraft}" "${REMOTE}/Inbox/${draftName}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      log(`Draft saved to Drive Inbox: ${draftName}`)
+    } catch (err) {
+      log(`WARNING: could not save draft to Drive: ${err.message}`)
+    }
+    try { fs.unlinkSync(tmpDraft) } catch {}
+  }
+
+  // Helper: archive rejected/expired draft
+  async function archiveRejectedDraft(postObj, reason) {
+    const rejName  = `blog-rejected-${postObj.slug}-${today}.md`
+    const tmpRej   = path.join(os.tmpdir(), rejName)
+    fs.writeFileSync(tmpRej, `# Blog Draft Rejected\n\nslug: ${postObj.slug}\ndate: ${today}\nreason: ${reason}\n`)
+    try {
+      execSync(`rclone copyto "${tmpRej}" "${REMOTE}/Inbox/Processed/${rejName}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch {}
+    try { fs.unlinkSync(tmpRej) } catch {}
+  }
+
+  while (true) {
+    // Build approval message
+    const postHtmlForApproval = buildPostHtml(post, today)
+    const fullText   = post.openingHtml + (post.sections || []).map(s => s.html).join('') + post.closingHtml
+    const wordCount  = stripHtml(fullText).split(/\s+/).filter(Boolean).length
+    const readTime   = Math.max(1, Math.ceil(wordCount / 200))
+    const previewTxt = (post.excerpt
+      ? stripHtml(post.excerpt)
+      : stripHtml(post.openingHtml)
+    ).slice(0, 200)
+    const voice = (nextCalendarEntry && nextCalendarEntry.voice)
+      ? nextCalendarEntry.voice.split('.')[0]
+      : 'Proprietor'
+
+    const driveFile = `blog-${post.slug}-decision.md`
+
+    const telegramMsg = [
+      `📝 *NEW LOUNGE DRAFT*`,
+      `*Title:* ${post.title}`,
+      `*Voice:* ${voice}`,
+      `*Est. read time:* ${readTime} min`,
+      ``,
+      `*Preview:* ${previewTxt}`,
+      ``,
+      `Reply *APPROVE* to publish`,
+      `Reply *REJECT* to discard`,
+      `Reply *EDIT [your notes]* to revise`,
+    ].join('\n')
+
+    addPendingItem({
+      id:              `blog-${post.slug}`,
+      type:            'blog',
+      driveFile,
+      sentAt:          new Date().toISOString(),
+      remindAfter:     null,
+      metadata:        { slug: post.slug, title: post.title, voice },
+      originalMessage: telegramMsg,
+    })
+
+    await sendTelegram(telegramMsg)
+    log(`Approval request sent — polling Drive for decision (max 4h)...`)
+
+    // Poll Drive every 15 minutes, max 16 polls (4 hours)
+    const MAX_POLLS     = 16
+    const POLL_INTERVAL_MS = 15 * 60 * 1000
+    let   decision      = null
+
+    for (let poll = 0; poll < MAX_POLLS; poll++) {
+      if (poll > 0) {
+        log(`Waiting 15 minutes before next poll (${poll}/${MAX_POLLS})...`)
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
+      }
+      const result = readDecisionFromDrive(driveFile)
+      if (result) {
+        decision = result
+        log(`Decision received: ${result.decision}${result.notes ? ` — notes: ${result.notes}` : ''}`)
+        break
+      }
+    }
+
+    if (!decision) {
+      // Timed out — save draft to Drive Inbox for next run
+      log('No approval decision received in 4 hours — saving draft to Drive Inbox')
+      await saveDraftToDrive(post)
+      await sendTelegram(`⏰ *The Lounge draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
+      log('━━━ blog-agent complete (awaiting approval) ━━━\n')
+      return
+    }
+
+    approvalDecision = decision.decision
+
+    if (approvalDecision === 'APPROVE') {
+      // Remove from pending queue
+      const { loadPendingItems: lp, savePendingItems: sp } = require('./telegram-queue')
+      const pending = lp()
+      sp(pending.filter(i => i.id !== `blog-${post.slug}`))
+      break
+    }
+
+    if (approvalDecision === 'REJECT') {
+      const { loadPendingItems: lp, savePendingItems: sp } = require('./telegram-queue')
+      const pending = lp()
+      sp(pending.filter(i => i.id !== `blog-${post.slug}`))
+      await archiveRejectedDraft(post, 'Rejected by Big D')
+      await sendTelegram(`❌ Rejected and archived.`)
+      log(`Post rejected — exiting cleanly`)
+      log('━━━ blog-agent complete (rejected) ━━━\n')
+      return
+    }
+
+    if (approvalDecision === 'EDIT') {
+      editAttempts++
+      if (editAttempts > MAX_EDITS) {
+        log(`Max edit attempts (${MAX_EDITS}) reached — saving draft`)
+        await saveDraftToDrive(post)
+        await sendTelegram(`⚠️ Max revisions reached for "${post.title}". Draft saved to Drive Inbox.`)
+        log('━━━ blog-agent complete (max edits) ━━━\n')
+        return
+      }
+      const notes = decision.notes || ''
+      log(`Edit requested (attempt ${editAttempts}/${MAX_EDITS}): ${notes}`)
+
+      // Re-call Claude with revision notes
+      const revisionPrompt = `Revision requested: ${notes}. Apply to the draft.\n\n${userPrompt}`
+      try {
+        const revResponse = await client.messages.create({
+          model:      'claude-sonnet-4-6',
+          max_tokens: 6000,
+          system:     systemPrompt,
+          messages:   [{ role: 'user', content: revisionPrompt }],
+        })
+        const revRaw = revResponse.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+        const stripped = revRaw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+        const start = stripped.indexOf('{')
+        const end   = stripped.lastIndexOf('}')
+        if (start === -1 || end === -1) throw new Error('no JSON in revision response')
+        const revised = JSON.parse(stripped.slice(start, end + 1))
+        if (!revised.title || !revised.slug || !revised.openingHtml) throw new Error('missing required fields in revision')
+        post = revised
+        log(`Revision ${editAttempts} applied: "${post.title}" → /${post.slug}`)
+      } catch (err) {
+        log(`ERROR: revision parse failed — ${err.message}`)
+        await sendTelegram(`⚠️ Revision failed to parse. Keeping original draft. Reply APPROVE to publish as-is.`)
+        // Re-loop with same post
+      }
+      continue
+    }
+
+    // Unexpected decision value — treat as skip and break
+    log(`Unexpected decision: ${approvalDecision} — treating as approved`)
+    break
+  }
+
+  // ─── Write HTML to disk and push ─────────────────────────────────────────
+
+  const postHtml = buildPostHtml(post, today)
+  const indexHtml = buildIndexHtml(manifest)
 
   fs.writeFileSync(postPath,    postHtml)
   fs.writeFileSync(indexPath,   indexHtml)
@@ -790,7 +1164,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
   log(`Written: index.html (${manifest.length} total post(s))`)
   log(`Written: manifest.json`)
 
-  // Push all three files to main
+  // Push all three files to preview
   const pushed = gitPush([
     path.join('public', 'sole-report', filename),
     path.join('public', 'sole-report', 'index.html'),
@@ -798,5 +1172,9 @@ Return ONLY the JSON object. No preamble, no explanation.`
   ])
 
   log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)
+
+  // Notify Big D
+  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/the-lounge/${post.slug}.html`)
+
   log(`━━━ blog-agent complete — "${post.title}" ━━━\n`)
 })()

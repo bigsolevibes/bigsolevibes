@@ -4,6 +4,16 @@ const fs    = require('fs')
 
 const ROOT       = path.join(__dirname, '..')
 const PUBLIC_DIR = path.join(ROOT, 'public', 'posts', 'output')
+const LOG_FILE   = path.join(ROOT, 'logs', 'brand-image.log')
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`
+  console.log(line)
+  try {
+    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+    fs.appendFileSync(LOG_FILE, line + '\n')
+  } catch {}
+}
 
 const BOURBON = '#C17D2E'
 const STEEL   = '#4A6380'
@@ -30,8 +40,8 @@ const FONT_PATH = findFont(
   'BebasNeue-Bold.ttf', 'BebasNeue-Regular.ttf',
   'Georgia Bold.ttf', 'Georgia.ttf'
 )
-if (!FONT_PATH) { console.error('brand-image: no brand font found'); process.exit(1) }
-console.log(`brand-image: font = ${path.basename(FONT_PATH)}`)
+if (!FONT_PATH) { log('ERROR: no brand font found'); process.exit(1) }
+log(`font = ${path.basename(FONT_PATH)}`)
 
 // Embed font as data URI so librsvg resolves it reliably without fontconfig
 const FONT_B64   = fs.readFileSync(FONT_PATH).toString('base64')
@@ -86,7 +96,7 @@ async function brandImage(imagePath) {
   const pubPath = path.join(PUBLIC_DIR, path.basename(imagePath))
   if (fs.existsSync(PUBLIC_DIR)) fs.writeFileSync(pubPath, buf)
 
-  console.log(`  branded: ${path.basename(imagePath)}`)
+  log(`  branded: ${path.basename(imagePath)}`)
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -97,7 +107,7 @@ async function brandImage(imagePath) {
   const inputDir = dirIdx !== -1 ? args[dirIdx + 1] : path.join(ROOT, 'posts', 'output')
 
   if (!fs.existsSync(inputDir)) {
-    console.error(`brand-image: directory not found: ${inputDir}`)
+    log(`ERROR: directory not found: ${inputDir}`)
     process.exit(1)
   }
 
@@ -106,13 +116,25 @@ async function brandImage(imagePath) {
     .filter(f => IMAGE_EXTS.has(path.extname(f).toLowerCase()))
 
   if (!files.length) {
-    console.log(`brand-image: no images found in ${inputDir}`)
+    log(`START dir=${inputDir} files=0`)
+    log('no images found — nothing to brand')
+    log('END')
     return
   }
 
-  console.log(`brand-image: applying BSV branding to ${files.length} image(s)`)
+  log(`START dir=${inputDir} files=${files.length} (${files.join(', ')})`)
+
+  let ok = 0
+  let failed = 0
   for (const file of files) {
-    await brandImage(path.join(inputDir, file))
+    try {
+      await brandImage(path.join(inputDir, file))
+      ok++
+    } catch (err) {
+      log(`ERROR: failed to brand ${file} — ${err.message}`)
+      failed++
+    }
   }
-  console.log('brand-image: done')
+
+  log(`END branded=${ok} failed=${failed}`)
 })()

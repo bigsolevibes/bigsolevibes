@@ -12,8 +12,17 @@
 BSV is a premium men's foot care brand. This repo is a Next.js 14 website (`app/`) plus a fully automated content production and social distribution pipeline (`scripts/`).
 
 **Live site:** https://bigsolevibes.com  
-**Branch:** `preview/full-site` is the active dev branch. `main` triggers Cloudflare Pages CI deploy.  
 **Git remote:** `https://github.com/bigsolevibes/bigsolevibes.git`
+
+### Branch strategy
+
+| Branch | Role |
+|--------|------|
+| `preview/full-site` | Active dev branch. All automated pipeline scripts push here via `git-push-guard.js → safePushToPreview()`. **No Cloudflare deploy triggers from this branch.** |
+| `staging` | Intentional preview branch. When a manual Cloudflare preview is needed before merging to production, push `preview/full-site` → `staging` (`git push origin preview/full-site:staging`). Cloudflare preview deploy triggers from here. |
+| `main` | Production. Triggers the live Cloudflare Pages deploy at bigsolevibes.com. Only Big D promotes to main — never automated scripts. |
+
+Scripts must not be changed to target `staging` or `main` — `safePushToPreview()` in `git-push-guard.js` enforces the `preview/full-site` target and will alert + abort if anything tries to push to `main`.
 
 ---
 
@@ -39,7 +48,7 @@ Google Drive "Ready to Post/"
 |--------|---------|
 | `watch-drive.js` | Main watcher loop — polls Drive, orchestrates the full pipeline |
 | `distribute.js` | Posts to all platforms; `--force` bypasses `post_time` gate; `--platforms x,instagram` restricts targets |
-| `resize-post.js` | Resizes to platform variants, copies to `posts/output/` and `public/posts/output/`, git pushes to main |
+| `resize-post.js` | Resizes to platform variants, copies to `posts/output/` and `public/posts/output/`, git pushes to `preview/full-site` |
 | `brand-video.js` | Adds BSV logo overlay + audio to MP4s |
 | `brand-image.js` | Adds BSV logo overlay to still images |
 | `eng-bot.js` | Reads `watch-drive.log`, calls Claude API to triage, emails digest via Zoho SMTP |

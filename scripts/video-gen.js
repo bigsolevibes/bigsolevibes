@@ -4,6 +4,8 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { sendTelegram } = require('./telegram')
+const { addPendingItem } = require('./telegram-queue')
 
 const ROOT                 = path.join(__dirname, '..')
 const LOG_FILE             = path.join(ROOT, 'logs', 'video-gen.log')
@@ -11,6 +13,7 @@ const TEMP_DIR             = path.join(os.homedir(), 'tmp', 'bsv-video-gen')
 const READY_DIR            = path.join(os.homedir(), 'tmp', 'bsv-ready')
 const GDRIVE_REMOTE        = 'big sole vibes'
 const READY_TO_POST_FOLDER = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
+const VIDEO_REVIEW_REMOTE  = `${GDRIVE_REMOTE}:Big Sole Vibes/Video Review`
 
 const VIDEO_MODEL   = 'veo-3.1-fast-generate-preview'
 const POLL_INTERVAL = 10_000 // ms
@@ -80,6 +83,16 @@ function scanPromptFiles() {
 
   return prompts
 }
+
+// ─── BSV video preamble ───────────────────────────────────────────────────────
+// Prepended to every Veo prompt. Mirrors the Head to Toe rule in gemini-bridge.js
+// and image-gen.js so the campaign visual language is consistent across media.
+
+const BSV_VIDEO_PREAMBLE = `BSV HEAD TO TOE — VIDEO VISUAL RULE:
+A bare foot enters the frame naturally at some point in the video — not dramatically, not as the subject. The camera never calls attention to it directly. The foot is present, incidental, knowing. When the product being featured is foot care, the foot becomes the subject. Otherwise it is the wink — the audience finds it, the camera does not announce it.
+TONE: Lived-in, not staged. The man looks complete but slightly caught. Casual confidence, never try-hard. Dark wood, leather, low light where the scene allows — the lounge aesthetic.
+
+`
 
 // ─── Veo video generation ─────────────────────────────────────────────────────
 
@@ -173,13 +186,26 @@ async function generateVideo(ai, apiKey, prompt) {
     }
 
     try {
-      const buf = await generateVideo(ai, apiKey, videoPrompt)
+      const buf = await generateVideo(ai, apiKey, BSV_VIDEO_PREAMBLE + videoPrompt)
       fs.writeFileSync(localPath, buf)
+
+      // Upload to Video Review staging folder — not Ready to Post — pending Big D approval
       execSync(
-        `rclone copyto "${localPath}" "${GDRIVE_REMOTE}:${outFilename}" --drive-root-folder-id ${READY_TO_POST_FOLDER}`,
+        `rclone copyto "${localPath}" "${VIDEO_REVIEW_REMOTE}/${outFilename}"`,
         { stdio: 'pipe' }
       )
-      log(`    ✓ uploaded → ${outFilename} (${Math.round(buf.length / 1024)}KB)`)
+      log(`    ✓ staged → Video Review/${outFilename} (${Math.round(buf.length / 1024)}KB) — awaiting approval`)
+
+      const promptSnippet = videoPrompt.slice(0, 180).replace(/[_*`[\]]/g, '').trim()
+      await sendTelegram(
+        `🎬 *VIDEO GENERATED — REVIEW REQUIRED*\n*Slot:* \`${slot}\`\n*Prompt:*\n${promptSnippet}${videoPrompt.length > 180 ? '…' : ''}\n\n📁 Drive: Big Sole Vibes/Video Review/${outFilename}\n\nReply \`approve\` or \`deny\` to release or delete this video.`
+      )
+      addPendingItem({
+        type:     'video-gate',
+        id:       `video-gate-${slot}`,
+        metadata: { slot, driveFile: `Video Review/${outFilename}`, promptSnippet },
+      })
+
       generated++
     } catch (err) {
       log(`    ERROR: ${err.message}`)
