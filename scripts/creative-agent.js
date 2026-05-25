@@ -13,8 +13,6 @@ const REMOTE     = 'big sole vibes:Big Sole Vibes'
 
 const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
 const { connect: sheetConnect, readAllRows } = require('./sheets-client')
-const { addPendingItem } = require('./telegram-queue')
-const { sendTelegram }   = require('./telegram')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -367,12 +365,9 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
     log('WARNING: VOICE_USED field missing from brief output')
   }
 
-  // Write brief to pending/ staging — awaits editorial APPROVE before live
-  const pendingDir  = path.join(BRIEFS_DIR, 'pending')
-  fs.mkdirSync(pendingDir, { recursive: true })
-  const pendingPath = path.join(pendingDir, `${slot}-brief.txt`)
-  fs.writeFileSync(pendingPath, brief)
-  log(`Saved (pending) → ${pendingPath}`)
+  const briefPath = path.join(BRIEFS_DIR, `${slot}-brief.txt`)
+  fs.writeFileSync(briefPath, brief)
+  log(`Saved → ${briefPath}`)
 
   // Save to Drive for editorial record
   const dateStamp   = new Date().toISOString().slice(0, 10)
@@ -387,30 +382,6 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   } catch (err) {
     log(`WARNING: Drive save failed — ${err.message}`)
   }
-
-  // Send Telegram for editorial gate
-  const tgMsg = [
-    `📣 *SOCIAL DRAFT READY*`,
-    `*Format:* ${socialFormat}`,
-    `*Slot:* ${slot} / ${voiceDef.name}`,
-    `*Theme:* ${theme}`,
-    ``,
-    brief.slice(0, 800) + (brief.length > 800 ? '\n[truncated]' : ''),
-    ``,
-    `Reply *APPROVE* to queue or send edit notes.`,
-  ].join('\n')
-
-  await sendTelegram(tgMsg).catch(err => log(`WARNING: Telegram send failed — ${err.message}`))
-  log(`Telegram: social draft approval requested for ${slot}`)
-
-  addPendingItem({
-    id:       `social-draft-${slot}-${dateStamp}`,
-    type:     'social-draft',
-    driveFile: draftName,
-    sentAt:   new Date().toISOString(),
-    metadata: { slot, theme, voice: voiceDef.name, socialFormat, title: `${slot} — ${theme}` },
-    originalMessage: tgMsg,
-  })
 
   log(`━━━ creative-agent complete: ${slot} / ${voiceDef.name} ━━━\n`)
 })()
