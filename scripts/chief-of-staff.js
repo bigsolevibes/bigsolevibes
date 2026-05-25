@@ -337,6 +337,50 @@ function getOutputFiles() {
   try { return fs.readdirSync(path.join(ROOT, 'posts', 'output')).filter(f => !f.startsWith('.')).sort() } catch { return [] }
 }
 
+// ─── Chapter state ────────────────────────────────────────────────────────────
+// Persists across restarts via _chapter_state in watch-drive-state.json.
+// Hardcoded to Chapter 1 until Big D changes it via standup approval.
+
+const CHAPTER_STATE_DEFAULTS = {
+  active:         1,
+  name:           'The Bathroom Cabinet',
+  productTease:   'The soap story. The man looked at it and for the first time actually looked at it.',
+  articlesLive:   'hub, spoke 1, spoke 2 (spoke 3 pending)',
+  campfireFormat: 'The Confession',
+  loungeUrl:      'bigsolevibes.com/the-lounge/the-upgrade-path',
+}
+
+function loadChapterState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    if (!fs.existsSync(p)) return { ...CHAPTER_STATE_DEFAULTS }
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return raw._chapter_state
+      ? { ...CHAPTER_STATE_DEFAULTS, ...raw._chapter_state }
+      : { ...CHAPTER_STATE_DEFAULTS }
+  } catch { return { ...CHAPTER_STATE_DEFAULTS } }
+}
+
+function saveChapterState(cs) {
+  try {
+    const p   = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    const raw = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {}
+    raw._chapter_state = cs
+    fs.writeFileSync(p, JSON.stringify(raw, null, 2))
+  } catch (err) { log(`WARNING: could not save chapter state — ${err.message}`) }
+}
+
+function buildActiveChapterBlock(cs) {
+  return [
+    '## ACTIVE CHAPTER ARC',
+    `ACTIVE CHAPTER: Chapter ${cs.active} — ${cs.name}`,
+    `ACTIVE PRODUCT TEASE: ${cs.productTease}`,
+    `CHAPTER ARTICLES LIVE: ${cs.articlesLive}`,
+    `CAMPFIRE FORMAT THIS WEEK: ${cs.campfireFormat}`,
+    `LOUNGE URL: ${cs.loungeUrl}`,
+  ].join('\n')
+}
+
 // ─── Token budget ─────────────────────────────────────────────────────────────
 
 function buildTokenBudget() {
@@ -991,6 +1035,11 @@ async function watchBlogAgent() {
     if (insights) p.insights = insights
   }
 
+  // Load + persist active chapter arc — hardcoded Chapter 1 until Big D changes it
+  const chapterState = loadChapterState()
+  saveChapterState(chapterState)
+  log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
+
   // P0: Ecosystem integrity — runs first, feeds Section 0
   log('P0: Ecosystem integrity...')
   const ecosystem = checkEcosystemIntegrity(agents)
@@ -1065,6 +1114,9 @@ ${agents.issues.length ? agents.issues.map(i => `${i.name} [${i.severity}]: ${i.
 ## Budget
 ${tokenSection}
 ${costState ? `Balance: ${costState.balance != null ? '$' + costState.balance.toFixed(2) : 'unknown'} | Runway: ${costState.runway_hours != null ? costState.runway_hours.toFixed(0) + 'h' : 'unknown'}` : ''}
+
+## Active Chapter Arc (reference for strategic options — block appended to brief verbatim)
+${buildActiveChapterBlock(chapterState)}
 
 ---
 
@@ -1144,6 +1196,11 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     }
   }
 
+  // Append active chapter arc block — authoritative from state, not from Claude
+  if (standupText) {
+    standupText = standupText.trim() + '\n\n' + buildActiveChapterBlock(chapterState)
+  }
+
   // Upload strategic brief to Drive
   if (standupText.trim()) {
     const localOut = path.join(TEMP_DIR, outFile)
@@ -1216,6 +1273,12 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
     ``,
     `*0 — ECOSYSTEM*`,
     ecosystemTg,
+    ``,
+    `*📖 CHAPTER ARC*`,
+    `Chapter ${chapterState.active} — ${chapterState.name}`,
+    `${chapterState.productTease}`,
+    `Articles: ${chapterState.articlesLive}`,
+    `Campfire: ${chapterState.campfireFormat} | ${chapterState.loungeUrl}`,
     ``,
     `*1 — OVERNIGHT*`,
     overnightTg,

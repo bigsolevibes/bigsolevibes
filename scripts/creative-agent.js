@@ -100,6 +100,24 @@ function buildPersonaBlock(ctx) {
   return lines.join('\n')
 }
 
+// ─── Chapter mandate block ────────────────────────────────────────────────────
+
+function buildChapterBlock(cs, isWedPm) {
+  if (!cs) return ''
+  const lines = [
+    `## Chapter Mandate — Active Arc: Chapter ${cs.active} — ${cs.name}`,
+    '',
+    `CHAPTER CONTEXT: Chapter ${cs.active} — ${cs.name}. ${cs.productTease}`,
+    `BRIEF MANDATE: Every post this cycle is a breadcrumb, not a standalone. The scene teases the chapter. The chapter lives at ${cs.loungeUrl}. The product is already on the shelf when he gets there. Do not name the product in the post. Do not link the product in the post. The bio link does the work.`,
+  ]
+  if (isWedPm) {
+    lines.push(`WEDNESDAY PM: Campfire retelling — ${cs.campfireFormat}. Distill the active chapter beat into the ${cs.campfireFormat} format as defined in BSV-Memory.md. This is not a product post — it is a story post that ends at the shelf.`)
+  }
+  lines.push('')
+  lines.push(`QUALITY GATE: Every caption must be a scene that could only exist inside Chapter ${cs.active}'s world. If the caption could run without this chapter existing, it has failed — reject it and rewrite.`)
+  return lines.join('\n')
+}
+
 // ─── Voice block builder ──────────────────────────────────────────────────────
 
 function buildVoiceBlock(voiceDef) {
@@ -232,8 +250,14 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     ? 'Morning. The man before the world starts.'
     : 'Evening. The man who made it through.'
 
-  const socialFormat = personaContext?.socialFormat ?? 'Tall Tale'
+  const socialFormat  = personaContext?.socialFormat ?? 'Tall Tale'
   log(`Social format: ${socialFormat}`)
+
+  const isWedPm      = slot === 'wed-pm'
+  const chapterBlock = buildChapterBlock(personaContext?.chapterState ?? null, isWedPm)
+  if (personaContext?.chapterState) {
+    log(`Chapter mandate: Chapter ${personaContext.chapterState.active} — ${personaContext.chapterState.name}`)
+  }
 
   const voiceBlock   = buildVoiceBlock(voiceDef)
   const personaBlock = buildPersonaBlock(personaContext)
@@ -252,7 +276,7 @@ ${voiceBlock}
 
 ---
 
-${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
+${chapterBlock ? `${chapterBlock}\n\n---\n\n` : ''}${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
 ## Standing Rules (apply to every brief regardless of voice)
 

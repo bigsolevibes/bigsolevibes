@@ -125,6 +125,28 @@ const SOCIAL_FORMAT_MAP = {
   'style-conscious': 'Simple Modern Man',
 }
 
+// ─── Chapter state loader ─────────────────────────────────────────────────────
+// Reads _chapter_state written by chief-of-staff each morning run.
+
+const CHAPTER_STATE_DEFAULTS_MD = {
+  active:         1,
+  name:           'The Bathroom Cabinet',
+  productTease:   'The soap story. The man looked at it and for the first time actually looked at it.',
+  campfireFormat: 'The Confession',
+  loungeUrl:      'bigsolevibes.com/the-lounge/the-upgrade-path',
+}
+
+function loadChapterState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    if (!fs.existsSync(p)) return { ...CHAPTER_STATE_DEFAULTS_MD }
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return raw._chapter_state
+      ? { ...CHAPTER_STATE_DEFAULTS_MD, ...raw._chapter_state }
+      : { ...CHAPTER_STATE_DEFAULTS_MD }
+  } catch { return { ...CHAPTER_STATE_DEFAULTS_MD } }
+}
+
 // ─── Daily directive loader ───────────────────────────────────────────────────
 // Chief writes Plans/daily-directive-YYYY-MM-DD.md when Big D replies 1/2/3.
 // Falls back to yesterday's directive if today's hasn't been chosen yet.
@@ -278,6 +300,10 @@ function parseSocialReport(content, persona) {
   const socialReport = loadLatestSocialReport()
   log(`Social report: ${socialReport ? socialReport.filename : 'none — persona context will use defaults'}`)
 
+  log('Loading chapter state...')
+  const chapterState = loadChapterState()
+  log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
+
   for (const period of ['am', 'pm']) {
     const slug     = `${targetDay}-${period}`
     const theme    = themes[period]
@@ -305,6 +331,7 @@ function parseSocialReport(content, persona) {
       storyAngle:       parsed?.storyAngle        ?? null,
       hashtagSignal:    parsed?.hashtagSignal      ?? '',
       directive:        dailyDirective?.content   ?? null,
+      chapterState,
       ...(loungeSlot ? {
         loungeOverride: {
           chapter:     loungeSlot.chapter,
@@ -321,6 +348,7 @@ function parseSocialReport(content, persona) {
       : theme
 
     log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${effectiveTheme}"`)
+    log(`[${slug}] chapter mandate: Chapter ${chapterState.active} — ${chapterState.name} | campfire: ${chapterState.campfireFormat}`)
     if (parsed?.storyAngle?.hook) log(`  angle: "${parsed.storyAngle.hook}"`)
     if (parsed?.verbatimPhrases?.length) log(`  verbatim phrases: ${parsed.verbatimPhrases.length}`)
 
