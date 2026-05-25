@@ -210,7 +210,7 @@ function buildShopPage(approvedProducts) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Locker Room — Big Sole Vibes</title>
-  <meta name="description" content="Proprietor-approved foot care. Nothing goes on this shelf that hasn't earned its place.">
+  <meta name="description" content="Proprietor-approved picks. Nothing goes on this shelf that hasn't earned its place.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -653,7 +653,7 @@ function buildShopPage(approvedProducts) {
       Nothing Goes on This Shelf<br>
       <em>That Hasn't Earned Its Place.</em>
     </h1>
-    <p class="hero-tagline">Proprietor-approved picks across every category of men's foot care.</p>
+    <p class="hero-tagline">Proprietor-approved picks across every category of men's care.</p>
     <p class="hero-count">${isEmpty ? 'More lockers opening soon.' : `${totalProducts} approved picks`}</p>
   </header>
 
@@ -664,7 +664,7 @@ function buildShopPage(approvedProducts) {
       <div class="coming-soon-rule"></div>
       <p class="coming-soon-heading">More lockers opening soon.</p>
       <p class="coming-soon-sub">The proprietor is still pulling product. Only the best earns a spot on these shelves.</p>
-      <a href="/sole-report" class="shop-cta-btn">READ THE SOLE REPORT →</a>
+      <a href="/the-lounge" class="shop-cta-btn">ENTER THE LOUNGE →</a>
     </div>
   </main>
   ` : `
@@ -688,9 +688,9 @@ function buildShopPage(approvedProducts) {
   <!-- Bottom CTA -->
   <section class="shop-cta">
     <div class="shop-cta-rule"></div>
-    <p class="shop-cta-heading">Want the full breakdown before you buy?</p>
-    <p class="shop-cta-sub">The Sole Audits go deeper — every pick tested, ranked, and given a verdict.</p>
-    <a href="/sole-report" class="shop-cta-btn">READ THE SOLE REPORT →</a>
+    <p class="shop-cta-heading">Every product on this shelf has a chapter.</p>
+    <p class="shop-cta-sub">The story starts in The Lounge.</p>
+    <a href="/the-lounge" class="shop-cta-btn">ENTER THE LOUNGE →</a>
   </section>
   `}
 
