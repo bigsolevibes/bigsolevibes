@@ -67,8 +67,9 @@ function safePushToPreview(cwd, log) {
 
 // Pipeline-only push — processed media goes here, never triggers Cloudflare.
 // Uses a temp worktree + cherry-pick so the current branch is never touched.
-// Only the single media commit just made on HEAD is replayed onto pipeline/media.
-const PIPELINE_TARGET = 'pipeline/media'
+// Only the single media commit just made on HEAD is replayed onto media-cache.
+// Branch named media-cache is excluded from Cloudflare Pages branch control.
+const PIPELINE_TARGET = 'media-cache'
 function safePushToPipeline(cwd, log) {
   const logFn = log || console.log
   const worktreePath = path.join(os.tmpdir(), `bsv-pipeline-${Date.now()}`)
@@ -79,7 +80,7 @@ function safePushToPipeline(cwd, log) {
     execSync(`git cherry-pick ${mediaCommit}`, { cwd: worktreePath, stdio: 'pipe' })
     execSync(`git push origin HEAD:${PIPELINE_TARGET}`, { cwd: worktreePath, stdio: 'pipe' })
     execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' })
-    logFn(`Git: pushed → ${PIPELINE_TARGET} (pipeline/media — no Cloudflare build)`)
+    logFn(`Git: pushed → ${PIPELINE_TARGET} (media-cache — no Cloudflare build)`)
     return true
   } catch (err) {
     try { execSync(`git worktree remove "${worktreePath}" --force`, { cwd, stdio: 'pipe' }) } catch {}
