@@ -381,6 +381,39 @@ function buildActiveChapterBlock(cs) {
   ].join('\n')
 }
 
+// ─── Sole Report state ────────────────────────────────────────────────────────
+// Tracks the weekly Sole Report article queue. Persists in watch-drive-state.json.
+
+const SOLE_REPORT_DEFAULTS = {
+  week:       1,
+  topic_area: 'Face',
+  title:      'The Bar of Soap Is Not Fine: What Men\'s Face Care Actually Looks Like in 2026',
+  status:     'DRAFT NEEDED',
+  updated:    new Date().toISOString().slice(0, 10),
+}
+
+function loadSoleReportState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    if (!fs.existsSync(p)) return { ...SOLE_REPORT_DEFAULTS }
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return raw._sole_report_state
+      ? { ...SOLE_REPORT_DEFAULTS, ...raw._sole_report_state }
+      : { ...SOLE_REPORT_DEFAULTS }
+  } catch { return { ...SOLE_REPORT_DEFAULTS } }
+}
+
+function buildSoleReportBlock(srs) {
+  const daysSince = Math.floor((Date.now() - new Date(srs.updated || '2026-01-01').getTime()) / 86400000)
+  const overdue   = srs.status === 'DRAFT NEEDED' && daysSince >= 7
+  return [
+    '## 📰 SOLE REPORT QUEUE',
+    `Week ${srs.week} | Topic: ${srs.topic_area}`,
+    `Title: ${srs.title}`,
+    `Status: ${srs.status}${overdue ? ` ⚠️ OVERDUE (${daysSince}d)` : ''}`,
+  ].join('\n')
+}
+
 // ─── Token budget ─────────────────────────────────────────────────────────────
 
 function buildTokenBudget() {
@@ -1036,9 +1069,12 @@ async function watchBlogAgent() {
   }
 
   // Load + persist active chapter arc — hardcoded Chapter 1 until Big D changes it
-  const chapterState = loadChapterState()
+  const chapterState     = loadChapterState()
   saveChapterState(chapterState)
   log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
+
+  const soleReportState = loadSoleReportState()
+  log(`Sole Report: Week ${soleReportState.week} — ${soleReportState.status}`)
 
   // P0: Ecosystem integrity — runs first, feeds Section 0
   log('P0: Ecosystem integrity...')
@@ -1199,6 +1235,7 @@ Produce this EXACT format. Section 0 content is pre-computed above — use it ve
   // Append active chapter arc block — authoritative from state, not from Claude
   if (standupText) {
     standupText = standupText.trim() + '\n\n' + buildActiveChapterBlock(chapterState)
+    standupText = standupText.trim() + '\n\n' + buildSoleReportBlock(soleReportState)
   }
 
   // Upload strategic brief to Drive

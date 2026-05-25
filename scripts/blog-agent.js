@@ -561,6 +561,91 @@ function gitPush(files) {
   log(`Memory:         ${memory ? memory.length + ' chars' : 'none'}`)
   log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
 
+  // ─── --sole-report mode ───────────────────────────────────────────────────
+  // Writes a shorter Proprietor assessment article for The Sole Report.
+  // No six-step chapter structure. Saves draft to Drive Sole Report/drafts/.
+  // Updates _sole_report_state.status to DRAFT SAVED in watch-drive-state.json.
+  if (process.argv.includes('--sole-report')) {
+    log('Mode: --sole-report')
+
+    // Load topic from state
+    let srs = { week: 1, topic_area: 'Face', title: 'The Bar of Soap Is Not Fine: What Men\'s Face Care Actually Looks Like in 2026', status: 'DRAFT NEEDED', updated: today }
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      if (fs.existsSync(statePath)) {
+        const raw = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+        if (raw._sole_report_state) srs = { ...srs, ...raw._sole_report_state }
+      }
+    } catch {}
+    log(`Sole Report topic: Week ${srs.week} — ${srs.topic_area} — "${srs.title}"`)
+
+    const client = new Anthropic({ apiKey })
+
+    const srSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Sole Report writer. You write short, sharp editorial assessments — Proprietor voice, not blog voice. No six-step chapter structure. No listicles. No subheads that read like article outlines. This is a single clear argument, delivered in 400–600 words, in the voice of a man who has thought carefully about something and is now saying it plainly. Confident. Dry where appropriate. Never preachy. The reader is already the kind of man who takes himself seriously — you are adding one more piece of intelligence to his stack.`
+
+    const srUser = `Write The Sole Report entry for Week ${srs.week}.
+
+Topic area: ${srs.topic_area}
+Working title: ${srs.title}
+
+Format:
+- Title (use the working title or tighten it — do not deviate from the concept)
+- Deck: one sentence. The argument in plain language.
+- Body: 400–600 words. Proprietor assessment voice. 3–4 paragraphs. No subheads. No bullet points. Make the argument, name the gap, close with quiet certainty.
+- No CTA. No product links. No affiliate language. This is editorial intelligence, not a product recommendation.
+
+Output the article in markdown. Title as # heading. Deck as italic paragraph. Body as plain paragraphs.`
+
+    log('Calling Claude for Sole Report draft...')
+    let draft = ''
+    try {
+      const stream = client.messages.stream({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system:     srSystem,
+        messages:   [{ role: 'user', content: srUser }],
+      })
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          draft += event.delta.text
+        }
+      }
+    } catch (err) {
+      log(`ERROR: Claude call failed — ${err.message}`)
+      process.exit(1)
+    }
+
+    if (!draft.trim()) { log('ERROR: empty draft from Claude'); process.exit(1) }
+    log(`Draft generated — ${draft.length} chars`)
+
+    // Save locally and upload to Drive
+    const draftFilename = `sole-report-${today}.md`
+    const localDraft    = path.join(TEMP_DIR, draftFilename)
+    fs.writeFileSync(localDraft, draft)
+    try {
+      execSync(`rclone copyto "${localDraft}" "${REMOTE}/Sole Report/drafts/${draftFilename}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      log(`Draft uploaded → ${REMOTE}/Sole Report/drafts/${draftFilename}`)
+    } catch (err) {
+      log(`WARNING: Drive upload failed — ${err.message}`)
+    }
+
+    // Update state
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      const raw = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+      raw._sole_report_state = { ...srs, status: 'DRAFT SAVED', updated: today }
+      fs.writeFileSync(statePath, JSON.stringify(raw, null, 2))
+      log(`State updated: status → DRAFT SAVED`)
+    } catch (err) {
+      log(`WARNING: could not update state — ${err.message}`)
+    }
+
+    log('━━━ --sole-report complete ━━━')
+    return
+  }
+
   // ─── Load approved shelf products ─────────────────────────────────────────
   log('Loading approved shelf products from Google Sheets...')
   let shelfProducts = []
