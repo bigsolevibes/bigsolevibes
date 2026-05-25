@@ -1,0 +1,90 @@
+[
+  {
+    "date": "05-25",
+    "name": "Memorial Day",
+    "type": "national_holiday",
+    "chapter": "The Standard",
+    "proprietor_take": "Some men gave everything so you could have a standard worth keeping. Remember that today.",
+    "hashtags": "#MemorialDay #TheStandard #BigSoleVibes #MensGrooming #HonorAndRemember"
+  },
+  {
+    "date": "06-15",
+    "name": "Father's Day",
+    "type": "national_holiday",
+    "chapter": "Chapter 4 — The Wallet",
+    "proprietor_take": "He carried it every day without making a thing of it. You learned the standard by watching. That's the inheritance.",
+    "hashtags": "#FathersDay #TheStandard #BigSoleVibes #MensGrooming #TheWallet"
+  },
+  {
+    "date": "07-04",
+    "name": "Independence Day",
+    "type": "national_holiday",
+    "chapter": "Chapter 3 — The Foundation",
+    "proprietor_take": "Built by men who maintained everything at the highest standard. The country. The family. The work. The foundation.",
+    "hashtags": "#IndependenceDay #July4th #TheStandard #BigSoleVibes #MensGrooming"
+  },
+  {
+    "date": "09-01",
+    "name": "Labor Day",
+    "type": "national_holiday",
+    "chapter": "Chapter 3 — The Foundation",
+    "proprietor_take": "The man who built something worth celebrating doesn't need a day to know what the work cost. He knows.",
+    "hashtags": "#LaborDay #TheStandard #BigSoleVibes #MensGrooming #TheFoundation"
+  },
+  {
+    "date": "11-11",
+    "name": "Veterans Day",
+    "type": "national_holiday",
+    "chapter": "The Standard",
+    "proprietor_take": "The standard they kept wasn't grooming. But the principle is the same. Everything maintained. Nothing left to chance.",
+    "hashtags": "#VeteransDay #TheStandard #BigSoleVibes #HonorVeterans #MensGrooming"
+  },
+  {
+    "date": "11-27",
+    "name": "Thanksgiving",
+    "type": "national_holiday",
+    "chapter": "The Lounge",
+    "proprietor_take": "The man who maintains everything shows up for the people who matter. Every time. That's the standard.",
+    "hashtags": "#Thanksgiving #TheStandard #BigSoleVibes #MensGrooming #Grateful"
+  },
+  {
+    "date": "12-25",
+    "name": "Christmas",
+    "type": "national_holiday",
+    "chapter": "The Lounge",
+    "proprietor_take": "The gift that lands is the one chosen with the same care he applies to everything else. The standard doesn't take holidays.",
+    "hashtags": "#Christmas #TheStandard #BigSoleVibes #MensGrooming #GiftIdeas"
+  },
+  {
+    "date": "01-01",
+    "name": "New Year",
+    "type": "national_holiday",
+    "chapter": "Chapter 1 — The Upgrade Path",
+    "proprietor_take": "He doesn't wait for January to raise the standard. But January is as good a time as any to close the gaps.",
+    "hashtags": "#NewYear #NewYearsDay #TheStandard #BigSoleVibes #MensGrooming #UpgradePath"
+  },
+  {
+    "date": "02-14",
+    "name": "Valentine's Day",
+    "type": "national_holiday",
+    "chapter": "The Lounge",
+    "proprietor_take": "The man who takes care of himself takes care of the people he loves. The standard is not negotiable on either front.",
+    "hashtags": "#ValentinesDay #TheStandard #BigSoleVibes #MensGrooming #TheLounge"
+  },
+  {
+    "date": "03-17",
+    "name": "St. Patrick's Day",
+    "type": "cultural",
+    "chapter": "Chapter 2 — The One Bottle",
+    "proprietor_take": "Some evenings have a name. The Saturday bottle knows what to do with them.",
+    "hashtags": "#StPatricksDay #TheStandard #BigSoleVibes #MensGrooming #TheSaturdayBottle"
+  },
+  {
+    "date": "10-31",
+    "name": "Halloween",
+    "type": "cultural",
+    "chapter": "The Lounge",
+    "proprietor_take": "One night a year men pretend to be someone else. The Proprietor does not participate.",
+    "hashtags": "#Halloween #TheProprietor #BigSoleVibes #MensGrooming #TheStandard"
+  }
+]
