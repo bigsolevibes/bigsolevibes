@@ -102,57 +102,39 @@ const C = {
 }
 
 function buildProductCard(product) {
-  const asinOrUrl  = (product['ASIN'] || '').trim()
-  const tag        = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+  const asin         = (product['ASIN']          || '').trim()
+  const affiliateUrl = (product['Affiliate_URL'] || '').trim()
+  const tag          = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
 
+  // Affiliate_URL takes precedence; fall back to bare ASIN or name search
   let amazonUrl
-  if (/^https?:\/\//i.test(asinOrUrl)) {
-    // Full URL in the ASIN column — use as-is, append affiliate tag only for Amazon links
-    if (asinOrUrl.includes('amazon.com')) {
-      const sep = asinOrUrl.includes('?') ? '&' : '?'
-      amazonUrl = `${asinOrUrl}${sep}tag=${tag}`
-    } else {
-      amazonUrl = asinOrUrl
-    }
-  } else if (asinOrUrl) {
-    // Bare ASIN
-    amazonUrl = `https://www.amazon.com/dp/${asinOrUrl}?tag=${tag}`
+  if (affiliateUrl && /^https?:\/\//i.test(affiliateUrl)) {
+    amazonUrl = affiliateUrl
+  } else if (/^https?:\/\//i.test(asin)) {
+    const sep = asin.includes('?') ? '&' : '?'
+    amazonUrl = asin.includes('amazon.com') ? `${asin}${sep}tag=${tag}` : asin
+  } else if (asin) {
+    amazonUrl = `https://www.amazon.com/dp/${asin}?tag=${tag}`
   } else {
-    // No ASIN — search fallback
     amazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
   }
 
-  const isAmazon  = amazonUrl.includes('amazon.com')
-  const score     = product['Score']    ? `<div class="card-score">${escapeHtml(product['Score'])}</div>` : ''
-  const price     = product['Price']    ? `<span class="card-price">${escapeHtml(product['Price'])}</span>` : ''
-  const category  = product['Category'] ? `<p class="card-cat">${escapeHtml(displayCategory(product['Category']).toUpperCase())}</p>` : ''
-
-  // Image_URL is the canonical field; Locker Image is the legacy fallback.
-  // NEEDS_RENDER and empty both render the BSV placeholder — dark background, Bourbon monogram.
+  // Scene image from R2 (Image_URL). Placeholder when not yet generated.
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
   const useImage    = rawImageUrl && rawImageUrl !== 'NEEDS_RENDER'
   const heroHtml    = useImage
-    ? `<div class="card-hero"><img src="${rawImageUrl}" alt="A detail from The Locker Room" loading="lazy"></div>`
+    ? `<div class="card-hero"><img src="${rawImageUrl}" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
     : `<div class="card-hero card-hero--placeholder"><span class="card-hero-mono">BSV</span></div>`
 
-  // Narrative-first layout: render if Narrative is populated.
-  // Status=Approved is the single gate — [DRAFT] prefix is stripped at render time.
-  const rawNarrative = (product['Narrative'] || '').trim().replace(/^\[DRAFT\]\s*/i, '')
-  const hasNarrative = !!rawNarrative
+  // Narrative — [DRAFT] prefix stripped; renders as-is
+  const narrative = (product['Narrative'] || '').trim().replace(/^\[DRAFT\]\s*/i, '')
+  const narrativeHtml = narrative
+    ? `<p class="card-narrative">${escapeHtml(narrative)}</p>`
+    : ''
 
-  let contentHtml, ctaText
-  if (hasNarrative) {
-    const descLine = (product['Description'] || '').trim()
-      ? `<p class="card-desc">${escapeHtml(product['Description'])}</p>`
-      : ''
-    contentHtml = `<p class="card-narrative">${escapeHtml(rawNarrative)}</p>${descLine}`
-    ctaText = "It's on the shelf →"
-  } else {
-    // Fallback: description or reasoning, standard CTA
-    const fallbackText = (product['Description'] || product['Reasoning'] || '').trim()
-    contentHtml = fallbackText ? `<p class="card-audit">${escapeHtml(fallbackText)}</p>` : ''
-    ctaText = isAmazon ? 'SHOP ON AMAZON ↗' : 'SHOP NOW ↗'
-  }
+  const priceHtml = product['Price']
+    ? `<span class="card-price">${escapeHtml(product['Price'])}</span>`
+    : ''
 
   const cardId = (product['Product Name'] || '')
     .toLowerCase()
@@ -163,17 +145,13 @@ function buildProductCard(product) {
         <article class="locker-card" id="${cardId}">
           ${heroHtml}
           <div class="card-body">
-            ${category}
             <h3 class="card-name">${escapeHtml(product['Product Name'] || '')}</h3>
-            ${contentHtml}
+            ${narrativeHtml}
             <div class="card-footer">
-              ${score}
-              <div class="card-actions">
-                ${price}
-                <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
-                  ${ctaText}
-                </a>
-              </div>
+              ${priceHtml}
+              <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+                Get it on Amazon →
+              </a>
             </div>
           </div>
         </article>`
@@ -431,26 +409,24 @@ function buildShopPage(approvedProducts) {
     }
     .locker-card:hover { border-color: rgba(193,125,46,0.2); }
 
-    /* Hero image — 4:3, contained */
+    /* Hero image — 16:9, cinematic scene, full-bleed */
     .card-hero {
       width: 100%;
-      aspect-ratio: 4 / 3;
+      aspect-ratio: 16 / 9;
       overflow: hidden;
       background: #0a1220;
     }
     .card-hero img {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
       object-position: center;
       display: block;
-      filter: brightness(0.92);
     }
     .card-hero--placeholder {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0a1220;
     }
     .card-hero-mono {
       font-family: var(--font-bebas);
@@ -466,67 +442,38 @@ function buildShopPage(approvedProducts) {
       padding: 1.5rem;
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: 0.875rem;
     }
 
-    .card-cat {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 0.6875rem;
-      letter-spacing: 0.14em;
-      color: var(--amber);
-      opacity: 0.8;
-    }
     .card-name {
       font-family: var(--font-playfair);
       font-size: 1.375rem;
       font-weight: 700;
-      color: var(--cream);
+      color: var(--amber);
       line-height: 1.25;
-    }
-    .card-audit {
-      font-style: italic;
-      font-size: 0.9375rem;
-      color: rgba(245,236,215,0.65);
-      line-height: 1.7;
     }
     .card-narrative {
       font-family: var(--font-playfair);
       font-style: italic;
       font-size: 1rem;
       color: var(--cream);
-      line-height: 1.75;
-    }
-    .card-desc {
-      font-size: 0.8125rem;
-      color: rgba(245,236,215,0.45);
-      line-height: 1.5;
-      margin-top: 0.25rem;
+      line-height: 1.8;
+      opacity: 0.9;
     }
     .card-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      padding-top: 0.5rem;
+      padding-top: 1rem;
       border-top: 1px solid rgba(255,255,255,0.05);
-    }
-    .card-score {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 0.6875rem;
-      letter-spacing: 0.1em;
-      color: #C17D2E;
-    }
-    .card-actions {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
+      margin-top: 0.25rem;
     }
     .card-price {
-      font-family: var(--font-bebas);
-      font-size: 1rem;
-      letter-spacing: 0.06em;
+      font-family: var(--font-playfair);
+      font-size: 0.9375rem;
       color: var(--cream);
-      opacity: 0.65;
+      opacity: 0.55;
     }
     .card-cta {
       display: inline-flex;
@@ -680,8 +627,7 @@ function buildShopPage(approvedProducts) {
     }
 
     @media (max-width: 600px) {
-      .card-footer { flex-direction: column; align-items: flex-start; }
-      .card-actions { flex-wrap: wrap; }
+      .card-footer { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
     }
   </style>
 </head>
