@@ -83,8 +83,8 @@ const LOUNGE_SOCIAL_CADENCE = [
   { week: 2, format: 'Simple Modern Man', chapter: 1, articleType: 'spoke', ref: 'the-moisturizer',    angle: 'The oil-change observation. Maintenance is not vanity. Two minutes, the whole thing.' },
   { week: 3, format: 'Tall Tale',         chapter: 1, articleType: 'spoke', ref: 'the-label',          angle: 'He turned the bottle over. Sodium tallowate. The moment the soap stopped being a habit and became a question.' },
   { week: 4, format: 'The Scene',         chapter: 2, articleType: 'hub',   ref: 'the-one-bottle',     angle: 'Parking lot, two bottles. The wrong one he\'d been wearing for years. The right one, once.' },
-  { week: 5, format: 'Simple Modern Man', chapter: 2, articleType: 'spoke', ref: 'top-notes-trap',     angle: 'The strip was a rumor. The bottle was a different conversation.' },
-  { week: 6, format: 'Tall Tale',         chapter: 2, articleType: 'spoke', ref: 'skin-chemistry',     angle: 'Marcus at dinner. The room noticed. Nobody said anything. He didn\'t need them to.' },
+  { week: 5, format: 'Simple Modern Man', chapter: 2, articleType: 'spoke', ref: 'the-man-who-packs',          angle: 'Two kinds of men at airport security. The second one had already thought about it.' },
+  { week: 6, format: 'Tall Tale',         chapter: 2, articleType: 'spoke', ref: 'why-cologne-smells-different', angle: 'Same bottle. Different result on you. He thought that was coincidence. It was chemistry.' },
 ]
 
 function getLoungeWedCadence(targetDateStr) {
@@ -125,8 +125,8 @@ const SOCIAL_FORMAT_MAP = {
   'style-conscious': 'Simple Modern Man',
 }
 
-// ─── Chapter state loader ─────────────────────────────────────────────────────
-// Reads _chapter_state written by chief-of-staff each morning run.
+// ─── Chapter state ────────────────────────────────────────────────────────────
+// media-director owns _chapter_state: reads on run, writes back at completion.
 
 const CHAPTER_STATE_DEFAULTS_MD = {
   active:         1,
@@ -145,6 +145,15 @@ function loadChapterState() {
       ? { ...CHAPTER_STATE_DEFAULTS_MD, ...raw._chapter_state }
       : { ...CHAPTER_STATE_DEFAULTS_MD }
   } catch { return { ...CHAPTER_STATE_DEFAULTS_MD } }
+}
+
+function saveChapterState(cs) {
+  try {
+    const p   = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    const raw = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {}
+    raw._chapter_state = cs
+    fs.writeFileSync(p, JSON.stringify(raw, null, 2))
+  } catch (err) { log(`WARNING: could not save chapter state — ${err.message}`) }
 }
 
 // ─── Daily directive loader ───────────────────────────────────────────────────
@@ -366,6 +375,10 @@ function parseSocialReport(content, persona) {
     )
     if (result.status !== 0) log(`ERROR: creative-agent exited ${result.status} for ${slug}`)
   }
+
+  // Persist chapter state — media-director owns this write
+  saveChapterState(chapterState)
+  log(`Chapter state saved: Chapter ${chapterState.active} — ${chapterState.name}`)
 
   // Chain to gemini-bridge — reads briefs, uploads caption + prompt files to Drive
   log(`Spawning gemini-bridge --day ${targetDay}...`)
