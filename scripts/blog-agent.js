@@ -302,16 +302,16 @@ function buildPostHtml(post, dateStr) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/the-lounge/index.html" class="active">The Lounge</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="post-hero">
     <div class="post-hero-inner">
-      <a href="/the-lounge/index.html" class="back-link">← THE LOUNGE</a>
+      <a href="/sole-report" class="back-link">← THE SOLE REPORT</a>
       <div class="post-meta">
         <span>${publishDate}</span>
         <span class="post-meta-sep">·</span>
@@ -333,7 +333,7 @@ function buildPostHtml(post, dateStr) {
 
       <div class="post-footer">
         <a href="/shop" class="shop-cta-btn">THE LOCKER ROOM →</a>
-        <a href="/the-lounge/index.html" class="blog-link">← The Lounge</a>
+        <a href="/sole-report" class="blog-link">← THE SOLE REPORT</a>
       </div>
     </div>
   </article>
@@ -348,9 +348,9 @@ function buildPostHtml(post, dateStr) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/the-lounge/index.html">The Lounge</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">
@@ -370,10 +370,10 @@ function buildIndexHtml(posts) {
           <article class="post-card">
             <div class="post-card-meta">${escapeHtml(d)}</div>
             <h2 class="post-card-title">
-              <a href="/the-lounge/${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>
+              <a href="/sole-report/${escapeHtml(p.slug)}.html">${escapeHtml(p.title)}</a>
             </h2>
             <p class="post-card-excerpt">${escapeHtml(p.excerpt)}</p>
-            <a href="/the-lounge/${escapeHtml(p.slug)}.html" class="post-card-link">READ MORE →</a>
+            <a href="/sole-report/${escapeHtml(p.slug)}.html" class="post-card-link">READ MORE →</a>
           </article>`
   }).join('\n')
 
@@ -382,9 +382,9 @@ function buildIndexHtml(posts) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Lounge — Big Sole Vibes</title>
+  <title>The Sole Report — Big Sole Vibes</title>
   <meta name="description" content="Proprietor-approved writing on men's grooming, foot care, and the standard. No fluff. No problem-solving. The practice, documented.">
-  <link rel="canonical" href="${SITE_URL}/the-lounge/index.html">
+  <link rel="canonical" href="${SITE_URL}/sole-report">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -433,16 +433,16 @@ function buildIndexHtml(posts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/the-lounge/index.html" class="active">The Lounge</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="blog-hero">
-    <p class="hero-eyebrow">THE PROPRIETOR'S DESK</p>
-    <h1 class="hero-title">The Lounge</h1>
+    <p class="hero-eyebrow">THE SOLE REPORT</p>
+    <h1 class="hero-title">The Sole Report</h1>
     <p class="hero-sub">The practice, documented. No problem-solving. No padding. The standard, in writing.</p>
   </header>
 
@@ -458,9 +458,9 @@ function buildIndexHtml(posts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/the-lounge/index.html">The Lounge</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">

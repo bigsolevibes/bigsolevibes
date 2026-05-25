@@ -693,9 +693,9 @@ function buildShopPage(approvedProducts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
         <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop" class="active">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
@@ -757,9 +757,9 @@ function buildShopPage(approvedProducts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
         <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
       <div class="footer-socials">
         <a href="https://instagram.com/bigsolevibes" aria-label="Instagram" target="_blank" rel="noopener noreferrer">

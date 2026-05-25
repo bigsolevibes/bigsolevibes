@@ -7,9 +7,8 @@ import { usePathname } from 'next/navigation'
 const navLinks = [
   { label: 'Home',            href: '/' },
   { label: 'The Lounge',      href: '/the-lounge' },
+  { label: 'The Sole Report', href: '/sole-report' },
   { label: 'The Locker Room', href: '/shop' },
-  { label: 'Join',            href: '/lounge' },
-  { label: 'Get on the List', href: '/#email-capture' },
 ]
 
 export default function SiteNav() {
