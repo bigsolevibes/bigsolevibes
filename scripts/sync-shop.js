@@ -744,7 +744,6 @@ function buildFeaturedJson(approvedProducts) {
       return {
         name:          (r['Product Name'] || '').trim(),
         category:      (r['Category']     || '').trim(),
-        price:         (r['Price']        || '').trim(),
         affiliate_url: buildAmazonUrl(r),
         narrative:     firstSentenceMatch ? firstSentenceMatch[0].trim() : narrative,
       }

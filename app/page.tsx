@@ -9,7 +9,6 @@ import { getAllPosts } from '@/lib/mdx'
 type FeaturedProduct = {
   name: string
   category: string
-  price: string
   affiliate_url: string
   narrative: string
 }
@@ -170,8 +169,7 @@ export default function HomePage() {
                   <p className="text-bsv-muted text-sm leading-relaxed mb-6 flex-1">
                     {product.narrative}
                   </p>
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading text-lg text-bsv-cream">{product.price}</span>
+                  <div className="flex items-center justify-end">
                     <a
                       href={product.affiliate_url}
                       target="_blank"
