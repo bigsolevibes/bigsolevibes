@@ -4,9 +4,10 @@ const fs            = require('fs')
 const path          = require('path')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 
-const ROOT     = path.join(__dirname, '..')
-const LOG_FILE = path.join(ROOT, 'logs', 'sync-shop.log')
-const SHOP_OUT = path.join(ROOT, 'public', 'shop', 'index.html')
+const ROOT         = path.join(__dirname, '..')
+const LOG_FILE     = path.join(ROOT, 'logs', 'sync-shop.log')
+const SHOP_OUT     = path.join(ROOT, 'public', 'shop', 'index.html')
+const FEATURED_OUT = path.join(ROOT, 'public', 'shop', 'featured.json')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,21 @@ function categoryIcon(cat) {
   return map[cat] || 'ti-star'
 }
 
+// ─── Shared URL builder ───────────────────────────────────────────────────────
+
+function buildAmazonUrl(product) {
+  const asin         = (product['ASIN']          || '').trim()
+  const affiliateUrl = (product['Affiliate_URL'] || '').trim()
+  const tag          = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+  if (affiliateUrl && /^https?:\/\//i.test(affiliateUrl)) return affiliateUrl
+  if (/^https?:\/\//i.test(asin)) {
+    const sep = asin.includes('?') ? '&' : '?'
+    return asin.includes('amazon.com') ? `${asin}${sep}tag=${tag}` : asin
+  }
+  if (asin) return `https://www.amazon.com/dp/${asin}?tag=${tag}`
+  return `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
+}
+
 // ─── HTML generation ──────────────────────────────────────────────────────────
 
 // Colors match tailwind.config.ts exactly
@@ -102,28 +118,13 @@ const C = {
 }
 
 function buildProductCard(product) {
-  const asin         = (product['ASIN']          || '').trim()
-  const affiliateUrl = (product['Affiliate_URL'] || '').trim()
-  const tag          = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
-
-  // Affiliate_URL takes precedence; fall back to bare ASIN or name search
-  let amazonUrl
-  if (affiliateUrl && /^https?:\/\//i.test(affiliateUrl)) {
-    amazonUrl = affiliateUrl
-  } else if (/^https?:\/\//i.test(asin)) {
-    const sep = asin.includes('?') ? '&' : '?'
-    amazonUrl = asin.includes('amazon.com') ? `${asin}${sep}tag=${tag}` : asin
-  } else if (asin) {
-    amazonUrl = `https://www.amazon.com/dp/${asin}?tag=${tag}`
-  } else {
-    amazonUrl = `https://www.amazon.com/s?k=${encodeURIComponent(product['Product Name'] || '')}&tag=${tag}`
-  }
+  const amazonUrl = buildAmazonUrl(product)
 
   // Scene image from R2 (Image_URL). Placeholder when not yet generated.
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
   const useImage    = rawImageUrl && rawImageUrl !== 'NEEDS_RENDER'
   const heroHtml    = useImage
-    ? `<div class="card-hero"><img src="${rawImageUrl}" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
+    ? `<div class="card-hero"><img src="${rawImageUrl}?v=2" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
     : `<div class="card-hero card-hero--placeholder"><span class="card-hero-mono">BSV</span></div>`
 
   // Narrative — [DRAFT] prefix stripped; renders as-is
@@ -731,6 +732,26 @@ function buildShopPage(approvedProducts) {
 </html>`
 }
 
+// ─── Featured JSON ────────────────────────────────────────────────────────────
+
+function buildFeaturedJson(approvedProducts) {
+  const picks = approvedProducts
+    .filter(r => (r['Featured'] || '').trim().toLowerCase() === 'true')
+    .slice(0, 3)
+    .map(r => {
+      const narrative = (r['Narrative'] || '').trim().replace(/^\[DRAFT\]\s*/i, '')
+      const firstSentenceMatch = narrative.match(/^[^.!?]*[.!?]/)
+      return {
+        name:          (r['Product Name'] || '').trim(),
+        category:      (r['Category']     || '').trim(),
+        price:         (r['Price']        || '').trim(),
+        affiliate_url: buildAmazonUrl(r),
+        narrative:     firstSentenceMatch ? firstSentenceMatch[0].trim() : narrative,
+      }
+    })
+  return JSON.stringify({ picks }, null, 2)
+}
+
 // ─── Utility ──────────────────────────────────────────────────────────────────
 
 function escapeHtml(str) {
@@ -740,7 +761,7 @@ function escapeHtml(str) {
 function gitPush() {
   const cwd = ROOT
   try {
-    execSync('git add public/shop/index.html', { cwd, stdio: 'pipe' })
+    execSync('git add public/shop/index.html public/shop/featured.json', { cwd, stdio: 'pipe' })
 
     // Check if there's anything to commit
     const status = execSync('git status --porcelain public/shop/index.html', { cwd, encoding: 'utf8', stdio: 'pipe' }).trim()
@@ -793,6 +814,7 @@ function gitPush() {
   if (dryRun) {
     const preview = path.join(ROOT, 'logs', 'shop-preview.html')
     fs.writeFileSync(preview, html)
+    fs.writeFileSync(path.join(ROOT, 'logs', 'featured-preview.json'), buildFeaturedJson(approved))
     log(`[dry-run] HTML written to ${preview} — no git push`)
     log('━━━ sync-shop complete ━━━\n')
     return
@@ -801,6 +823,10 @@ function gitPush() {
   // Write and deploy
   fs.writeFileSync(SHOP_OUT, html)
   log(`Written → ${SHOP_OUT}`)
+
+  const featuredJson = buildFeaturedJson(approved)
+  fs.writeFileSync(FEATURED_OUT, featuredJson)
+  log(`Written → ${FEATURED_OUT} (${JSON.parse(featuredJson).picks.length} featured pick(s))`)
 
   const pushed = gitPush()
   log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)

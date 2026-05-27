@@ -19,6 +19,7 @@ const HEADERS = [
   'Reasoning',     // Proprietor's Audit — why it qualified, for Big D's review context
   'Locker Image',  // public image URL for the locker card hero (legacy)
   'Image_URL',     // official brand image URL or NEEDS_RENDER (triggers BSV render pipeline)
+  'Featured',      // 'true' on the 3 products surfaced on the homepage shelf preview
 ]
 
 // 1-indexed column number → letter(s) (A, B, …, Z, AA, …)
@@ -129,6 +130,7 @@ async function appendPick({ sheets, spreadsheetId }, pick, { status = 'Pending' 
     'Reasoning':    pick.reasoning   || '',
     'Locker Image': pick.lockerImage || '',
     'Image_URL':    pick.imageUrl    || '',
+    'Featured':     pick.featured    || '',
   }
 
   const row = headers.map(h => fieldMap[h] ?? '')
