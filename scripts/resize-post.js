@@ -153,26 +153,5 @@ const ext = path.extname(inputPath).toLowerCase()
     log(`copied ${targets.length} variant(s) to public/ and Desktop`)
   }
 
-  // Deploy to Cloudflare Pages — public/posts/output/ is served at /posts/output/
-  try {
-    execSync('git add posts/output/ public/posts/output/', { cwd: ROOT, stdio: 'pipe' })
-    let changed = true
-    try {
-      execSync('git diff --cached --quiet posts/output/ public/posts/output/', { cwd: ROOT, stdio: 'pipe' })
-      changed = false
-    } catch { /* non-zero exit = there are staged changes */ }
-
-    if (!changed) {
-      execSync('git reset HEAD -- posts/output/ public/posts/output/', { cwd: ROOT, stdio: 'pipe' })
-      log('git: output unchanged — skipping commit')
-    } else {
-      execSync('git commit -m "auto: add post output [skip cf-pages]"', { cwd: ROOT, stdio: 'pipe' })
-      require('./git-push-guard').safePushToPipeline(ROOT, log)
-      log('git: committed and pushed post output')
-    }
-  } catch (err) {
-    log(`ERROR: git deploy failed — ${err.message}`)
-  }
-
   log(`END input=${path.basename(inputPath)}`)
 })()
