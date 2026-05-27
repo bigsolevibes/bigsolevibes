@@ -790,7 +790,7 @@ function dedupForDiagnosis(failures, max = 10) {
   return result
 }
 
-async function diagnose(client, failures) {
+async function diagnose(client, failures, directive, memory) {
   const dedupedFailures = dedupForDiagnosis(failures, 10)
   if (dedupedFailures.length < failures.length) {
     log(`Diagnosis: collapsed ${failures.length} failures → ${dedupedFailures.length} unique for API call`)
@@ -1039,7 +1039,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     })),
   ]
   try {
-    diagnosis = await diagnose(client, diagnosisInput)
+    diagnosis = await diagnose(client, diagnosisInput, directive, memory)
     log(`Diagnosis complete (${diagnosis.length} chars)`)
   } catch (err) {
     log(`ERROR: Claude diagnosis failed: ${err.message}`)

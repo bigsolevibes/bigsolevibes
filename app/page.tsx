@@ -1,9 +1,26 @@
+import fs from 'fs'
+import path from 'path'
 import Link from 'next/link'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import EmailCapture from '@/components/EmailCapture'
 import { getAllPosts } from '@/lib/mdx'
-import shopData from '@/data/shop-products.json'
+
+type FeaturedProduct = {
+  name: string
+  category: string
+  affiliate_url: string
+  narrative: string
+}
+
+function getFeaturedProducts(): FeaturedProduct[] {
+  try {
+    const raw = fs.readFileSync(path.join(process.cwd(), 'public/shop/featured.json'), 'utf8')
+    return (JSON.parse(raw).picks || []) as FeaturedProduct[]
+  } catch {
+    return []
+  }
+}
 
 export default function HomePage() {
   const today    = new Date()
@@ -11,7 +28,7 @@ export default function HomePage() {
   const posts    = getAllPosts()
     .filter((p) => new Date(p.date) <= today)
     .slice(0, 3)
-  const products = shopData.picks.slice(0, 3)
+  const products = getFeaturedProducts()
 
   return (
     <>
@@ -52,10 +69,10 @@ export default function HomePage() {
                 THE LOCKER ROOM
               </Link>
               <Link
-                href="/#email-capture"
+                href="/sole-report"
                 className="px-8 py-4 border border-bsv-amber text-bsv-amber font-heading text-lg tracking-widest hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
               >
-                THE LOUNGE
+                THE SOLE REPORT
               </Link>
             </div>
           </div>
@@ -138,7 +155,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
               {products.map((product, i) => (
                 <div
-                  key={product.asin}
+                  key={product.name}
                   className={`p-8 flex flex-col${
                     i < products.length - 1 ? ' border-b md:border-b-0 md:border-r border-white/10' : ''
                   }`}
@@ -150,12 +167,11 @@ export default function HomePage() {
                     {product.name.toUpperCase()}
                   </h3>
                   <p className="text-bsv-muted text-sm leading-relaxed mb-6 flex-1">
-                    {product.description}
+                    {product.narrative}
                   </p>
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading text-lg text-bsv-cream">{product.price}</span>
+                  <div className="flex items-center justify-end">
                     <a
-                      href={product.affiliate}
+                      href={product.affiliate_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-bsv-amber font-heading text-xs tracking-widest border border-bsv-amber px-4 py-2 hover:bg-bsv-amber hover:text-bsv-bg transition-colors"

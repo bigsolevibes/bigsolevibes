@@ -1,13 +1,15 @@
 require('dotenv').config()
+const Anthropic        = require('@anthropic-ai/sdk').default
 const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT       = path.join(__dirname, '..')
-const LOG_FILE   = path.join(ROOT, 'logs', 'media-director.log')
-const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-media-director')
-const REMOTE     = 'big sole vibes:Big Sole Vibes'
+const ROOT                   = path.join(__dirname, '..')
+const LOG_FILE               = path.join(ROOT, 'logs', 'media-director.log')
+const TEMP_DIR               = path.join(os.homedir(), 'tmp', 'bsv-media-director')
+const REMOTE                 = 'big sole vibes:Big Sole Vibes'
+const CULTURAL_CALENDAR_FILE = path.join(ROOT, 'scripts', 'data', 'cultural-calendar.json')
 
 const { VOICES } = require('../config/bsv-voices')
 
@@ -267,6 +269,74 @@ function parseSocialReport(content, persona) {
   return result
 }
 
+// ─── Cultural moment override ─────────────────────────────────────────────────
+// Checks the calendar first, then asks Claude to reason about the social report.
+// Returns { override, source, moment, proprietor_take, hashtags }.
+
+async function callClaude(prompt) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    log('WARNING: ANTHROPIC_API_KEY not set — cultural Claude reasoning unavailable')
+    return '{"override": false, "reason": "API key not set"}'
+  }
+  const client = new Anthropic({ apiKey })
+  const msg = await client.messages.create({
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    messages:   [{ role: 'user', content: prompt }],
+  })
+  return msg.content[0].text.trim()
+}
+
+async function checkCulturalOverride(socialReport, today) {
+  // Calendar check first — hard-coded takes, no AI cost
+  if (fs.existsSync(CULTURAL_CALENDAR_FILE)) {
+    const calendar    = JSON.parse(fs.readFileSync(CULTURAL_CALENDAR_FILE, 'utf8'))
+    const todayMMDD   = today.toISOString().slice(5, 10)
+    const calendarMatch = calendar.find(e => e.date === todayMMDD)
+    if (calendarMatch) {
+      return {
+        override:       true,
+        source:         'calendar',
+        moment:         calendarMatch.name,
+        chapter:        calendarMatch.chapter,
+        proprietor_take: calendarMatch.proprietor_take,
+        hashtags:       calendarMatch.hashtags,
+      }
+    }
+  }
+
+  // No calendar match — ask Claude to reason about the social report
+  try {
+    const response = await callClaude(`
+You are media-director for Big Sole Vibes — a premium men's grooming brand.
+Today is ${today.toDateString()}.
+
+Here is today's social intelligence report summary:
+${socialReport.slice(0, 2000)}
+
+Is there a dominant cultural moment happening today that warrants overriding
+the standard chapter content brief? A cultural moment qualifies if:
+- It is a major sporting event (championship, finals, major race)
+- It is a trending national conversation that the BSV man would care about
+- It would be conspicuous for a premium men's brand NOT to acknowledge it
+
+Respond in JSON only:
+{
+  "override": true/false,
+  "moment": "name of the moment or null",
+  "reason": "one sentence why or why not",
+  "proprietor_take": "two sentence Proprietor voice take on the moment — deadpan, no product, or null if no override",
+  "hashtags": "5 relevant hashtags or null"
+}`)
+    const parsed = JSON.parse(response)
+    return { source: 'claude', ...parsed }
+  } catch (err) {
+    log(`WARNING: cultural override check failed — ${err.message}`)
+    return { override: false, source: 'error', reason: err.message }
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -360,6 +430,44 @@ function parseSocialReport(content, persona) {
     log(`[${slug}] chapter mandate: Chapter ${chapterState.active} — ${chapterState.name} | campfire: ${chapterState.campfireFormat}`)
     if (parsed?.storyAngle?.hook) log(`  angle: "${parsed.storyAngle.hook}"`)
     if (parsed?.verbatimPhrases?.length) log(`  verbatim phrases: ${parsed.verbatimPhrases.length}`)
+
+    // Cultural moment override — fires before creative-agent; skips chapter brief if true
+    const culturalCheck = await checkCulturalOverride(socialReport?.content || '', new Date())
+    if (culturalCheck.override) {
+      log(`[${slug}] CULTURAL OVERRIDE: ${culturalCheck.moment} (source: ${culturalCheck.source})`)
+
+      const captionText = `${culturalCheck.proprietor_take}\n\n${culturalCheck.hashtags}`
+      const localCaption = path.join(TEMP_DIR, `${slug}.md`)
+      fs.writeFileSync(localCaption, captionText)
+
+      try {
+        execSync(
+          `rclone copyto "${localCaption}" "${REMOTE}/Ready to Post/${slug}.md"`,
+          { stdio: ['pipe', 'pipe', 'pipe'] }
+        )
+        log(`[${slug}] Cultural caption → Drive/Ready to Post/${slug}.md`)
+      } catch (err) {
+        log(`ERROR: [${slug}] Drive upload failed — ${err.message}`)
+      }
+
+      // Log override to watch-drive-state.json
+      try {
+        const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+        const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+        if (!state._cultural_override) state._cultural_override = {}
+        state._cultural_override[slug] = {
+          moment:    culturalCheck.moment,
+          source:    culturalCheck.source,
+          timestamp: new Date().toISOString(),
+        }
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
+        log(`[${slug}] Cultural override logged to watch-drive-state.json`)
+      } catch (err) {
+        log(`WARNING: [${slug}] Could not log cultural override — ${err.message}`)
+      }
+
+      continue // skip creative-agent; chapter brief resumes next slot
+    }
 
     const result = spawnSync(
       process.execPath,
