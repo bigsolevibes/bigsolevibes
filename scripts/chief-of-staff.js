@@ -53,6 +53,52 @@ const AGENT_ROSTER = [
   { name: 'sync-shop',           tier: 2, essential: false, weekly: false, role: 'Locker Room page generator',   schedule: 'on-approval'        },
 ]
 
+// ─── Agent dependency map ─────────────────────────────────────────────────────
+
+const AGENT_DEPENDENCIES = [
+  {
+    producer:    'social-listening',
+    consumer:    'product-research',
+    description: 'Social report feeds product search targets',
+    checkPath:   'Big Sole Vibes/Reports/',
+    filePattern: 'social-report-',
+    maxAgeHours: 48,
+  },
+  {
+    producer:    'social-listening',
+    consumer:    'media-director',
+    description: 'Social report feeds content brief',
+    checkPath:   'Big Sole Vibes/Reports/',
+    filePattern: 'social-report-',
+    maxAgeHours: 24,
+  },
+  {
+    producer:    'media-director',
+    consumer:    'creative-agent',
+    description: 'Media brief feeds caption generation',
+    checkPath:   'Big Sole Vibes/Ready to Post/',
+    filePattern: '.md',
+    maxAgeHours: 26,
+  },
+  {
+    producer:    'media-director',
+    consumer:    'blog-agent',
+    description: 'Sole Report brief feeds blog-agent Sunday run',
+    checkPath:   null,
+    localPath:   'logs/watch-drive-state.json',
+    stateKey:    '_sole_report_state',
+    maxAgeHours: 168,
+  },
+  {
+    producer:    'product-research',
+    consumer:    'sync-shop',
+    description: 'Approved sheet rows feed Locker Room',
+    checkPath:   null,
+    localPath:   'logs/product-research.log',
+    maxAgeHours: 168,
+  },
+]
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -836,9 +882,82 @@ async function watchBlogAgent() {
   }
 }
 
+// ─── Agent dependency validation ─────────────────────────────────────────────
+
+async function validateAgentDependencies() {
+  const rcloneRemote = REMOTE.split(':')[0] + ':'
+  const results      = []
+
+  for (const dep of AGENT_DEPENDENCIES) {
+    let status = 'DISCONNECTED'
+    let detail = ''
+
+    try {
+      if (dep.checkPath !== null) {
+        const remotePath = rcloneRemote + dep.checkPath
+        let items = []
+        try {
+          const raw = execSync(`rclone lsjson "${remotePath}"`, {
+            encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 20000,
+          })
+          items = JSON.parse(raw || '[]')
+        } catch { items = [] }
+
+        const matches = items.filter(item => !item.IsDir && item.Name.includes(dep.filePattern))
+        if (!matches.length) {
+          detail = `no file matching "${dep.filePattern}" in Drive`
+        } else {
+          const newest = matches.reduce((a, b) => (a.ModTime > b.ModTime ? a : b))
+          const ageH   = (Date.now() - new Date(newest.ModTime).getTime()) / 3600000
+          if (ageH > dep.maxAgeHours) {
+            detail = `stale ${Math.round(ageH)}h ago (limit: ${dep.maxAgeHours}h)`
+          } else {
+            status = 'CONNECTED'
+            detail = `fresh ${Math.round(ageH)}h ago`
+          }
+        }
+      } else if (dep.localPath) {
+        const localPath = path.join(ROOT, dep.localPath)
+        if (!fs.existsSync(localPath)) {
+          detail = `${dep.localPath} not found`
+        } else {
+          const ageH = (Date.now() - fs.statSync(localPath).mtimeMs) / 3600000
+          if (dep.stateKey) {
+            let json = {}
+            try { json = JSON.parse(fs.readFileSync(localPath, 'utf8')) } catch {}
+            if (!json[dep.stateKey]) {
+              detail = `${dep.stateKey} missing from state file`
+            } else if (ageH > dep.maxAgeHours) {
+              detail = `${dep.stateKey} stale ${Math.round(ageH / 24)}d ago`
+            } else {
+              status = 'CONNECTED'
+              detail = 'brief current'
+            }
+          } else {
+            if (ageH > dep.maxAgeHours) {
+              detail = `log stale ${Math.round(ageH / 24)}d — check if weekly run completed`
+            } else {
+              status = 'CONNECTED'
+              detail = `fresh ${Math.round(ageH)}h ago`
+            }
+          }
+        }
+      }
+    } catch (err) {
+      detail = `check error: ${err.message.slice(0, 60)}`
+    }
+
+    results.push({ producer: dep.producer, consumer: dep.consumer, status, detail })
+  }
+
+  const connected = results.filter(r => r.status === 'CONNECTED').length
+  log(`Dependency audit: ${connected}/${results.length} connected`)
+  return results
+}
+
 // ─── Standup builder (programmatic — no Claude) ───────────────────────────────
 
-function buildStandupTelegram({ breach, ecosystem, posts, revenue, growth, agents, costState, pendingItems, chapterState, soleReportState }) {
+function buildStandupTelegram({ breach, ecosystem, posts, revenue, growth, agents, costState, pendingItems, chapterState, soleReportState, depResults }) {
   const parts = []
 
   // BREACH leads the entire message
@@ -894,6 +1013,23 @@ function buildStandupTelegram({ breach, ecosystem, posts, revenue, growth, agent
       parts.push(`${emoji} ${e.metadata?.title || e.id} (${ageH}h)${flag}`)
     }
     parts.push('Reply APPROVE or DENY.')
+  }
+  parts.push('')
+
+  // DEP — Agent dependency audit
+  parts.push('*DEP — AGENT DEPENDENCIES*')
+  if (depResults && depResults.length) {
+    const depFails = depResults.filter(r => r.status === 'DISCONNECTED')
+    if (depFails.length === 0) {
+      parts.push('All handoffs connected.')
+    } else {
+      for (const r of depResults) {
+        const mark = r.status === 'CONNECTED' ? '✓' : '✗'
+        parts.push(`${mark} ${r.producer} → ${r.consumer} (${r.detail})`)
+      }
+    }
+  } else {
+    parts.push('Dependency audit unavailable.')
   }
   parts.push('')
 
@@ -1011,6 +1147,9 @@ function buildStandupTelegram({ breach, ecosystem, posts, revenue, growth, agent
   const soleReportState = loadSoleReportState()
   const allPendingItems = loadPendingItems()
 
+  log('P5: Agent dependency audit...')
+  const depResults = await validateAgentDependencies()
+
   log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
   log(`Sole Report: Week ${soleReportState.week} — ${soleReportState.status}`)
   log(`Cost state: balance=${costState?.balance ?? 'n/a'}, runway=${costState?.runway_hours ?? 'n/a'}h, today=${costState?.today_cost ?? 'n/a'}`)
@@ -1035,6 +1174,7 @@ function buildStandupTelegram({ breach, ecosystem, posts, revenue, growth, agent
     pendingItems:    allPendingItems,
     chapterState,
     soleReportState,
+    depResults,
   })
 
   const tgResult = await sendTelegram(standupText)
