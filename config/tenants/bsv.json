@@ -1,0 +1,11 @@
+{
+  "tenant_id": "bsv",
+  "brand_name": "Big Sole Vibes",
+  "primary_color": "#0D1B2A",
+  "accent_color": "#C17D2E",
+  "logo_url": "/brand/bsv-logo.png",
+  "platforms": ["instagram", "bluesky"],
+  "pipeline_root": "/Users/davidgeer/claude/bigsolevibes-web",
+  "drive_folder": "Big Sole Vibes",
+  "sheets_id": ""
+}

@@ -15,6 +15,7 @@
     "@google/genai": "^1.52.0",
     "@google/generative-ai": "^0.24.1",
     "anthropic": "^0.0.0",
+    "bcryptjs": "^3.0.3",
     "canvas": "^3.2.3",
     "dotenv": "^17.4.2",
     "execa": "^9.6.1",
@@ -22,6 +23,7 @@
     "googleapis": "^171.4.0",
     "gray-matter": "^4.0.3",
     "next": "14.2.3",
+    "next-auth": "^4.24.14",
     "next-mdx-remote": "^6.0.0",
     "nodemailer": "^8.0.7",
     "react": "^18",
@@ -30,6 +32,7 @@
     "twitter-api-v2": "^1.29.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
