@@ -29,7 +29,8 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   session: { strategy: 'jwt' },
-  secret: process.env.DASHBOARD_SECRET ?? process.env.NEXTAUTH_SECRET,
+  // NextAuth reads NEXTAUTH_SECRET automatically at request time.
+  // Do not cache it here at module load — it may not be hydrated yet.
   pages: {
     signIn: '/dashboard/login',
   },
