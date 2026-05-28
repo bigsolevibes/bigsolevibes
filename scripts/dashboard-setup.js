@@ -17,7 +17,7 @@ rl.question('Dashboard password: ', async (password) => {
 
   console.log('\n# Add these to .env:\n')
   console.log(`DASHBOARD_EMAIL=david@bigsolevibes.com`)
-  console.log(`DASHBOARD_PASSWORD_HASH=${hash}`)
-  console.log(`NEXTAUTH_SECRET=${secret}`)
+  console.log(`DASHBOARD_PASSWORD_HASH='${hash}'`)
+  console.log(`NEXTAUTH_SECRET='${secret}'`)
   console.log('\nNextAuth reads NEXTAUTH_SECRET automatically — use this name exactly.\n')
 })
