@@ -46,6 +46,9 @@ const BSV_AUTO_PREFIX = /^\[BSV-AUTO\]/i
 // Commit message prefix for all autonomous fix commits made by this process.
 const AUTO_COMMIT_PREFIX = '[BSV-AUTO]'
 
+// Known valid internal routes. Flag any href not in this set.
+const KNOWN_ROUTES = new Set(['/', '/the-lounge', '/sole-report', '/shop', '/kickoff', '/drop', '/privacy', '/terms', '/lounge'])
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -272,6 +275,52 @@ function buildChangeRecord({ what, date, commit, files, impact, rollback, recomm
     `RECOMMENDATION: ${recommendation}`,
     `STATUS: ${status}`,
   ].filter(Boolean).join('\n')
+}
+
+// ─── Internal link validation ─────────────────────────────────────────────────
+
+function validateInternalLinks() {
+  const publicDir  = path.join(ROOT, 'public')
+  const violations = []
+  const htmlFiles  = []
+
+  const walk = (dir) => {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.name.endsWith('.html')) htmlFiles.push(full)
+      }
+    } catch {}
+  }
+  walk(publicDir)
+
+  for (const htmlFile of htmlFiles) {
+    const rel = path.relative(ROOT, htmlFile)
+    let content
+    try { content = fs.readFileSync(htmlFile, 'utf8') } catch { continue }
+
+    const hrefRe = /href="([^"#][^"]*)"/g
+    let m
+    while ((m = hrefRe.exec(content)) !== null) {
+      const href = m[1]
+      // Skip external links, protocol-relative, mailto, tel, anchors, asset files
+      if (/^(https?:|mailto:|tel:|data:|\/\/)/.test(href)) continue
+      if (/\.(png|jpg|jpeg|gif|svg|ico|woff2?|css|js|txt|xml|pdf)$/i.test(href)) continue
+      // Normalize: strip trailing slash (keep root as-is)
+      const normalized = href === '/' ? '/' : href.replace(/\/+$/, '').split('?')[0].split('#')[0]
+      if (!KNOWN_ROUTES.has(normalized)) {
+        violations.push({ file: rel, href: normalized })
+      }
+    }
+  }
+
+  // Deduplicate
+  const seen = new Set()
+  return violations.filter(v => {
+    const k = `${v.file}::${v.href}`
+    return seen.has(k) ? false : seen.add(k)
+  })
 }
 
 // ─── Early Warning: Syntax check + logging audit ──────────────────────────────
@@ -660,6 +709,41 @@ function validateAutoCommit(commit, files) {
     for (const commit of autoCommits) {
       const files = getCommitFiles(commit.hash)
       validateAutoCommit(commit, files)
+    }
+  }
+
+  // ── Internal link validation ──────────────────────────────────────────────────
+  log('Validating internal links in public/...')
+  const linkViolations = validateInternalLinks()
+  log(`Internal link check: ${linkViolations.length} unknown route(s) found`)
+
+  for (const v of linkViolations) {
+    const key = `link::${v.file}::${v.href}`
+    if (state.tracked_issues?.[key]) {
+      log(`  Already tracked: ${v.href} in ${v.file}`)
+      continue
+    }
+    log(`  UNKNOWN ROUTE: ${v.file} → ${v.href}`)
+    const issueTitle = `[flagged] broken internal link — ${v.href} in ${path.basename(v.file)}`
+    const issueBody  = [
+      `## Internal Link Validation — Unknown Route`,
+      ``,
+      `An internal href was found in a public HTML file that does not match any known Next.js route.`,
+      ``,
+      `**File:** \`${v.file}\``,
+      `**Unknown href:** \`${v.href}\``,
+      ``,
+      `## Known Routes`,
+      [...KNOWN_ROUTES].sort().map(r => `- \`${r}\``).join('\n'),
+      ``,
+      `## Fix`,
+      `Either update the href to a valid route, or add the new route to \`KNOWN_ROUTES\` in \`scripts/change-agent.js\` if it is intentional.`,
+    ].join('\n')
+    const issueNum = openIssue(issueTitle, issueBody, 'flagged')
+    if (issueNum) {
+      state.tracked_issues        = state.tracked_issues || {}
+      state.tracked_issues[key]   = issueNum
+      log(`  #${issueNum} opened for unknown route: ${v.href} in ${v.file}`)
     }
   }
 
