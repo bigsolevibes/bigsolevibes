@@ -16,8 +16,10 @@ rl.question('Dashboard password: ', async (password) => {
   const secret = crypto.randomBytes(32).toString('hex')
 
   console.log('\n# Add these to .env:\n')
+  const hashB64 = Buffer.from(hash).toString('base64')
   console.log(`DASHBOARD_EMAIL=david@bigsolevibes.com`)
-  console.log(`DASHBOARD_PASSWORD_HASH='${hash}'`)
-  console.log(`NEXTAUTH_SECRET='${secret}'`)
-  console.log('\nNextAuth reads NEXTAUTH_SECRET automatically — use this name exactly.\n')
+  console.log(`DASHBOARD_PASSWORD_HASH=${hashB64}`)
+  console.log(`NEXTAUTH_SECRET=${secret}`)
+  console.log('\nHash is base64-encoded so dotenv dollar-sign expansion cannot corrupt it.')
+  console.log('NEXTAUTH_SECRET is hex — no quoting needed.\n')
 })

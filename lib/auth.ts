@@ -14,14 +14,16 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null
 
         const email = process.env.DASHBOARD_EMAIL
-        const hash = process.env.DASHBOARD_PASSWORD_HASH
+        // Hash is stored base64-encoded to survive dotenv-expand's $ substitution
+        const hashB64 = process.env.DASHBOARD_PASSWORD_HASH
+        const hash = hashB64 ? Buffer.from(hashB64, 'base64').toString('utf8') : ''
 
         if (!email || !hash) {
           console.error(
             '[dashboard auth] MISSING ENV — ' +
             (!email ? 'DASHBOARD_EMAIL ' : '') +
             (!hash ? 'DASHBOARD_PASSWORD_HASH' : '') +
-            ' not set or expanded to empty (check for unquoted $ in .env.local — use single quotes)'
+            ' not set. Re-run: node scripts/dashboard-setup.js'
           )
           return null
         }
