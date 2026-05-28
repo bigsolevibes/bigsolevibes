@@ -1,3 +1,20 @@
+## Pre-Session Protocol — Read Before Responding
+
+Before responding to any message in any session, read `BSV-Session-Context.md` from the project folder. It contains everything needed to operate as a fully loaded BSV session partner:
+
+- Brand directive and voice
+- Strategic memory and decisions
+- Current pipeline state and blockers
+- Morning standup priorities
+
+Do not ask questions answered in that file.
+Do not ask Code to read scripts documented in the org chart.
+Do not ask Big D for context that chief already reported.
+
+If `BSV-Session-Context.md` is missing or stale (older than 24 hours), flag it immediately — it means update-handoff.js didn't run.
+
+---
+
 # Big Sole Vibes — Claude Code Session Guide
 
 ## Hard Rules
