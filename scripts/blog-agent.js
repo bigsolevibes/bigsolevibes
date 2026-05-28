@@ -562,87 +562,137 @@ function gitPush(files) {
   log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
 
   // ─── --sole-report mode ───────────────────────────────────────────────────
-  // Writes a shorter Proprietor assessment article for The Sole Report.
-  // No six-step chapter structure. Saves draft to Drive Sole Report/drafts/.
-  // Updates _sole_report_state.status to DRAFT SAVED in watch-drive-state.json.
+  // Reads _sole_report_state brief written Saturday by media-director.
+  // Writes article as MDX to content/sole-report/<slug>.mdx.
+  // Commits and pushes to preview/full-site (same as all pipeline content).
+  // No approval loop. No Telegram. No Drive draft. Write → commit → push → done.
   if (process.argv.includes('--sole-report')) {
     log('Mode: --sole-report')
 
-    // Load topic from state
-    let srs = { week: 1, topic_area: 'Face', title: 'The Bar of Soap Is Not Fine: What Men\'s Face Care Actually Looks Like in 2026', status: 'DRAFT NEEDED', updated: today }
+    // ─── Read brief from state ──────────────────────────────────────────
+    let srs = null
     try {
       const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
       if (fs.existsSync(statePath)) {
         const raw = JSON.parse(fs.readFileSync(statePath, 'utf8'))
-        if (raw._sole_report_state) srs = { ...srs, ...raw._sole_report_state }
+        srs = raw._sole_report_state || null
       }
     } catch {}
-    log(`Sole Report topic: Week ${srs.week} — ${srs.topic_area} — "${srs.title}"`)
 
+    if (!srs || srs.status !== 'BRIEFED') {
+      log(`Sole Report: no brief with status BRIEFED found (current: ${srs?.status ?? 'none'}) — exiting cleanly`)
+      log('━━━ --sole-report complete (no brief) ━━━\n')
+      return
+    }
+    log(`Sole Report brief: week ${srs.week} — "${srs.title}" [${srs.topic_area}]`)
+
+    // ─── Generate article via Claude ────────────────────────────────────
     const client = new Anthropic({ apiKey })
 
-    const srSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Sole Report writer. You write short, sharp editorial assessments — Proprietor voice, not blog voice. No six-step chapter structure. No listicles. No subheads that read like article outlines. This is a single clear argument, delivered in 400–600 words, in the voice of a man who has thought carefully about something and is now saying it plainly. Confident. Dry where appropriate. Never preachy. The reader is already the kind of man who takes himself seriously — you are adding one more piece of intelligence to his stack.`
+    const srSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Sole Report writer. You write authoritative editorial articles — GQ register, not narrative blog voice. Not the Lounge storytelling frame. Direct, intelligent, confident. The reader is a man who takes himself seriously and wants category intelligence, not inspiration.
 
-    const srUser = `Write The Sole Report entry for Week ${srs.week}.
+Structure: strong intro paragraph → 3–4 sections with ## headers → one short Proprietor-voice close (deadpan, certain, no CTA). 800–1,200 words. No listicles. No bullet points. Make a clear argument and support it.
+
+Output JSON only — no markdown fences, no commentary.`
+
+    const srUser = `Write The Sole Report article for week ${srs.week}.
 
 Topic area: ${srs.topic_area}
-Working title: ${srs.title}
+Title: ${srs.title}
+Angle: ${srs.angle || 'GQ'}
 
-Format:
-- Title (use the working title or tighten it — do not deviate from the concept)
-- Deck: one sentence. The argument in plain language.
-- Body: 400–600 words. Proprietor assessment voice. 3–4 paragraphs. No subheads. No bullet points. Make the argument, name the gap, close with quiet certainty.
-- No CTA. No product links. No affiliate language. This is editorial intelligence, not a product recommendation.
+${weeklyPlan ? `## Weekly plan context\n${weeklyPlan.content.slice(0, 800)}\n\n` : ''}${socialReport ? `## Social signals\n${socialReport.content.slice(0, 500)}\n\n` : ''}Return ONLY this JSON:
+{
+  "title": "exact article title",
+  "slug": "kebab-case-slug",
+  "excerpt": "2–3 sentences. The argument, not a summary. Proprietor voice.",
+  "topic": "short topic label matching topic_area",
+  "tags": ["tag1", "tag2", "tag3"],
+  "body": "full markdown body — ## section headers, paragraphs only. No frontmatter. 800–1200 words."
+}`
 
-Output the article in markdown. Title as # heading. Deck as italic paragraph. Body as plain paragraphs.`
-
-    log('Calling Claude for Sole Report draft...')
-    let draft = ''
+    log('Calling Claude for Sole Report article...')
+    let rawText = ''
     try {
-      const stream = client.messages.stream({
+      const response = await client.messages.create({
         model:      'claude-sonnet-4-6',
-        max_tokens: 1500,
+        max_tokens: 3000,
         system:     srSystem,
         messages:   [{ role: 'user', content: srUser }],
       })
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          draft += event.delta.text
-        }
-      }
+      rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+      log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
     } catch (err) {
       log(`ERROR: Claude call failed — ${err.message}`)
       process.exit(1)
     }
 
-    if (!draft.trim()) { log('ERROR: empty draft from Claude'); process.exit(1) }
-    log(`Draft generated — ${draft.length} chars`)
-
-    // Save locally and upload to Drive
-    const draftFilename = `sole-report-${today}.md`
-    const localDraft    = path.join(TEMP_DIR, draftFilename)
-    fs.writeFileSync(localDraft, draft)
+    // ─── Parse JSON ──────────────────────────────────────────────────────
+    let article
     try {
-      execSync(`rclone copyto "${localDraft}" "${REMOTE}/Sole Report/drafts/${draftFilename}"`, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      })
-      log(`Draft uploaded → ${REMOTE}/Sole Report/drafts/${draftFilename}`)
+      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+      const start    = stripped.indexOf('{')
+      const end      = stripped.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('no JSON object found')
+      article = JSON.parse(stripped.slice(start, end + 1))
+      if (!article.title || !article.slug || !article.body) throw new Error('missing required fields')
+      log(`Article parsed: "${article.title}" → ${article.slug}`)
     } catch (err) {
-      log(`WARNING: Drive upload failed — ${err.message}`)
+      log(`ERROR: JSON parse failed — ${err.message}`)
+      log(`Raw (first 500): ${rawText.slice(0, 500)}`)
+      process.exit(1)
     }
 
-    // Update state
+    // ─── Build and write MDX ─────────────────────────────────────────────
+    const slug    = article.slug
+    const tagList = (article.tags || []).map(t => JSON.stringify(t)).join(', ')
+    const mdx     = `---
+title: ${JSON.stringify(article.title)}
+slug: ${slug}
+date: "${today}"
+excerpt: ${JSON.stringify(article.excerpt || '')}
+topic: ${JSON.stringify(article.topic || srs.topic_area)}
+tags: [${tagList}]
+---
+
+*Disclosure: As an Amazon Associate, Big Sole Vibes earns from qualifying purchases.*
+
+${article.body.trim()}
+`
+    const SOLE_REPORT_CONTENT = path.join(ROOT, 'content', 'sole-report')
+    fs.mkdirSync(SOLE_REPORT_CONTENT, { recursive: true })
+    const mdxPath = path.join(SOLE_REPORT_CONTENT, `${slug}.mdx`)
+    fs.writeFileSync(mdxPath, mdx)
+    log(`MDX written: content/sole-report/${slug}.mdx`)
+
+    // ─── Commit and push to preview/full-site ───────────────────────────
+    // Pipeline content always lands on preview/full-site — Big D promotes to main.
+    try {
+      execSync(`git add "${mdxPath}"`, { cwd: ROOT, stdio: 'pipe' })
+      const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }).trim()
+      if (status) {
+        const commitMsg = `feat: sole-report — ${article.title.replace(/"/g, "'")}`
+        execSync(`git commit -m "${commitMsg}"`, { cwd: ROOT, stdio: 'pipe' })
+        require('./git-push-guard').safePushToPreview(ROOT, log)
+      } else {
+        log('Git: no changes to commit (slug already exists)')
+      }
+    } catch (err) {
+      log(`ERROR: git push failed — ${err.stderr?.toString().trim() || err.message}`)
+    }
+
+    // ─── Update state ────────────────────────────────────────────────────
     try {
       const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
       const raw = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
-      raw._sole_report_state = { ...srs, status: 'DRAFT SAVED', updated: today }
+      raw._sole_report_state = { ...srs, slug, status: 'PUBLISHED', updated: today }
       fs.writeFileSync(statePath, JSON.stringify(raw, null, 2))
-      log(`State updated: status → DRAFT SAVED`)
+      log(`State updated: status → PUBLISHED`)
     } catch (err) {
       log(`WARNING: could not update state — ${err.message}`)
     }
 
-    log('━━━ --sole-report complete ━━━')
+    log(`━━━ --sole-report complete — "${article.title}" ━━━\n`)
     return
   }
 

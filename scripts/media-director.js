@@ -337,6 +337,87 @@ Respond in JSON only:
   }
 }
 
+// ─── Sole Report brief (Saturday only) ───────────────────────────────────────
+
+function getISOWeek(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
+  const jan4 = new Date(d.getFullYear(), 0, 4)
+  return 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + (jan4.getDay() + 6) % 7) / 7)
+}
+
+async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory }) {
+  const weekNum   = getISOWeek(new Date())
+  const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+
+  // Idempotent — skip if already briefed this week
+  try {
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+    if (state._sole_report_state?.week === weekNum && state._sole_report_state?.status === 'BRIEFED') {
+      log(`Sole Report: already briefed for week ${weekNum} — skipping`)
+      return
+    }
+  } catch {}
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) { log('WARNING: Sole Report brief skipped — ANTHROPIC_API_KEY not set'); return }
+
+  const client = new Anthropic({ apiKey })
+
+  const prompt = `You are Big Sole Vibes media director. Generate the Sole Report article brief for this week.
+
+The Sole Report is a weekly editorial article — GQ register, not lifestyle blog. One clear argument, delivered with Proprietor authority. 800–1,200 words. Direct, intelligent, no storytelling frame.
+
+BSV topic universe: men's skincare (face), fragrance, foot care, grooming tools, body care, recovery. Always tied to the head-to-toe standard serious men should hold.
+
+${bsvDirective ? `## BSV Directive\n${bsvDirective.slice(0, 1000)}\n\n` : ''}${bsvMemory ? `## Brand memory\n${bsvMemory.slice(0, 600)}\n\n` : ''}${socialReport ? `## Current social signals\n${socialReport.content.slice(0, 800)}\n\n` : ''}Pick the topic with the highest editorial potential this week — something trending in the social signals that BSV can say something authoritative about, or a gap in the head-to-toe argument that hasn't been named clearly.
+
+Return JSON only — no markdown fences:
+{
+  "topic_area": "Face|Fragrance|Foot|Body|Grooming|Recovery",
+  "title": "editorial article title — concept-first, argument leads. Not a product review title.",
+  "angle": "GQ or Gilt",
+  "slug": "kebab-case-slug"
+}`
+
+  let brief
+  try {
+    const msg = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      messages:   [{ role: 'user', content: prompt }],
+    })
+    const raw      = msg.content[0].text.trim()
+    const stripped = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const start    = stripped.indexOf('{')
+    const end      = stripped.lastIndexOf('}')
+    if (start === -1 || end === -1) throw new Error('no JSON in response')
+    brief = JSON.parse(stripped.slice(start, end + 1))
+    if (!brief.title || !brief.slug) throw new Error('missing title or slug')
+  } catch (err) {
+    log(`WARNING: Sole Report brief generation failed — ${err.message}`)
+    return
+  }
+
+  try {
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+    state._sole_report_state = {
+      topic_area: brief.topic_area,
+      title:      brief.title,
+      angle:      brief.angle || 'GQ',
+      slug:       brief.slug,
+      week:       weekNum,
+      status:     'BRIEFED',
+      updated:    new Date().toISOString().slice(0, 10),
+    }
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
+    log(`Sole Report brief written: week ${weekNum} — "${brief.title}" [${brief.topic_area}]`)
+  } catch (err) {
+    log(`WARNING: could not write Sole Report state — ${err.message}`)
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -487,6 +568,12 @@ Respond in JSON only:
   // Persist chapter state — media-director owns this write
   saveChapterState(chapterState)
   log(`Chapter state saved: Chapter ${chapterState.active} — ${chapterState.name}`)
+
+  // Saturday: generate Sole Report brief for Sunday night's blog-agent --sole-report run
+  if (targetDay === 'sat') {
+    log('Saturday run — generating Sole Report brief...')
+    await generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory })
+  }
 
   // Chain to gemini-bridge — reads briefs, uploads caption + prompt files to Drive
   log(`Spawning gemini-bridge --day ${targetDay}...`)
