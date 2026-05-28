@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
+import RedditFeed from '@/app/components/RedditFeed'
 
 export const metadata: Metadata = {
   title: 'The Sole Report — Big Sole Vibes',
@@ -81,6 +82,9 @@ export default function SoleReportPage() {
             ))}
           </div>
         </section>
+
+        {/* Community */}
+        <RedditFeed />
 
         {/* FTC */}
         <section className="py-10 bg-bsv-bg border-t border-white/5 mt-4">
