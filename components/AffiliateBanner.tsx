@@ -20,7 +20,7 @@ export default function AffiliateBanner() {
   if (!visible) return null
 
   return (
-    <div className="w-full bg-bsv-surface border-b border-white/10 px-4 py-2">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-bsv-surface border-t border-white/10 px-4 py-2">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         <p className="text-bsv-muted text-xs text-center flex-1">
           This site contains affiliate links. We may earn a commission at no extra cost to you.

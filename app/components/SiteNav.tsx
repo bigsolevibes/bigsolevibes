@@ -51,7 +51,7 @@ export default function SiteNav() {
             </div>
 
             <button
-              className="md:hidden text-bsv-cream p-2"
+              className="md:hidden text-bsv-cream p-3"
               onClick={() => setMenuOpen(!menuOpen)}
               aria-label="Toggle menu"
             >
