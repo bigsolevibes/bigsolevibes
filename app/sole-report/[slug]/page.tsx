@@ -5,18 +5,18 @@ import { MDXRemote } from 'next-mdx-remote/rsc'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import SocialShare from '@/components/SocialShare'
-import { getAllPosts, getPostBySlug } from '@/lib/mdx'
+import { getAllSoleReportPosts, getSoleReportPostBySlug } from '@/lib/sole-report'
 
 interface Props {
   params: { slug: string }
 }
 
 export async function generateStaticParams() {
-  return getAllPosts().map((post) => ({ slug: post.slug }))
+  return getAllSoleReportPosts().map((post) => ({ slug: post.slug }))
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const post = getPostBySlug(params.slug)
+  const post = getSoleReportPostBySlug(params.slug)
   if (!post) return {}
   return {
     title: post.title,
@@ -68,7 +68,7 @@ const mdxComponents = {
 }
 
 export default function SoleReportPostPage({ params }: Props) {
-  const post = getPostBySlug(params.slug)
+  const post = getSoleReportPostBySlug(params.slug)
   if (!post) notFound()
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://bigsolevibes.com'

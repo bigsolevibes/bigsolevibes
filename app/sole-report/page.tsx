@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import fs from 'fs'
 import path from 'path'
+import Link from 'next/link'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import RedditFeed from '@/app/components/RedditFeed'
+import { getAllSoleReportPosts } from '@/lib/sole-report'
 
 export const metadata: Metadata = {
   title: 'The Sole Report — Big Sole Vibes',
@@ -35,6 +37,7 @@ function linkText(url: string, override?: string): string {
 export default function SoleReportPage() {
   const indexPath = path.join(process.cwd(), 'public', 'sole-report', 'curated-index.json')
   const entries: Entry[] = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+  const articles = getAllSoleReportPosts()
 
   return (
     <>
@@ -52,6 +55,39 @@ export default function SoleReportPage() {
             </p>
           </div>
         </section>
+
+        {/* Long-form articles */}
+        {articles.length > 0 && (
+          <section className="bg-bsv-bg border-b border-white/5">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+              {articles.map((article, i) => (
+                <article
+                  key={article.slug}
+                  className="py-10 border-b border-white/5 last:border-b-0"
+                >
+                  <p className="font-heading text-xs tracking-widest text-bsv-amber mb-3 uppercase">
+                    {article.topic}
+                  </p>
+                  <h2 className="font-display text-2xl sm:text-3xl font-semibold text-bsv-cream leading-snug mb-3">
+                    {article.title}
+                  </h2>
+                  <p className="text-bsv-cream/55 italic text-sm leading-relaxed mb-5">
+                    {article.excerpt}
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href={`/sole-report/${article.slug}`}
+                      className="text-bsv-amber hover:opacity-70 font-heading text-xs tracking-widest transition-opacity uppercase"
+                    >
+                      Read → {article.readTime.toUpperCase()}
+                    </Link>
+                    <span className="text-bsv-muted text-xs">{article.date}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Entry list */}
         <section className="bg-bsv-bg">
