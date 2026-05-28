@@ -20,6 +20,10 @@ const HEADERS = [
   'Locker Image',  // public image URL for the locker card hero (legacy)
   'Image_URL',     // official brand image URL or NEEDS_RENDER (triggers BSV render pipeline)
   'Featured',      // 'true' on the 3 products surfaced on the homepage shelf preview
+  'Track',          // '1' = Premium Transposition | '2' = Cultural Crossover
+  'Crossover Signal', // evidence string (e.g. "The View 2026-05") or blank for Track 1
+  'Affiliate Network', // Amazon Associates | CJ | FlexOffers | Impact
+  'Affiliate Link',  // direct affiliate URL
 ]
 
 // 1-indexed column number → letter(s) (A, B, …, Z, AA, …)
@@ -128,9 +132,13 @@ async function appendPick({ sheets, spreadsheetId }, pick, { status = 'Pending' 
     'Brand Story':  pick.brand_story || '',
     'Price':        pick.price       || '',
     'Reasoning':    pick.reasoning   || '',
-    'Locker Image': pick.lockerImage || '',
-    'Image_URL':    pick.imageUrl    || '',
-    'Featured':     pick.featured    || '',
+    'Locker Image':      pick.lockerImage       || '',
+    'Image_URL':         pick.imageUrl          || '',
+    'Featured':          pick.featured          || '',
+    'Track':             pick.track             || '1',
+    'Crossover Signal':  pick.crossover_signal  || '',
+    'Affiliate Network': pick.affiliate_network || 'Amazon Associates',
+    'Affiliate Link':    pick.affiliate_link    || (pick.asin ? `https://www.amazon.com/dp/${pick.asin}?tag=${process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'}` : ''),
   }
 
   const row = headers.map(h => fieldMap[h] ?? '')

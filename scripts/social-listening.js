@@ -13,6 +13,14 @@ const REMOTE    = 'big sole vibes:Big Sole Vibes'
 
 const { VOICES } = require('../config/bsv-voices')
 
+// ─── BSV DUAL-TRACK MANDATE ───────────────────────────────────────────────────
+// The BSV man is the coal miner AND the CFO. The shelf serves both.
+// Track 1: Premium/luxury transposition — brands the BSV man hasn't been introduced to yet
+// Track 2: Cultural crossover — products already working, not yet claimed for the male audience
+// The filter is fit for the BSV man. Not brand recognition. Not retail tier.
+// A $29 gel sock on national TV earns its place. A $150 cream nobody's heard of earns its place.
+// Both belong. Both make money. Both tell the BSV story.
+
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
@@ -125,7 +133,19 @@ Rules:
 - If signal is thin on a topic, say so. Do not fabricate.
 
 ## BSV Voice Spectrum
-Tag story angles by voice: ${voiceNames}. Use brackets: [PROPRIETOR], [CALLOUT], etc.`
+Tag story angles by voice: ${voiceNames}. Use brackets: [PROPRIETOR], [CALLOUT], etc.
+
+## Track 2 — Cultural Crossover Monitoring
+BSV runs two tracks. Track 1 is premium transposition (luxury/niche brands introduced to men for the first time). Track 2 is cultural crossover: products already working in the mainstream or women's space that are crossing over to men organically, with no one having planted the flag yet.
+
+Watch for these crossover signals in every community you monitor:
+- National TV coverage: The View, GMA, Today, Rachael Ray — any grooming, foot care, or recovery product mentioned
+- Reddit language patterns: "my wife/girlfriend recommended", "borrowed from her", "she put it on my nightstand", "men can use this too", "my husband uses", "my boyfriend uses", "guys this is worth it", "actually works" + foot/grooming context
+- "as seen on" or "seen on TV" + personal care context
+- Products going viral in unexpected male spaces
+- Women explicitly vouching for products for men in public threads
+
+When you detect a crossover signal, tag it [CROSSOVER] inline. At the end of the report, set crossover_signal: true if any products were flagged, and list them in the Crossover Detections section.`
 
   const userPrompt = `Run the BSV audience intelligence sweep. Today is ${today}.
 
@@ -208,7 +228,38 @@ Three angles, one per persona. Each must be briefable tomorrow morning.
 ## Hashtag Performance Signal
 Which hashtags from the three persona lists are getting traction this week vs. going quiet? Use search to check recent post volume and engagement patterns. Flag any rising tags not on the list that BSV should be watching.
 
-Hashtags to assess: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle #recoverydays #athletelife #trainhard #crossfit #runnerscommunity #menswear #ootd #streetstyle #complexstyle #highsnobiety`
+Hashtags to assess: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle #recoverydays #athletelife #trainhard #crossfit #runnerscommunity #menswear #ootd #streetstyle #complexstyle #highsnobiety
+
+---
+
+## TRACK 2 — CULTURAL CROSSOVER MONITOR
+*Communities: r/everymanshouldknow, r/Frugal (men's grooming threads), r/BuyItForLife (foot care / grooming tools), r/malefashionadvice (crossover threads), r/malegrooming (expanded keyword scope)*
+*Also scan: recent daytime TV (The View, GMA, Today, Rachael Ray) for grooming / foot care / recovery product mentions*
+
+Search these communities and sources now. Look specifically for:
+
+### Crossover Language Scan
+Products or threads containing any of these signals:
+- "my wife/girlfriend recommended" | "borrowed from her" | "she put it on my nightstand"
+- "my husband uses" | "my boyfriend uses" — female-to-male recommendation confirmation
+- "men can use this too" | "guys this is worth it" | "actually works" + foot or grooming context
+- "seen on TV" | "as seen on" + personal care product
+- Any daytime TV show name + grooming or foot care or recovery product
+
+### Crossover Products Detected [CROSSOVER]
+For each product that generated a crossover signal this week, report:
+- **Product name and brand**
+- **Signal type:** TV appearance / Reddit thread / viral moment / female recommendation
+- **Evidence:** Exact quote or show + date
+- **Platform/source**
+- **Why the BSV man would reach for this** (one sentence — Proprietor voice)
+- **Estimated price and Amazon availability** (check and report)
+
+If no crossover products were detected this week, say so explicitly.
+
+### Track 2 Output Summary
+crossover_signal: [true / false]
+Products flagged for Track 2 shelf consideration: [list names, or "none this week"]`
 
   log('Calling Claude API with web search...')
   const client = new Anthropic({ apiKey })
