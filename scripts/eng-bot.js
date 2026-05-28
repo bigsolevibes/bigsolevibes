@@ -15,6 +15,7 @@ const LOGS_DIR              = path.join(ROOT, 'logs')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
 const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json')
 const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
+const MAX_ATTEMPTS          = 3
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
