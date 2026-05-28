@@ -13,13 +13,21 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        const validEmail =
-          credentials.email === process.env.DASHBOARD_EMAIL
+        const email = process.env.DASHBOARD_EMAIL
+        const hash = process.env.DASHBOARD_PASSWORD_HASH
 
-        const hash = process.env.DASHBOARD_PASSWORD_HASH ?? ''
-        const validPassword = hash
-          ? await bcrypt.compare(credentials.password, hash)
-          : false
+        if (!email || !hash) {
+          console.error(
+            '[dashboard auth] MISSING ENV — ' +
+            (!email ? 'DASHBOARD_EMAIL ' : '') +
+            (!hash ? 'DASHBOARD_PASSWORD_HASH' : '') +
+            ' not set or expanded to empty (check for unquoted $ in .env.local — use single quotes)'
+          )
+          return null
+        }
+
+        const validEmail = credentials.email === email
+        const validPassword = await bcrypt.compare(credentials.password, hash)
 
         if (validEmail && validPassword) {
           return { id: '1', email: credentials.email, name: 'Big D' }
