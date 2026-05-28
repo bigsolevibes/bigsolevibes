@@ -15,15 +15,15 @@
   <key>WorkingDirectory</key>
   <string>/Users/davidgeer/claude/bigsolevibes-web</string>
 
-  <!-- Runs Tuesday 6:00 AM — draft ready before Tuesday standup -->
+  <!-- Runs Sunday 11:30 PM — after media-director writes the Saturday brief; article live Monday -->
   <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key>
-    <integer>2</integer>
-    <key>Hour</key>
-    <integer>6</integer>
-    <key>Minute</key>
     <integer>0</integer>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>30</integer>
   </dict>
 
   <key>StandardOutPath</key>

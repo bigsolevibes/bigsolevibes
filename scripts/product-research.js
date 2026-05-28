@@ -54,6 +54,24 @@ function getPreviousResearch() {
   } catch { return null }
 }
 
+function loadSocialReport() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, path.basename(latest))
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
 function loadProductBrief() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Product Development"`, {
@@ -460,11 +478,13 @@ End with one quiet line that makes the reader want it without asking them to buy
     fullText = previous.content
     log(`--skip-research: using ${previous.filename} as research input`)
   } else {
-    // ─── Read weekly plan and brand report ───────────────────────────────────
+    // ─── Read weekly plan, brand report, and social intelligence ─────────────
     const weeklyPlan  = getLatestDriveFile('Plans')
     const brandReport = getLatestDriveFile('Brand')
-    log(`Weekly plan:  ${weeklyPlan  ? weeklyPlan.filename  : 'none'}`)
-    log(`Brand report: ${brandReport ? brandReport.filename : 'none'}`)
+    const socialReport = loadSocialReport()
+    log(`Weekly plan:    ${weeklyPlan   ? weeklyPlan.filename   : 'none'}`)
+    log(`Brand report:   ${brandReport  ? brandReport.filename  : 'none'}`)
+    log(`Social report:  ${socialReport ? socialReport.filename : 'none'}`)
 
     const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Product Curator. Everything you recommend must earn its place according to the Proprietor's Directive above.
 
@@ -548,7 +568,8 @@ Specifically:
 - Do recommend products that complement the ritual — tools, soaks, recovery items that sit alongside the balm, not against it
 
 Product-research and product-development are teammates — one curates the shelf today, the other builds what owns the shelf tomorrow. They do not work against each other.
-${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}`
+${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}
+${socialReport ? `\n## Social intelligence — market signals this week (${socialReport.filename})\nThe following brands and topics are gaining traction in the BSV market segment. Prioritize finding shelf-worthy products from these brands or in these categories, in addition to the standard sourcing list. The four-gate filter still applies — social signals expand the hunting ground, they do not bypass the filter.\n\n${socialReport.content.slice(0, 1200)}` : ''}`
 
     const userPrompt = `You are the BSV Product Curator. Your job is to find products that belong on the BSV shelf — not products that are easy to find, but products that a man who takes himself seriously would find if he actually went looking.
 
@@ -572,6 +593,13 @@ Run these searches in order:
 8. site:mrporter.com grooming foot OR body OR soak OR recovery OR balm
 9. site:gq.com men grooming foot OR body care recommendation
 10. site:esquire.com men grooming foot OR body care recommendation
+
+Additionally, search for products from these four brands — they are gaining traction in the BSV market segment and must be evaluated this cycle:
+
+11. Malin+Goetz men grooming body OR foot OR soak
+12. Grown Alchemist men body OR foot OR recovery
+13. Le Labo men grooming body OR fragrance
+14. Molton Brown men body OR foot OR grooming
 
 From these searches, build a list of specific product names and brands. Note which source surfaced each product. Do not score yet. Do not go to Amazon yet.
 
@@ -616,6 +644,8 @@ Only products that pass both Amazon checks AND score 70+ make The Shelf.
 Products anchored at the foot and working up. The man who buys Proprietor's Foot Balm also owns these. Every pick must pass the checkout test: would the BSV man reach for it without needing to explain it to anyone?
 
 Categories: premium foot soaks, lower-leg and calf recovery tools, compression and circulation products, understated body treatments with serious ingredient decks, precision grooming tools from professional channels.
+
+If the social intelligence report (in the system prompt) identifies specific brands or categories gaining traction this week, prioritize searches in those areas and confirm whether those brands have products that pass the gates. Social signals expand the hunting ground — they do not override the filter.
 
 Hard exclusions: medicated, antifungal, problem-positioned, anything on the first page of a Google search for "best foot cream," loud or juvenile packaging, anything clinical-looking, anything you'd find in a drugstore, anything sponsored on Amazon.
 

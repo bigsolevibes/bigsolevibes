@@ -372,5 +372,48 @@ Do not invent or fabricate information not present in the context.`
     process.exit(1)
   }
 
+  // Write BSV-Session-Context.md — fixed filename, nightly overwrite
+  log('Building BSV-Session-Context.md...')
+  try {
+    const latestStandup = (() => {
+      try {
+        const standupFiles = fs.readdirSync(path.join(ROOT, 'logs'))
+          .filter(f => /^standup-\d{4}-\d{2}-\d{2}\.txt$/.test(f))
+          .sort()
+        if (!standupFiles.length) return null
+        return fs.readFileSync(path.join(ROOT, 'logs', standupFiles[standupFiles.length - 1]), 'utf8')
+      } catch { return null }
+    })()
+
+    const sessionContext = [
+      '# BSV Session Context',
+      `**Generated:** ${now}`,
+      '**Next update:** Tonight 4AM',
+      '',
+      '---',
+      '## Brand Directive',
+      directive || '_(BSV-Directive.md not found on Drive)_',
+      '',
+      '---',
+      '## Strategic Memory',
+      memory || '_(BSV-Memory.md not found)_',
+      '',
+      '---',
+      '## Morning Standup',
+      latestStandup || '_(no standup found in logs/)_',
+      '',
+      '---',
+      '## Pipeline State',
+      fullText,
+    ].join('\n')
+
+    const sessionContextPath = path.join(TEMP_DIR, 'BSV-Session-Context.md')
+    fs.writeFileSync(sessionContextPath, sessionContext)
+    execSync(`rclone copyto "${sessionContextPath}" "${REMOTE_HANDOFF}/BSV-Session-Context.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    log(`Uploaded → ${REMOTE_HANDOFF}/BSV-Session-Context.md`)
+  } catch (err) {
+    log(`WARNING: BSV-Session-Context.md upload failed — ${err.message}`)
+  }
+
   log('━━━ update-handoff complete ━━━\n')
 })()
