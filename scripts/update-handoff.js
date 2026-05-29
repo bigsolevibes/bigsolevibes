@@ -9,6 +9,7 @@ const ROOT        = path.join(__dirname, '..')
 const LOG_FILE    = path.join(ROOT, 'logs', 'update-handoff.log')
 const TEMP_DIR    = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'
+const REMOTE      = 'big sole vibes:Big Sole Vibes'
 
 const today = new Date()
 const dateStamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
@@ -20,6 +21,21 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 // ─── Project state collectors ─────────────────────────────────────────────────
@@ -173,6 +189,13 @@ function getExistingHandoff() {
 
   log('━━━ update-handoff start ━━━')
 
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = await loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     log('ERROR: ANTHROPIC_API_KEY not set in .env')
@@ -263,7 +286,7 @@ ${handoffFindings ? `## Pipeline Alerts (from logs/handoff-findings.md)\n${hando
 - **Drive folder:** Big Sole Vibes/Product Development/ — manufacturer research, formulation notes, packaging concepts
 `.trim()
 
-  const systemPrompt = `You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
 BSV is a premium men's foot care brand. The system automates social content creation, branding, and distribution.
 
 Your job is to produce a complete, current, developer-ready handoff document in Markdown.
@@ -347,6 +370,49 @@ Do not invent or fabricate information not present in the context.`
   } catch (err) {
     log(`ERROR: rclone upload failed: ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)
+  }
+
+  // Write BSV-Session-Context.md — fixed filename, nightly overwrite
+  log('Building BSV-Session-Context.md...')
+  try {
+    const latestStandup = (() => {
+      try {
+        const standupFiles = fs.readdirSync(path.join(ROOT, 'logs'))
+          .filter(f => /^standup-\d{4}-\d{2}-\d{2}\.txt$/.test(f))
+          .sort()
+        if (!standupFiles.length) return null
+        return fs.readFileSync(path.join(ROOT, 'logs', standupFiles[standupFiles.length - 1]), 'utf8')
+      } catch { return null }
+    })()
+
+    const sessionContext = [
+      '# BSV Session Context',
+      `**Generated:** ${now}`,
+      '**Next update:** Tonight 4AM',
+      '',
+      '---',
+      '## Brand Directive',
+      directive || '_(BSV-Directive.md not found on Drive)_',
+      '',
+      '---',
+      '## Strategic Memory',
+      memory || '_(BSV-Memory.md not found)_',
+      '',
+      '---',
+      '## Morning Standup',
+      latestStandup || '_(no standup found in logs/)_',
+      '',
+      '---',
+      '## Pipeline State',
+      fullText,
+    ].join('\n')
+
+    const sessionContextPath = path.join(TEMP_DIR, 'BSV-Session-Context.md')
+    fs.writeFileSync(sessionContextPath, sessionContext)
+    execSync(`rclone copyto "${sessionContextPath}" "${REMOTE_HANDOFF}/BSV-Session-Context.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    log(`Uploaded → ${REMOTE_HANDOFF}/BSV-Session-Context.md`)
+  } catch (err) {
+    log(`WARNING: BSV-Session-Context.md upload failed — ${err.message}`)
   }
 
   log('━━━ update-handoff complete ━━━\n')

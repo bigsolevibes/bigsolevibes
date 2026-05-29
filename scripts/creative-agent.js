@@ -32,12 +32,9 @@ function loadDirective() {
   } catch { return null }
 }
 
-function loadMemory() {
-  try {
-    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 function loadLatestSocialReport() {
@@ -54,6 +51,69 @@ function loadLatestSocialReport() {
     const p = path.join(TEMP_DIR, latest)
     return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
   } catch { return null }
+}
+
+// ─── Persona context block builder ───────────────────────────────────────────
+
+function buildPersonaBlock(ctx) {
+  if (!ctx) return ''
+  const label = ctx.persona.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const lines = [
+    `## Audience Persona: ${label}`,
+    `**Content Lane:** ${ctx.lane}`,
+    '',
+  ]
+  if (ctx.directive) {
+    lines.push('### Today\'s Directive (chosen by Big D this morning)')
+    lines.push(ctx.directive.replace(/^#[^\n]*\n/, '').trim())
+    lines.push('')
+  }
+  if (ctx.storyAngle && (ctx.storyAngle.hook || ctx.storyAngle.draftOpeningLine)) {
+    lines.push('### Story Angle — from today\'s social intelligence report')
+    lines.push('This is the specific angle media-director is briefing for this slot. Execute it.')
+    if (ctx.storyAngle.hook)             lines.push(`- **Hook:** ${ctx.storyAngle.hook}`)
+    if (ctx.storyAngle.whyThisWeek)      lines.push(`- **Why this week:** ${ctx.storyAngle.whyThisWeek}`)
+    if (ctx.storyAngle.voiceTag)         lines.push(`- **Voice tag:** ${ctx.storyAngle.voiceTag}`)
+    if (ctx.storyAngle.draftOpeningLine) lines.push(`- **Draft opening line:** "${ctx.storyAngle.draftOpeningLine}"`)
+    lines.push('')
+  }
+  if (ctx.verbatimPhrases?.length) {
+    lines.push('### Verbatim Language — write with their words, not BSV\'s words imposed on them')
+    lines.push('These phrases come directly from the community this week. Use them:')
+    ctx.verbatimPhrases.slice(0, 8).forEach(p => lines.push(`- "${p}"`))
+    lines.push('')
+  }
+  if (ctx.hashtags?.length) {
+    lines.push(`### Persona Hashtags: ${ctx.hashtags.join(' ')} #BigSoleVibes`)
+  }
+  if (ctx.loungeOverride) {
+    const lo = ctx.loungeOverride
+    lines.push('')
+    lines.push('### Lounge Campfire Retelling')
+    lines.push(`This brief is a *campfire retelling* from The Lounge, Chapter ${lo.chapter} (${lo.ref}).`)
+    lines.push(`Social format: **${lo.format}** — apply exactly as defined in BSV-Memory.md.`)
+    lines.push(`Angle: ${lo.angle}`)
+    lines.push('The post retells this specific moment in the assigned format. Short, specific, striking. This is not about foot care — it is about the man who looked at his cabinet and decided to do something about it. The product is the resolution, not the subject.')
+  }
+  return lines.join('\n')
+}
+
+// ─── Chapter mandate block ────────────────────────────────────────────────────
+
+function buildChapterBlock(cs, isWedPm) {
+  if (!cs) return ''
+  const lines = [
+    `## Chapter Mandate — Active Arc: Chapter ${cs.active} — ${cs.name}`,
+    '',
+    `CHAPTER CONTEXT: Chapter ${cs.active} — ${cs.name}. ${cs.productTease}`,
+    `BRIEF MANDATE: Every post this cycle is a breadcrumb, not a standalone. The scene teases the chapter. The chapter lives at ${cs.loungeUrl}. The product is already on the shelf when he gets there. Do not name the product in the post. Do not link the product in the post. The bio link does the work.`,
+  ]
+  if (isWedPm) {
+    lines.push(`WEDNESDAY PM: Campfire retelling — ${cs.campfireFormat}. Distill the active chapter beat into the ${cs.campfireFormat} format as defined in BSV-Memory.md. This is not a product post — it is a story post that ends at the shelf.`)
+  }
+  lines.push('')
+  lines.push(`QUALITY GATE: Every caption must be a scene that could only exist inside Chapter ${cs.active}'s world. If the caption could run without this chapter existing, it has failed — reject it and rewrite.`)
+  return lines.join('\n')
 }
 
 // ─── Voice block builder ──────────────────────────────────────────────────────
@@ -93,14 +153,19 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   fs.mkdirSync(BRIEFS_DIR, { recursive: true })
 
   // Parse args
-  const slotArg     = process.argv.indexOf('--slot')
-  const themeArg    = process.argv.indexOf('--theme')
-  const voiceArg    = process.argv.indexOf('--voice')
-  const voiceDefArg = process.argv.indexOf('--voice-def')
+  const slotArg        = process.argv.indexOf('--slot')
+  const themeArg       = process.argv.indexOf('--theme')
+  const voiceArg       = process.argv.indexOf('--voice')
+  const voiceDefArg    = process.argv.indexOf('--voice-def')
+  const personaCtxArg  = process.argv.indexOf('--persona-context')
 
   const slot      = slotArg  !== -1 ? process.argv[slotArg  + 1] : null
   const theme     = themeArg !== -1 ? process.argv[themeArg + 1] : null
   const voiceName = voiceArg !== -1 ? process.argv[voiceArg + 1] : null
+
+  const personaContext = personaCtxArg !== -1
+    ? (() => { try { return JSON.parse(process.argv[personaCtxArg + 1]) } catch { return null } })()
+    : null
 
   if (!slot || !theme) {
     log('ERROR: --slot and --theme are required')
@@ -124,7 +189,8 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     log(`WARNING: no valid --voice supplied, defaulting to ${defaultName}`)
   }
 
-  log(`━━━ creative-agent: ${slot} / ${theme} / ${voiceDef.name} ━━━`)
+  const personaLabel = personaContext?.persona ?? 'unassigned'
+  log(`━━━ creative-agent: ${slot} / ${theme} / ${voiceDef.name} / persona=${personaLabel} ━━━`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -134,7 +200,7 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
   log('Loading memory...')
-  const memory = loadMemory()
+  const memory = await loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   log('Loading social intelligence report...')
@@ -182,10 +248,23 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
     ? 'Morning. The man before the world starts.'
     : 'Evening. The man who made it through.'
 
-  const voiceBlock = buildVoiceBlock(voiceDef)
+  const socialFormat  = personaContext?.socialFormat ?? 'Tall Tale'
+  log(`Social format: ${socialFormat}`)
 
-  // Caption style guidance derived from voice
-  const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Max 4 hashtags including #BigSoleVibes.`
+  const isWedPm      = slot === 'wed-pm'
+  const chapterBlock = buildChapterBlock(personaContext?.chapterState ?? null, isWedPm)
+  if (personaContext?.chapterState) {
+    log(`Chapter mandate: Chapter ${personaContext.chapterState.active} — ${personaContext.chapterState.name}`)
+  }
+
+  const voiceBlock   = buildVoiceBlock(voiceDef)
+  const personaBlock = buildPersonaBlock(personaContext)
+
+  // Caption hashtag guidance — use persona-matched tags when available
+  const personaHashtags = personaContext?.hashtags?.length
+    ? personaContext.hashtags.slice(0, 3).join(' ') + ' #BigSoleVibes'
+    : '#BigSoleVibes'
+  const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
   const systemPrompt = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
@@ -195,7 +274,7 @@ ${voiceBlock}
 
 ---
 
-${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
+${chapterBlock ? `${chapterBlock}\n\n---\n\n` : ''}${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
 ## Standing Rules (apply to every brief regardless of voice)
 
@@ -206,6 +285,13 @@ ${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` :
 - Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
 
 ${SCENE_BLOCK}
+
+## Assigned Social Format: ${socialFormat}
+This format is assigned by media-director based on the audience persona for this slot. The three formats are defined in BSV-Memory.md above — follow the one assigned here exactly.
+- **Tall Tale** — narrative arc, specific scene, a man in a moment. The detail does the work. Reads like a short story in two sentences.
+- **Simple Modern Man** — minimal language, declarative, no ornamentation. Every word earns its place. Reads like a product label written by someone who reads Hemingway.
+- **The Scene** — visual and kinetic. Set the stage, describe the moment, name the feeling. Reads like the opening of a film.
+Apply ${socialFormat} to the INSTAGRAM and BLUESKY captions. The format governs rhythm and structure, not content — voice guardrails still apply.
 
 ## Brief Format
 
@@ -238,6 +324,11 @@ This narrative is live on the BSV shelf. Pull the scene from it. Adapt to platfo
 `
     : ''
 
+  // Social report fallback — only used when no persona context was passed
+  const socialFallback = !personaContext && socialReport
+    ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}`
+    : ''
+
   const userPrompt = `Write the BSV content brief.
 
 SLOT: ${slot}
@@ -246,7 +337,7 @@ VOICE: ${voiceDef.name}
 POST TIME: ${postTime}
 DAY ENERGY: ${dayEnergy}
 
-${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialReport ? `## Intelligence (${socialReport.filename})\nUse if it sharpens the angle. Do not force it.\n\n${socialReport.content.slice(0, 1500)}${socialReport.content.length > 1500 ? '\n[truncated]' : ''}` : ''}
+${personaBlock ? `${personaBlock}\n\n` : ''}${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialFallback}
 
 Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above are not suggestions. The image brief should make a creative director say yes. The captions should make a man stop scrolling and send it to someone who gets it.`
 
@@ -277,6 +368,20 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   const briefPath = path.join(BRIEFS_DIR, `${slot}-brief.txt`)
   fs.writeFileSync(briefPath, brief)
   log(`Saved → ${briefPath}`)
+
+  // Save to Drive for editorial record
+  const dateStamp   = new Date().toISOString().slice(0, 10)
+  const draftName   = `social-draft-${dateStamp}-${slot}.md`
+  const draftLocal  = path.join(TEMP_DIR, draftName)
+  fs.writeFileSync(draftLocal, brief)
+  try {
+    execSync(`rclone copyto "${draftLocal}" "${REMOTE}/Lounge/Social Drafts/${draftName}"`, {
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000,
+    })
+    log(`Drive: saved social draft → Lounge/Social Drafts/${draftName}`)
+  } catch (err) {
+    log(`WARNING: Drive save failed — ${err.message}`)
+  }
 
   log(`━━━ creative-agent complete: ${slot} / ${voiceDef.name} ━━━\n`)
 })()

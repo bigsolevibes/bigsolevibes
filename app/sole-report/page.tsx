@@ -1,83 +1,136 @@
 import type { Metadata } from 'next'
+import fs from 'fs'
+import path from 'path'
 import Link from 'next/link'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
-import { getAllPosts } from '@/lib/mdx'
+import RedditFeed from '@/app/components/RedditFeed'
+import { getAllSoleReportPosts } from '@/lib/sole-report'
 
 export const metadata: Metadata = {
-  title: 'The Sole Report',
-  description: 'The Proprietor\'s take on foot care, grooming, and the standard. No filler.',
+  title: 'The Sole Report — Big Sole Vibes',
+  description: 'R&D for the man who takes himself seriously. Face, body, foot — the category intelligence behind the shelf.',
+}
+
+interface Entry {
+  title:      string
+  topic:      string
+  verdict:    string
+  url:        string
+  published:  string
+  link_text?: string
+}
+
+function linkText(url: string, override?: string): string {
+  if (override) return override
+  try {
+    const host = new URL(url).hostname.replace('www.', '')
+    if (host.includes('reddit.com')) return 'Read on Reddit →'
+    if (host.includes('bigsolevibes.com') || url.startsWith('/')) return 'Read →'
+    const name = host.split('.')[0]
+    return `Read on ${name.charAt(0).toUpperCase() + name.slice(1)} →`
+  } catch {
+    return 'Read →'
+  }
 }
 
 export default function SoleReportPage() {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const posts = getAllPosts().filter((p) => new Date(p.date) <= today)
+  const indexPath = path.join(process.cwd(), 'public', 'sole-report', 'curated-index.json')
+  const entries: Entry[] = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+  const articles = getAllSoleReportPosts()
 
   return (
     <>
       <SiteNav />
-      <main className="pt-16">
+      <main className="pt-16 min-h-screen bg-bsv-bg">
+
         {/* Header */}
         <section className="py-20 bg-bsv-card border-b border-white/5">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">THE SOLE REPORT</p>
-            <h1 className="font-heading text-6xl sm:text-7xl text-bsv-white tracking-wide mb-4">
-              THE <span className="text-bsv-orange">SOLE REPORT</span>
-            </h1>
-            <p className="text-bsv-muted text-lg max-w-xl mx-auto italic">
-              Field notes from The Lounge. Everything here earned its column inch.
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="font-heading text-xs tracking-widest text-bsv-amber mb-5 uppercase">
+              The Sole Report
+            </p>
+            <p className="text-bsv-muted text-base italic leading-relaxed max-w-xl">
+              R&D for the man who takes himself seriously. Face, body, foot — the category intelligence behind the shelf.
             </p>
           </div>
         </section>
 
-        {/* Posts */}
-        <section className="py-24 bg-bsv-bg">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-8">
-              {posts.map((post) => (
+        {/* Long-form articles */}
+        {articles.length > 0 && (
+          <section className="bg-bsv-bg border-b border-white/5">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+              {articles.map((article, i) => (
                 <article
-                  key={post.slug}
-                  className="bg-bsv-card border border-white/5 hover:border-bsv-orange/30 transition-colors p-8"
+                  key={article.slug}
+                  className="py-10 border-b border-white/5 last:border-b-0"
                 >
-                  {post.tags && post.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {post.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-bsv-orange text-xs font-heading tracking-widest border border-bsv-orange/30 px-2 py-0.5"
-                        >
-                          {tag.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-bsv-muted text-xs">{post.date}</span>
-                    <span className="text-white/20">·</span>
-                    <span className="text-bsv-muted text-xs">{post.readTime}</span>
-                  </div>
-
-                  <h2 className="font-heading text-3xl text-bsv-white tracking-wide mb-3">
-                    {post.title}
+                  <p className="font-heading text-xs tracking-widest text-bsv-amber mb-3 uppercase">
+                    {article.topic}
+                  </p>
+                  <h2 className="font-display text-2xl sm:text-3xl font-semibold text-bsv-cream leading-snug mb-3">
+                    {article.title}
                   </h2>
-                  <p className="text-bsv-muted leading-relaxed mb-6">{post.excerpt}</p>
-
-                  <Link
-                    href={`/sole-report/${post.slug}`}
-                    className="text-bsv-orange hover:text-orange-400 font-heading tracking-widest text-sm transition-colors inline-flex items-center gap-2"
-                  >
-                    READ MORE
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-                    </svg>
-                  </Link>
+                  <p className="text-bsv-cream/55 italic text-sm leading-relaxed mb-5">
+                    {article.excerpt}
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href={`/sole-report/${article.slug}`}
+                      className="text-bsv-amber hover:opacity-70 font-heading text-xs tracking-widest transition-opacity uppercase"
+                    >
+                      Read → {article.readTime.toUpperCase()}
+                    </Link>
+                    <span className="text-bsv-muted text-xs">{article.date}</span>
+                  </div>
                 </article>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* Entry list */}
+        <section className="bg-bsv-bg">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            {entries.map((entry, i) => (
+              <article
+                key={i}
+                className="py-10 border-b border-white/5 last:border-b-0"
+              >
+                <p className="font-heading text-xs tracking-widest text-bsv-amber mb-3 uppercase">
+                  {entry.topic}
+                </p>
+                <h2 className="font-display text-2xl sm:text-3xl font-semibold text-bsv-cream leading-snug mb-3">
+                  {entry.title}
+                </h2>
+                <p className="text-bsv-cream/55 italic text-sm leading-relaxed mb-5">
+                  {entry.verdict}
+                </p>
+                <a
+                  href={entry.url}
+                  target={entry.url.startsWith('/') ? undefined : '_blank'}
+                  rel={entry.url.startsWith('/') ? undefined : 'noopener noreferrer'}
+                  className="text-bsv-amber hover:opacity-70 font-heading text-xs tracking-widest transition-opacity uppercase"
+                >
+                  {linkText(entry.url, entry.link_text)}
+                </a>
+              </article>
+            ))}
           </div>
         </section>
+
+        {/* Community */}
+        <RedditFeed />
+
+        {/* FTC */}
+        <section className="py-10 bg-bsv-bg border-t border-white/5 mt-4">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="text-bsv-muted/60 text-xs italic">
+              As an Amazon Associate, Big Sole Vibes earns from qualifying purchases.
+            </p>
+          </div>
+        </section>
+
       </main>
       <Footer />
     </>

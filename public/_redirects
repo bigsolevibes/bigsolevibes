@@ -1,0 +1,2 @@
+/sole-report /the-lounge 301
+/sole-report/* /the-lounge/:splat 301

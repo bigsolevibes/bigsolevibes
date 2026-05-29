@@ -69,8 +69,8 @@ export default function RootLayout({
     <html lang="en" className={`${playfair.variable} ${bebasNeue.variable} ${dmSans.variable}`}>
       <body className="bg-bsv-bg text-bsv-white font-body antialiased">
         {gaId && <GoogleAnalytics gaId={gaId} />}
-        <AffiliateBanner />
         {children}
+        <AffiliateBanner />
       </body>
     </html>
   )

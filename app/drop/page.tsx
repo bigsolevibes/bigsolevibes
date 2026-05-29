@@ -93,8 +93,8 @@ export default function DropPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               {
-                label: 'The Audit',
-                body:  "We put in the reps so you don't have to. Every product tested, graded, and ranked. No hype, no filler — just what actually holds up.",
+                label: 'The Shelf',
+                body:  "Nothing goes on this shelf that hasn't earned its place. The standard is the credential. The story lives in The Lounge.",
               },
               {
                 label: 'The Standard',

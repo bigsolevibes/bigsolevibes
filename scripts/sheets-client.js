@@ -19,6 +19,11 @@ const HEADERS = [
   'Reasoning',     // Proprietor's Audit — why it qualified, for Big D's review context
   'Locker Image',  // public image URL for the locker card hero (legacy)
   'Image_URL',     // official brand image URL or NEEDS_RENDER (triggers BSV render pipeline)
+  'Featured',      // 'true' on the 3 products surfaced on the homepage shelf preview
+  'Track',          // '1' = Premium Transposition | '2' = Cultural Crossover
+  'Crossover Signal', // evidence string (e.g. "The View 2026-05") or blank for Track 1
+  'Affiliate Network', // Amazon Associates | CJ | FlexOffers | Impact
+  'Affiliate Link',  // direct affiliate URL
 ]
 
 // 1-indexed column number → letter(s) (A, B, …, Z, AA, …)
@@ -108,7 +113,8 @@ async function readAllRows({ sheets, spreadsheetId }) {
 
 // Appends a single pick row. Reads the live header row to determine column
 // positions — safe regardless of whether columns have been reordered or added.
-async function appendPick({ sheets, spreadsheetId }, pick) {
+// Pass { status: 'Approved' } as the third argument to override the default 'Pending'.
+async function appendPick({ sheets, spreadsheetId }, pick, { status = 'Pending' } = {}) {
   const headerRes = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: 'Sheet1!A1:Z1',
@@ -122,12 +128,17 @@ async function appendPick({ sheets, spreadsheetId }, pick) {
     'Description':  pick.description || '',
     'Narrative':    pick.narrative   || '',
     'Score':        pick.score       || '',
-    'Status':       'Pending',
+    'Status':       status,
     'Brand Story':  pick.brand_story || '',
     'Price':        pick.price       || '',
     'Reasoning':    pick.reasoning   || '',
-    'Locker Image': pick.lockerImage || '',
-    'Image_URL':    pick.imageUrl    || '',
+    'Locker Image':      pick.lockerImage       || '',
+    'Image_URL':         pick.imageUrl          || '',
+    'Featured':          pick.featured          || '',
+    'Track':             pick.track             || '1',
+    'Crossover Signal':  pick.crossover_signal  || '',
+    'Affiliate Network': pick.affiliate_network || 'Amazon Associates',
+    'Affiliate Link':    pick.affiliate_link    || (pick.asin ? `https://www.amazon.com/dp/${pick.asin}?tag=${process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'}` : ''),
   }
 
   const row = headers.map(h => fieldMap[h] ?? '')
@@ -140,4 +151,44 @@ async function appendPick({ sheets, spreadsheetId }, pick) {
   })
 }
 
-module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick }
+// Sets Status = 'Archived' for every row currently marked 'Approved'.
+// Returns the count of rows archived.
+async function archiveApproved({ sheets, spreadsheetId }) {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Sheet1!A:Z',
+  })
+  const rows = res.data.values || []
+  if (rows.length < 2) return 0
+
+  const headers    = rows[0]
+  const statusCol  = headers.indexOf('Status')
+  if (statusCol === -1) return 0
+
+  const statusColLetter = colLetter(statusCol + 1)
+  const updates = []
+
+  for (let i = 1; i < rows.length; i++) {
+    const status = (rows[i][statusCol] || '').trim()
+    if (status.toLowerCase() === 'approved') {
+      updates.push({
+        range: `Sheet1!${statusColLetter}${i + 1}`,
+        values: [['Archived']],
+      })
+    }
+  }
+
+  if (!updates.length) return 0
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: 'RAW',
+      data: updates,
+    },
+  })
+
+  return updates.length
+}
+
+module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick, archiveApproved }

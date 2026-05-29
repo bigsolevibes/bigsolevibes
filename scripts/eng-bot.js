@@ -15,10 +15,26 @@ const LOGS_DIR              = path.join(ROOT, 'logs')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
 const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json')
 const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
+const MAX_ATTEMPTS          = 3
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
 const ORG_CHART_TEMP        = path.join(os.tmpdir(), 'bsv-eng-bot')
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
+  try {
+    execSync(`rclone copy "${GDRIVE_DRIVE_ROOT}/BSV-Directive.md" "${ORG_CHART_TEMP}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(ORG_CHART_TEMP, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
+}
+
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
+}
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -775,7 +791,7 @@ function dedupForDiagnosis(failures, max = 10) {
   return result
 }
 
-async function diagnose(client, failures) {
+async function diagnose(client, failures, directive, memory) {
   const dedupedFailures = dedupForDiagnosis(failures, 10)
   if (dedupedFailures.length < failures.length) {
     log(`Diagnosis: collapsed ${failures.length} failures → ${dedupedFailures.length} unique for API call`)
@@ -805,12 +821,14 @@ ${failureText}`
 
   log(`Sending diagnosis request — ${dedupedFailures.length} failure(s), ${userContent.length} chars`)
 
+  const engBotSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
+
+Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`
+
   const response = await client.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 2500,
-    system: `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
-
-Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`,
+    system:     engBotSystem,
     messages: [{ role: 'user', content: userContent }],
   })
 
@@ -852,6 +870,14 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
   const baseline = process.argv.includes('--baseline')
 
   log(`━━━ eng-bot start${baseline ? ' [baseline]' : ''} ━━━`)
+
+  fs.mkdirSync(ORG_CHART_TEMP, { recursive: true })
+  log('Loading directive...')
+  const directive = loadDirective()
+  log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const memory = await loadMemory()
+  log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
   const alertState = loadAlertState()
   pruneAlertState(alertState)
@@ -1014,7 +1040,7 @@ Your job is to diagnose failures extracted from any of these pipeline logs and p
     })),
   ]
   try {
-    diagnosis = await diagnose(client, diagnosisInput)
+    diagnosis = await diagnose(client, diagnosisInput, directive, memory)
     log(`Diagnosis complete (${diagnosis.length} chars)`)
   } catch (err) {
     log(`ERROR: Claude diagnosis failed: ${err.message}`)

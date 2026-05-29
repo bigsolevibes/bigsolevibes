@@ -4,7 +4,15 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { connect, ensureHeaders, readAllRows, appendPick } = require('./sheets-client')
+const { connect, ensureHeaders, readAllRows, appendPick, archiveApproved } = require('./sheets-client')
+
+// ─── BSV DUAL-TRACK MANDATE ───────────────────────────────────────────────────
+// The BSV man is the coal miner AND the CFO. The shelf serves both.
+// Track 1: Premium/luxury transposition — brands the BSV man hasn't been introduced to yet
+// Track 2: Cultural crossover — products already working, not yet claimed for the male audience
+// The filter is fit for the BSV man. Not brand recognition. Not retail tier.
+// A $29 gel sock on national TV earns its place. A $150 cream nobody's heard of earns its place.
+// Both belong. Both make money. Both tell the BSV story.
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'product-research.log')
@@ -29,12 +37,9 @@ function loadDirective() {
   } catch { return null }
 }
 
-function loadMemory() {
-  try {
-    execSync(`rclone copy "${REMOTE}/BSV-Memory.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    const p = path.join(TEMP_DIR, 'BSV-Memory.md')
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
 function getPreviousResearch() {
@@ -53,6 +58,24 @@ function getPreviousResearch() {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
+function loadSocialReport() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const p = path.join(TEMP_DIR, path.basename(latest))
     return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
   } catch { return null }
 }
@@ -95,6 +118,245 @@ function getLatestDriveFile(folder) {
   } catch { return null }
 }
 
+const AFFILIATE_TAG = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
+
+// Pillar → sheet Category column value
+const PILLAR_CATEGORY = {
+  1: 'Skincare',
+  2: 'Body Care',
+  3: 'Recovery',
+  4: 'Grooming Tools',
+  5: 'Grooming Tools',
+}
+
+// ─── JSON extraction helper — bracket-balanced, handles surrounding commentary ─
+
+function extractJsonArray(text) {
+  const stripped = text.replace(/```json\s*/gi, '').replace(/```/g, '')
+  const start = stripped.indexOf('[')
+  if (start === -1) throw new Error('no JSON array found')
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let i = start; i < stripped.length; i++) {
+    const ch = stripped[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '[') depth++
+    else if (ch === ']') { depth--; if (depth === 0) return JSON.parse(stripped.slice(start, i + 1)) }
+  }
+  throw new Error('unbalanced JSON array')
+}
+
+// ─── Targets mode: Amazon validation via web_search (batches of 5) ───────────
+
+async function validateBatch(client, batch) {
+  const productList = batch.map((t, i) => `${i + 1}. ${t.name} (brand: ${t.brand})`).join('\n')
+
+  let messages = [{
+    role: 'user',
+    content: `Search Amazon for each product below. For each one: find the exact listing, confirm it is In Stock, record the ASIN and current price.
+
+${productList}
+
+After searching, output ONLY this JSON array — no introduction, no explanation, nothing else before or after the brackets:
+[{"name":"...","asin":"B0XXXXXXX or null","price":"$XX.XX or null","available":true,"note":""}]
+
+Rules: asin must be real (B0... format). If not found or unavailable set asin to null and available to false.`,
+  }]
+
+  let result = null
+  let turns = 0
+
+  while (turns < 8) {
+    turns++
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2048,
+      tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+      messages,
+    })
+
+    messages.push({ role: 'assistant', content: response.content })
+
+    if (response.stop_reason === 'end_turn') {
+      const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      try {
+        result = extractJsonArray(text)
+      } catch (err) {
+        log(`WARNING: batch JSON parse failed — ${err.message} — raw: ${text.slice(0, 200)}`)
+      }
+      break
+    }
+
+    if (response.stop_reason === 'tool_use') {
+      const toolResults = response.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }))
+      messages.push({ role: 'user', content: toolResults })
+    } else {
+      break
+    }
+  }
+
+  return result || batch.map(t => ({ name: t.name, asin: null, price: null, available: false, note: 'search failed' }))
+}
+
+async function validateOnAmazon(client, targets) {
+  log('Amazon validation: searching for ASINs via web_search (batches of 5)...')
+  const BATCH_SIZE = 5
+  const allResults = []
+
+  for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+    const batch = targets.slice(i, i + BATCH_SIZE)
+    log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.map(t => t.name).join(', ').slice(0, 80)}...`)
+    const batchResults = await validateBatch(client, batch)
+    allResults.push(...batchResults)
+    log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1} done: ${batchResults.filter(r => r.asin).length}/${batch.length} found`)
+  }
+
+  // Merge back with target metadata — match by position (batches preserve order)
+  return targets.map((t, i) => {
+    const r = allResults[i] || {}
+    return { ...t, asin: r.asin || null, price: r.price || null, available: r.available || false, note: r.note || '' }
+  })
+}
+
+// ─── Targets mode: brand story generation (chapter voice from BSV-Memory.md) ──
+
+async function generateBrandStories(client, targets, memory, directive) {
+  const chapterDescriptions = {
+    1: 'The man who takes care of his face with the same seriousness he brings to everything else. Skincare is not vanity — it is the same standard applied to a different surface.',
+    2: 'The man who knows what he smells like matters. Fragrance is not performance — it is the quiet signal that arrives before he does.',
+    3: 'The man who treats recovery like training. The body is a system — what he puts in and on it between sessions is part of the work.',
+    4: 'The man who carries only what earns its place. Every object in his pocket has been chosen, not accumulated.',
+    5: 'The man who shaves like his grandfather taught him — not because it is faster, but because the ritual is the point.',
+  }
+
+  const productLines = targets.map((t, i) =>
+    `${i + 1}. "${t.name}" by ${t.brand} — Chapter ${t.chapter}: ${chapterDescriptions[t.chapter] || ''}`
+  ).join('\n')
+
+  log('Brand story generation: calling Claude API...')
+  const resp = await client.messages.create({
+    model:      'claude-sonnet-4-6',
+    max_tokens: 3000,
+    system:     `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You write BSV brand stories — one sentence per product, chapter voice. The sentence captures the moment the man found this product, not what the product does. It belongs in the room. It doesn't announce itself. Present tense. The Proprietor's voice — deadpan, certain, slightly amused.`,
+    messages: [{
+      role: 'user',
+      content: `Write a brand_story sentence for each product below. One sentence per product. Chapter voice as described. The sentence is the moment — not a description, not a headline. The man found it. That's all we need to know.
+
+${productLines}
+
+Return ONLY a valid JSON array (no markdown, no commentary):
+[
+  { "name": "exact product name", "brand_story": "one sentence in chapter voice" }
+]`,
+    }],
+  })
+
+  const text = (resp.content.find(b => b.type === 'text')?.text || '').trim()
+  try {
+    const stories = extractJsonArray(text)
+    const storyMap = {}
+    stories.forEach(s => { storyMap[s.name] = s.brand_story })
+    return targets.map(t => ({ ...t, brand_story: storyMap[t.name] || '' }))
+  } catch (err) {
+    log(`WARNING: brand story JSON parse failed — ${err.message}`)
+    return targets.map(t => ({ ...t, brand_story: '' }))
+  }
+}
+
+// ─── Targets mode: main orchestrator ─────────────────────────────────────────
+
+async function runTargetsMode(targetsPath, client, memory, directive, dryRun, conn, existingAsins) {
+  log(`Loading targets from ${targetsPath}...`)
+  let targets
+  try {
+    targets = JSON.parse(fs.readFileSync(targetsPath, 'utf8'))
+    if (!Array.isArray(targets) || !targets.length) throw new Error('empty or invalid targets array')
+    log(`Targets: ${targets.length} products`)
+  } catch (err) {
+    log(`ERROR: could not read targets file — ${err.message}`)
+    process.exit(1)
+  }
+
+  // Step 1: Amazon validation
+  const withAsin = await validateOnAmazon(client, targets)
+  const available  = withAsin.filter(t => t.asin && t.available)
+  const unavailable = withAsin.filter(t => !t.asin || !t.available)
+
+  log(`Amazon validation complete: ${available.length} available, ${unavailable.length} unavailable/not found`)
+  unavailable.forEach(t => log(`  SKIP: "${t.name}" — ${t.note || 'unavailable'}`))
+
+  if (!available.length) {
+    log('ERROR: no products available on Amazon — nothing to write')
+    return
+  }
+
+  // Step 2: Brand story generation (chapter voice)
+  const withStories = await generateBrandStories(client, available, memory, directive)
+
+  // Step 3: Generate narrative drafts + build final picks
+  log(`Building picks and generating narrative drafts for ${withStories.length} products...`)
+  const picks = []
+  for (const t of withStories) {
+    const affiliateUrl = `https://www.amazon.com/dp/${t.asin}?tag=${AFFILIATE_TAG}`
+    const pick = {
+      name:        t.name,
+      asin:        t.asin,
+      price:       t.price || '',
+      category:    PILLAR_CATEGORY[t.pillar] || 'Body Care',
+      score:       '90/100',
+      description: '',
+      reasoning:   `Pre-curated target — Pillar ${t.pillar}, Lane ${t.lane}, Chapter ${t.chapter}. Curation complete.`,
+      brand_story: t.brand_story || '',
+      imageUrl:    'NEEDS_RENDER',
+      affiliateUrl,
+    }
+
+    if (!dryRun) {
+      pick.narrative = await generateNarrative(client, t.name)
+      if (pick.narrative) log(`  Narrative: "${pick.narrative.slice(0, 60)}..."`)
+    }
+
+    picks.push(pick)
+  }
+
+  // Step 4: Write to sheet or dry-run log
+  log(`\n${'─'.repeat(60)}`)
+  log(dryRun ? 'DRY-RUN OUTPUT — nothing will be written to sheet' : 'Writing to sheet...')
+  log('─'.repeat(60))
+
+  let written = 0
+  let skipped = 0
+  for (const pick of picks) {
+    if (existingAsins.has(pick.asin)) {
+      log(`  SKIP (already in sheet): ${pick.asin} — "${pick.name}"`)
+      skipped++
+      continue
+    }
+    if (dryRun) {
+      log(`  ✓ "${pick.name}"`)
+      log(`    ASIN:        ${pick.asin}`)
+      log(`    Price:       ${pick.price}`)
+      log(`    Affiliate:   ${pick.affiliateUrl}`)
+      log(`    Category:    ${pick.category}`)
+      log(`    Brand story: ${pick.brand_story}`)
+      log(`    Status:      Approved`)
+    } else {
+      await appendPick(conn, pick, { status: 'Approved' })
+      log(`  Sheet: "${pick.name}" (${pick.asin}) → Approved`)
+    }
+    written++
+  }
+
+  log('─'.repeat(60))
+  log(`Targets mode complete: ${written} ${dryRun ? 'would be written' : 'written'}, ${skipped} skipped (already in sheet), ${unavailable.length} unavailable`)
+}
+
 // ─── Image sourcing rules — never violate ─────────────────────────────────────
 // 1. Never download and re-host brand images without explicit permission
 // 2. Never use Amazon product images under any circumstances (ToS violation)
@@ -133,16 +395,180 @@ End with one quiet line that makes the reader want it without asking them to buy
   }
 }
 
+// ─── Track 2 direct evaluation ────────────────────────────────────────────────
+
+async function runTrack2Evaluation({ productName, asin, crossoverSignal, affiliateNetwork, client, dryRun, conn, existingAsins, directive, memory }) {
+  log(`Track 2 evaluation: "${productName}" (${asin})`)
+  log(`Crossover signal: ${crossoverSignal}`)
+
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Product Curator evaluating a Track 2 Cultural Crossover product.
+
+Track 2 scoring — 100 points total:
+- Crossover proof (25 pts): Documented evidence crossing from women's to men's. National TV appearance = 25. Viral Reddit thread = 15–20. Single mention = 5–10.
+- Ritual fit (25 pts): Fits BSV man's recovery, grooming, or maintenance rotation. Not medical, not clinically positioned.
+- Ingredient/quality floor (25 pts): Real actives (shea, urea, argan, jojoba, essential oils). No synthetic fragrance as primary. No medicated or antifungal positioning.
+- Affiliate availability (25 pts): Amazon Associates or active affiliate network confirmed.
+
+Minimum 60/100 to make the shelf.
+Permanent exclusions: antifungal, medicated, clinical problem-solving, no affiliate link, out of stock.
+Track 2 does NOT exclude based on retail tier, brand recognition, or whether the brand sells at Grooming Lounge.`
+
+  const userPrompt = `Evaluate this product for the BSV Track 2 shelf.
+
+Product: ${productName}
+ASIN: ${asin}
+Affiliate network: ${affiliateNetwork || 'Amazon Associates'}
+Crossover signal provided: ${crossoverSignal}
+
+Use web search to:
+1. Verify the crossover claim — confirm TV appearance, Reddit thread, or other evidence
+2. Pull the ingredient list and check for medicated/antifungal positioning
+3. Confirm Amazon stock status and current price
+4. Note any additional crossover evidence you find
+
+Then score against the Track 2 rubric and return ONLY this JSON object (no markdown, no commentary):
+{
+  "name": "${productName}",
+  "asin": "${asin}",
+  "price": "current price",
+  "track": "2",
+  "crossover_signal": "verified evidence summary",
+  "affiliate_network": "${affiliateNetwork || 'Amazon Associates'}",
+  "affiliate_link": "https://www.amazon.com/dp/${asin}?tag=${AFFILIATE_TAG}",
+  "crossover_proof_score": 0,
+  "ritual_fit_score": 0,
+  "ingredient_floor_score": 0,
+  "affiliate_score": 0,
+  "total_score": 0,
+  "score": "XX/100",
+  "shelf_decision": "approve | flag for Big D | reject",
+  "exclusion_flags": "any antifungal/medicated/out-of-stock flags, or none",
+  "reasoning": "Proprietor's Audit — one paragraph: why this belongs or doesn't, what standard it upholds. Not a product description.",
+  "brand_story": "2–3 sentences: who makes this, founding story or relevant context, why it has earned its place",
+  "category": "Recovery | Body Care | Grooming Tools | Foot Care",
+  "description": "One sentence, BSV voice — direct, specific, no hype. What appears on the shop card."
+}`
+
+  let messages = [{ role: 'user', content: userPrompt }]
+  let result   = null
+  let turns    = 0
+
+  while (turns < 8) {
+    turns++
+    log(`  Track 2 turn ${turns}...`)
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 3000,
+      system:     systemPrompt,
+      tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+      messages,
+    })
+    messages.push({ role: 'assistant', content: response.content })
+
+    if (response.stop_reason === 'end_turn') {
+      const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      try {
+        const stripped = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+        const start = stripped.indexOf('{')
+        const end   = stripped.lastIndexOf('}')
+        if (start !== -1 && end > start) result = JSON.parse(stripped.slice(start, end + 1))
+      } catch (err) {
+        log(`WARNING: Track 2 JSON parse failed — ${err.message}`)
+        log(`Raw (first 400): ${text.slice(0, 400)}`)
+      }
+      break
+    }
+    if (response.stop_reason === 'tool_use') {
+      const toolResults = response.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '' }))
+      messages.push({ role: 'user', content: toolResults })
+    } else {
+      break
+    }
+  }
+
+  if (!result) {
+    log('ERROR: Track 2 evaluation returned no structured result')
+    return
+  }
+
+  log(`\n${'─'.repeat(60)}`)
+  log(`Track 2 result: ${productName}`)
+  log(`  Total score:    ${result.total_score}/100`)
+  log(`  Crossover proof: ${result.crossover_proof_score}/25`)
+  log(`  Ritual fit:      ${result.ritual_fit_score}/25`)
+  log(`  Ingredient floor: ${result.ingredient_floor_score}/25`)
+  log(`  Affiliate:       ${result.affiliate_score}/25`)
+  log(`  Decision:        ${result.shelf_decision}`)
+  log(`  Exclusion flags: ${result.exclusion_flags || 'none'}`)
+  log(`  Price:           ${result.price}`)
+  log(`  Crossover signal (verified): ${result.crossover_signal}`)
+  log(`  Reasoning: ${result.reasoning?.slice(0, 200)}`)
+  log('─'.repeat(60))
+
+  if (result.total_score < 60) {
+    log(`Track 2: BELOW THRESHOLD (${result.total_score}/100 < 60) — not writing to sheet`)
+    return
+  }
+  if (result.exclusion_flags && !result.exclusion_flags.toLowerCase().startsWith('none')) {
+    log(`Track 2: EXCLUSION FLAG — "${result.exclusion_flags}" — not writing to sheet`)
+    return
+  }
+
+  if (existingAsins?.has(result.asin)) {
+    log(`Track 2: ${result.asin} already in sheet — skipping`)
+    return
+  }
+
+  if (dryRun) {
+    log(`[dry-run] Would write "${result.name}" (${result.asin}) → Pending`)
+    return
+  }
+
+  const pick = {
+    name:             result.name,
+    asin:             result.asin,
+    price:            result.price || '',
+    category:         result.category || 'Body Care',
+    score:            result.score || `${result.total_score}/100`,
+    description:      result.description || '',
+    reasoning:        result.reasoning || '',
+    brand_story:      result.brand_story || '',
+    imageUrl:         'NEEDS_RENDER',
+    track:            '2',
+    crossover_signal: result.crossover_signal || crossoverSignal,
+    affiliate_network: result.affiliate_network || affiliateNetwork || 'Amazon Associates',
+    affiliate_link:   result.affiliate_link || `https://www.amazon.com/dp/${result.asin}?tag=${AFFILIATE_TAG}`,
+  }
+
+  pick.narrative = await generateNarrative(client, pick.name)
+  await appendPick(conn, pick, { status: 'Pending' })
+  log(`Track 2: appended "${pick.name}" (${pick.asin}) → Pending`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
-  const skipResearch = process.argv.includes('--skip-research')
-  const dryRun       = process.argv.includes('--dry-run')
+  const skipResearch  = process.argv.includes('--skip-research')
+  const dryRun        = process.argv.includes('--dry-run')
+  const clearApproved = process.argv.includes('--clear-approved')
+  const track2Mode    = process.argv.includes('--track2')
+  const targetsArg    = process.argv.indexOf('--targets')
+  const targetsFile   = targetsArg !== -1 ? process.argv[targetsArg + 1] : null
+  const productArg    = process.argv.indexOf('--product')
+  const productName   = productArg !== -1 ? process.argv[productArg + 1] : null
+  const asinArg       = process.argv.indexOf('--asin')
+  const asinVal       = asinArg !== -1 ? process.argv[asinArg + 1] : null
+  const signalArg     = process.argv.indexOf('--signal')
+  const signalVal     = signalArg !== -1 ? process.argv[signalArg + 1] : null
+  const networkArg    = process.argv.indexOf('--affiliate-network')
+  const networkVal    = networkArg !== -1 ? process.argv[networkArg + 1] : 'Amazon Associates'
 
-  log(`━━━ product-research start ━━━${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
+  log(`━━━ product-research start ━━━${clearApproved ? ' [clear-approved]' : ''}${targetsFile ? ' [targets]' : ''}${track2Mode ? ' [track2]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -163,7 +589,27 @@ End with one quiet line that makes the reader want it without asking them to buy
     log(`WARNING: could not read sheet — ${err.message}`)
   }
 
-  const existingAsins = new Set(sheetRows.map(r => r['ASIN']).filter(Boolean))
+  // ─── --clear-approved: archive all approved rows before new write ────────────
+  if (clearApproved) {
+    log('Archiving approved rows...')
+    try {
+      if (!conn) { conn = await connect(); await ensureHeaders(conn) }
+      const archived = await archiveApproved(conn)
+      log(`Archived ${archived} approved row(s) → Status: Archived`)
+      // Reload sheet state so existingAsins reflects the now-archived rows
+      sheetRows = await readAllRows(conn)
+    } catch (err) {
+      log(`ERROR: archiveApproved failed — ${err.message}`)
+      process.exit(1)
+    }
+    log('━━━ product-research complete (--clear-approved) ━━━\n')
+    return
+  }
+
+  // Only block duplicates for active (non-Archived) rows — Archived rows are cleared and can be re-added
+  const existingAsins = new Set(
+    sheetRows.filter(r => (r['Status'] || '').toLowerCase() !== 'archived').map(r => r['ASIN']).filter(Boolean)
+  )
   const sheetSummary  = sheetRows.length
     ? sheetRows.map(r => `- ${r['ASIN']} (${r['Status'] || 'Unknown'}): ${r['Name'] || ''}`.trim()).join('\n')
     : 'None yet.'
@@ -173,8 +619,34 @@ End with one quiet line that makes the reader want it without asking them to buy
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
 
   log('Loading memory...')
-  const memory = loadMemory()
+  const memory = await loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
+
+  // ─── --track2 mode: direct Track 2 evaluation of a single product ────────────
+  if (track2Mode) {
+    if (!productName || !asinVal) {
+      log('ERROR: --track2 requires --product "name" and --asin B0XXXXXXX')
+      process.exit(1)
+    }
+    const client = new Anthropic({ apiKey })
+    await runTrack2Evaluation({
+      productName,
+      asin:            asinVal,
+      crossoverSignal: signalVal || '',
+      affiliateNetwork: networkVal,
+      client, dryRun, conn, existingAsins, directive, memory,
+    })
+    log('━━━ product-research complete ━━━\n')
+    return
+  }
+
+  // ─── --targets mode: curated list, skip discovery, go straight to validation ─
+  if (targetsFile) {
+    const client = new Anthropic({ apiKey })
+    await runTargetsMode(targetsFile, client, memory, directive, dryRun, conn, existingAsins)
+    log('━━━ product-research complete ━━━\n')
+    return
+  }
 
   log('Loading product development brief...')
   const productBrief = loadProductBrief()
@@ -193,11 +665,13 @@ End with one quiet line that makes the reader want it without asking them to buy
     fullText = previous.content
     log(`--skip-research: using ${previous.filename} as research input`)
   } else {
-    // ─── Read weekly plan and brand report ───────────────────────────────────
+    // ─── Read weekly plan, brand report, and social intelligence ─────────────
     const weeklyPlan  = getLatestDriveFile('Plans')
     const brandReport = getLatestDriveFile('Brand')
-    log(`Weekly plan:  ${weeklyPlan  ? weeklyPlan.filename  : 'none'}`)
-    log(`Brand report: ${brandReport ? brandReport.filename : 'none'}`)
+    const socialReport = loadSocialReport()
+    log(`Weekly plan:    ${weeklyPlan   ? weeklyPlan.filename   : 'none'}`)
+    log(`Brand report:   ${brandReport  ? brandReport.filename  : 'none'}`)
+    log(`Social report:  ${socialReport ? socialReport.filename : 'none'}`)
 
     const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Product Curator. Everything you recommend must earn its place according to the Proprietor's Directive above.
 
@@ -260,6 +734,35 @@ Every product must pass four gates before scoring begins. Fail any gate: reject.
 
 Score each criterion 0–10, weight it, sum to 100. A product needs 70+ to make the shortlist.
 
+## Track 2 — Cultural Crossover Scoring
+
+When a product arrives via crossover_signal: true from social-listening OR is manually flagged by Big D, apply Track 2 scoring instead of Track 1.
+
+### Track 2 Gates (all must pass before scoring)
+1. **Ritual gate:** Fits recovery, grooming, or maintenance. Not medical, not problem-positioned in clinical language.
+2. **Ingredient floor:** Real actives present (shea, urea, argan, jojoba, essential oils). No synthetic fragrance as primary ingredient. No medicated or antifungal positioning.
+3. **Affiliate gate:** Available on Amazon Associates OR an active affiliate network (CJ, FlexOffers, Impact). No affiliate link available = reject.
+
+### Track 2 Scoring — 100 points
+| Criterion | Weight | Question |
+|-----------|--------|----------|
+| Crossover proof | 25% | Documented evidence crossing from women's to men's? National TV = 25. Reddit viral = 15–20. Single mention = 5–10. |
+| Ritual fit | 25% | Does it belong in the BSV man's recovery, grooming, or maintenance rotation? |
+| Ingredient/quality floor | 25% | Real actives, not medicated or clinical. Passes the bathroom-counter test. |
+| Affiliate availability | 25% | Amazon Associates or active affiliate network confirmed available? |
+
+**Track 2 minimum: 60/100.** Lower threshold because crossover proof and affiliate availability carry the qualification weight.
+
+### Track 2 Permanent Exclusions
+- Antifungal, medicated, clinical problem-solving positioning
+- No affiliate link available anywhere
+- Out of stock
+
+### Track 2 Does NOT Exclude
+- Retail tier (Ulta, Amazon, Target are acceptable for Track 2)
+- Brand name recognition
+- Whether the brand sells at Grooming Lounge or Huckberry — irrelevant for Track 2
+
 ## The Proprietor's Audit
 
 Every shortlisted product must include a reasoning field that answers: "Why does this belong on the BSV shelf — not what problem it solves, but what standard it upholds and why a man who takes his core seriously would reach for it."
@@ -281,7 +784,8 @@ Specifically:
 - Do recommend products that complement the ritual — tools, soaks, recovery items that sit alongside the balm, not against it
 
 Product-research and product-development are teammates — one curates the shelf today, the other builds what owns the shelf tomorrow. They do not work against each other.
-${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}`
+${productBrief ? `\nCurrent development brief (${productBrief.filename}):\n${productBrief.content.slice(0, 1000)}${productBrief.content.length > 1000 ? '\n[truncated]' : ''}` : ''}
+${socialReport ? `\n## Social intelligence — market signals this week (${socialReport.filename})\nThe following brands and topics are gaining traction in the BSV market segment. Prioritize finding shelf-worthy products from these brands or in these categories, in addition to the standard sourcing list. The four-gate filter still applies — social signals expand the hunting ground, they do not bypass the filter.\n\n${socialReport.content.slice(0, 1200)}` : ''}`
 
     const userPrompt = `You are the BSV Product Curator. Your job is to find products that belong on the BSV shelf — not products that are easy to find, but products that a man who takes himself seriously would find if he actually went looking.
 
@@ -306,7 +810,19 @@ Run these searches in order:
 9. site:gq.com men grooming foot OR body care recommendation
 10. site:esquire.com men grooming foot OR body care recommendation
 
-From these searches, build a list of specific product names and brands. Note which source surfaced each product. Do not score yet. Do not go to Amazon yet.
+Additionally, search for products from these four brands — they are gaining traction in the BSV market segment and must be evaluated this cycle:
+
+11. Malin+Goetz men grooming body OR foot OR soak
+12. Grown Alchemist men body OR foot OR recovery
+13. Le Labo men grooming body OR fragrance
+14. Molton Brown men body OR foot OR grooming
+
+**Track 2 sources — check these alongside Track 1 if the social intelligence report flagged any crossover signals this week:**
+15. Amazon best sellers foot care — filter for products with crossover evidence (TV appearance, viral moment, female-to-male recommendation)
+16. Search "The View" OR "GMA" OR "Today Show" + grooming OR "foot care" OR recovery — last 90 days
+17. Search r/malegrooming OR r/everymanshouldknow OR r/BuyItForLife — "wife recommended" OR "girlfriend recommended" OR "seen on TV" + foot OR grooming
+
+From these searches, build a list of specific product names and brands. Note which source surfaced each product and whether it is Track 1 or Track 2. Do not score yet. Do not go to Amazon yet.
 
 ---
 
@@ -349,6 +865,8 @@ Only products that pass both Amazon checks AND score 70+ make The Shelf.
 Products anchored at the foot and working up. The man who buys Proprietor's Foot Balm also owns these. Every pick must pass the checkout test: would the BSV man reach for it without needing to explain it to anyone?
 
 Categories: premium foot soaks, lower-leg and calf recovery tools, compression and circulation products, understated body treatments with serious ingredient decks, precision grooming tools from professional channels.
+
+If the social intelligence report (in the system prompt) identifies specific brands or categories gaining traction this week, prioritize searches in those areas and confirm whether those brands have products that pass the gates. Social signals expand the hunting ground — they do not override the filter.
 
 Hard exclusions: medicated, antifungal, problem-positioned, anything on the first page of a Google search for "best foot cream," loud or juvenile packaging, anything clinical-looking, anything you'd find in a drugstore, anything sponsored on Amazon.
 
@@ -458,12 +976,18 @@ Return a JSON array with this exact shape:
     "description": "One sentence — BSV voice: direct, specific, no hype. This is what appears on the shop card.",
     "reasoning": "The Proprietor's Audit — one paragraph explaining why this belongs on the BSV shelf: what standard it upholds, why a man who takes his core seriously would reach for it. Not a product description. Not an Amazon review.",
     "brand_story": "2–3 sentences: who makes this brand, what their founding story or heritage is, why it has provenance. Pulled from research — not invented. This is what the Sole Report uses to editorialize around the affiliate link. If no heritage narrative was found in research, write exactly: No heritage narrative identified.",
-    "image_url": "URL of the product's primary image from the brand's official website (og:image or main hero image). Must be from the brand's own domain — not Amazon, not a retailer. If you visited the brand's product page during research and found a clean image URL, write it here. If not found or unverifiable, write exactly: NEEDS_RENDER"
+    "image_url": "URL of the product's primary image from the brand's official website (og:image or main hero image). Must be from the brand's own domain — not Amazon, not a retailer. If you visited the brand's product page during research and found a clean image URL, write it here. If not found or unverifiable, write exactly: NEEDS_RENDER",
+    "track": "1 or 2",
+    "crossover_signal": "evidence string if Track 2 (e.g. 'The View 2026-05, women saying my man wears these too'), or blank for Track 1",
+    "affiliate_network": "Amazon Associates",
+    "affiliate_link": "https://www.amazon.com/dp/ASIN?tag=bigsolevibes-20"
   }
 ]
 
 Rules:
 - Pick the 12 highest-scoring products from The Shelf section only — do not include anything from Gate Rejections, Skipped, Held Back, or Competitive Intelligence
+- Track 1 products: minimum score 70/100. Track 2 products: minimum score 60/100.
+- For Track 2 products: set track to "2", populate crossover_signal with the evidence
 - Every product in the output must have been confirmed in stock on Amazon and confirmed not sponsored
 - description: 1 sentence, BSV voice — factual, confident, no exclamation marks
 - reasoning: the Proprietor's Audit paragraph from the research — preserve it exactly, do not summarize

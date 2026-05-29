@@ -2,9 +2,9 @@ import Link from 'next/link'
 
 const navLinks = [
   { label: 'Home',            href: '/' },
+  { label: 'The Lounge',      href: '/the-lounge' },
   { label: 'The Sole Report', href: '/sole-report' },
   { label: 'The Locker Room', href: '/shop' },
-  { label: 'The Lounge',      href: '/lounge' },
 ]
 
 const socialLinks = [

@@ -6,10 +6,9 @@ import { usePathname } from 'next/navigation'
 
 const navLinks = [
   { label: 'Home',            href: '/' },
+  { label: 'The Lounge',      href: '/the-lounge' },
   { label: 'The Sole Report', href: '/sole-report' },
   { label: 'The Locker Room', href: '/shop' },
-  { label: 'The Lounge',      href: '/lounge' },
-  { label: 'Get on the List', href: '/#email-capture' },
 ]
 
 export default function SiteNav() {
@@ -52,7 +51,7 @@ export default function SiteNav() {
             </div>
 
             <button
-              className="md:hidden text-bsv-cream p-2"
+              className="md:hidden text-bsv-cream p-3"
               onClick={() => setMenuOpen(!menuOpen)}
               aria-label="Toggle menu"
             >

@@ -5,7 +5,7 @@ require('dotenv').config()
 // Runs Sunday 11:30PM via launchd, after brand-manager completes.
 // Reads Plans, Brand, social-listening from Drive + approved shelf products
 // from Google Sheets. Calls Claude to generate a Proprietor-voice post
-// targeting BSV SEO terms. Outputs static HTML to public/sole-report/.
+// targeting BSV SEO terms. Outputs static HTML to public/the-lounge/.
 // Chief reads blog-agent.log in the Monday morning stand-up.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -20,14 +20,14 @@ const { sendTelegram } = require('./telegram')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
-const BLOG_DIR  = path.join(ROOT, 'public', 'sole-report')
+const BLOG_DIR  = path.join(ROOT, 'public', 'the-lounge')
 const TEMP_DIR  = path.join(os.homedir(), 'tmp', 'bsv-blog-agent')
 const REMOTE    = 'big sole vibes:Big Sole Vibes'
 const AFFILIATE = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
 const SITE_URL  = 'https://bigsolevibes.com'
 
 // ─── Content Calendar ─────────────────────────────────────────────────────────
-// Ordered list of queued Sole Report pieces. blog-agent checks the manifest for
+// Ordered list of queued The Lounge pieces. blog-agent checks the manifest for
 // published slugs and injects the first unwritten entry into the userPrompt.
 // After all entries are published, the agent falls back to hub article direction.
 const CONTENT_CALENDAR = [
@@ -38,7 +38,7 @@ const CONTENT_CALENDAR = [
   },
   {
     // Piece 2 — The Seven Steps Stop at the Ankle (approved 2026-05-21)
-    // This is a Sole Report ARTICLE, not a social post brief.
+    // This is a Lounge article, not a social post brief.
     // Voice: The Lounge — long-form warmth. GQ editorial angle, not lifestyle fluff.
     slug: 'the-seven-steps-stop-at-the-ankle',
     titleDirection: '"The Seven Steps Stop at the Ankle." Fixed title — do not deviate. This is the argument, not the observation: the ankle line is arbitrary. It is not biological, not medical, not inevitable. Men built a seven-step grooming standard over the last decade and drew the line at the ankle because nobody told them to go further. Name that precisely. Make the argument — not the lifestyle take, the actual argument.',
@@ -142,7 +142,7 @@ function escapeHtml(str) {
 }
 
 function buildPostHtml(post, dateStr) {
-  const canonicalUrl = `${SITE_URL}/sole-report/${post.slug}.html`
+  const canonicalUrl = `${SITE_URL}/the-lounge/${post.slug}.html`
   const wordCount    = (post.openingHtml + post.sections.map(s => s.html).join('') + post.closingHtml)
     .replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length
   const readMinutes  = Math.max(1, Math.ceil(wordCount / 200))
@@ -302,16 +302,16 @@ function buildPostHtml(post, dateStr) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="post-hero">
     <div class="post-hero-inner">
-      <a href="/sole-report/index.html" class="back-link">← THE SOLE REPORT</a>
+      <a href="/sole-report" class="back-link">← THE SOLE REPORT</a>
       <div class="post-meta">
         <span>${publishDate}</span>
         <span class="post-meta-sep">·</span>
@@ -333,7 +333,7 @@ function buildPostHtml(post, dateStr) {
 
       <div class="post-footer">
         <a href="/shop" class="shop-cta-btn">THE LOCKER ROOM →</a>
-        <a href="/sole-report/index.html" class="blog-link">← The Sole Report</a>
+        <a href="/sole-report" class="blog-link">← THE SOLE REPORT</a>
       </div>
     </div>
   </article>
@@ -348,9 +348,9 @@ function buildPostHtml(post, dateStr) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">
@@ -384,7 +384,7 @@ function buildIndexHtml(posts) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Sole Report — Big Sole Vibes</title>
   <meta name="description" content="Proprietor-approved writing on men's grooming, foot care, and the standard. No fluff. No problem-solving. The practice, documented.">
-  <link rel="canonical" href="${SITE_URL}/sole-report/index.html">
+  <link rel="canonical" href="${SITE_URL}/sole-report">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -433,15 +433,15 @@ function buildIndexHtml(posts) {
       <a href="/" class="nav-brand">BIG SOLE VIBES</a>
       <ul class="nav-links">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html" class="active">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report" class="active">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
   </nav>
 
   <header class="blog-hero">
-    <p class="hero-eyebrow">THE PROPRIETOR'S DESK</p>
+    <p class="hero-eyebrow">THE SOLE REPORT</p>
     <h1 class="hero-title">The Sole Report</h1>
     <p class="hero-sub">The practice, documented. No problem-solving. No padding. The standard, in writing.</p>
   </header>
@@ -458,9 +458,9 @@ function buildIndexHtml(posts) {
       </div>
       <ul class="footer-nav">
         <li><a href="/">Home</a></li>
-        <li><a href="/sole-report/index.html">The Sole Report</a></li>
+        <li><a href="/the-lounge">The Lounge</a></li>
+        <li><a href="/sole-report">The Sole Report</a></li>
         <li><a href="/shop">The Locker Room</a></li>
-        <li><a href="/lounge">The Lounge</a></li>
       </ul>
     </div>
     <div class="footer-copy">
@@ -534,7 +534,8 @@ function gitPush(files) {
   const weeklyPlan    = loadLatestDriveFile('Plans')
   const brandReport   = loadLatestDriveFile('Brand')
   const socialReport  = loadLatestDriveFile('Reports', /^social-report-\d{4}-\d{2}-\d{2}\.md$/)
-  const memory        = loadDriveFile('BSV-Memory.md')
+  const directive     = loadDriveFile('BSV-Directive.md')
+  const memory        = await (require('./lib/memory').loadMemoryById())
 
   // Load latest dated handoff
   let handoff = null
@@ -556,8 +557,144 @@ function gitPush(files) {
   log(`Weekly plan:    ${weeklyPlan    ? weeklyPlan.filename    : 'none'}`)
   log(`Brand report:   ${brandReport   ? brandReport.filename   : 'none'}`)
   log(`Social report:  ${socialReport  ? socialReport.filename  : 'none'}`)
+  log(`Directive:      ${directive ? directive.length + ' chars' : 'none'}`)
   log(`Memory:         ${memory ? memory.length + ' chars' : 'none'}`)
   log(`Handoff:        ${handoff ? handoff.length + ' chars' : 'none'}`)
+
+  // ─── --sole-report mode ───────────────────────────────────────────────────
+  // Reads _sole_report_state brief written Saturday by media-director.
+  // Writes article as MDX to content/sole-report/<slug>.mdx.
+  // Commits and pushes to preview/full-site (same as all pipeline content).
+  // No approval loop. No Telegram. No Drive draft. Write → commit → push → done.
+  if (process.argv.includes('--sole-report')) {
+    log('Mode: --sole-report')
+
+    // ─── Read brief from state ──────────────────────────────────────────
+    let srs = null
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      if (fs.existsSync(statePath)) {
+        const raw = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+        srs = raw._sole_report_state || null
+      }
+    } catch {}
+
+    if (!srs || srs.status !== 'BRIEFED') {
+      log(`Sole Report: no brief with status BRIEFED found (current: ${srs?.status ?? 'none'}) — exiting cleanly`)
+      log('━━━ --sole-report complete (no brief) ━━━\n')
+      return
+    }
+    log(`Sole Report brief: week ${srs.week} — "${srs.title}" [${srs.topic_area}]`)
+
+    // ─── Generate article via Claude ────────────────────────────────────
+    const client = new Anthropic({ apiKey })
+
+    const srSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Sole Report writer. You write authoritative editorial articles — GQ register, not narrative blog voice. Not the Lounge storytelling frame. Direct, intelligent, confident. The reader is a man who takes himself seriously and wants category intelligence, not inspiration.
+
+Structure: strong intro paragraph → 3–4 sections with ## headers → one short Proprietor-voice close (deadpan, certain, no CTA). 800–1,200 words. No listicles. No bullet points. Make a clear argument and support it.
+
+Output JSON only — no markdown fences, no commentary.`
+
+    const srUser = `Write The Sole Report article for week ${srs.week}.
+
+Topic area: ${srs.topic_area}
+Title: ${srs.title}
+Angle: ${srs.angle || 'GQ'}
+
+${weeklyPlan ? `## Weekly plan context\n${weeklyPlan.content.slice(0, 800)}\n\n` : ''}${socialReport ? `## Social signals\n${socialReport.content.slice(0, 500)}\n\n` : ''}Return ONLY this JSON:
+{
+  "title": "exact article title",
+  "slug": "kebab-case-slug",
+  "excerpt": "2–3 sentences. The argument, not a summary. Proprietor voice.",
+  "topic": "short topic label matching topic_area",
+  "tags": ["tag1", "tag2", "tag3"],
+  "body": "full markdown body — ## section headers, paragraphs only. No frontmatter. 800–1200 words."
+}`
+
+    log('Calling Claude for Sole Report article...')
+    let rawText = ''
+    try {
+      const response = await client.messages.create({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 3000,
+        system:     srSystem,
+        messages:   [{ role: 'user', content: srUser }],
+      })
+      rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+      log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
+    } catch (err) {
+      log(`ERROR: Claude call failed — ${err.message}`)
+      process.exit(1)
+    }
+
+    // ─── Parse JSON ──────────────────────────────────────────────────────
+    let article
+    try {
+      const stripped = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+      const start    = stripped.indexOf('{')
+      const end      = stripped.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('no JSON object found')
+      article = JSON.parse(stripped.slice(start, end + 1))
+      if (!article.title || !article.slug || !article.body) throw new Error('missing required fields')
+      log(`Article parsed: "${article.title}" → ${article.slug}`)
+    } catch (err) {
+      log(`ERROR: JSON parse failed — ${err.message}`)
+      log(`Raw (first 500): ${rawText.slice(0, 500)}`)
+      process.exit(1)
+    }
+
+    // ─── Build and write MDX ─────────────────────────────────────────────
+    const slug    = article.slug
+    const tagList = (article.tags || []).map(t => JSON.stringify(t)).join(', ')
+    const mdx     = `---
+title: ${JSON.stringify(article.title)}
+slug: ${slug}
+date: "${today}"
+excerpt: ${JSON.stringify(article.excerpt || '')}
+topic: ${JSON.stringify(article.topic || srs.topic_area)}
+tags: [${tagList}]
+---
+
+*Disclosure: As an Amazon Associate, Big Sole Vibes earns from qualifying purchases.*
+
+${article.body.trim()}
+`
+    const SOLE_REPORT_CONTENT = path.join(ROOT, 'content', 'sole-report')
+    fs.mkdirSync(SOLE_REPORT_CONTENT, { recursive: true })
+    const mdxPath = path.join(SOLE_REPORT_CONTENT, `${slug}.mdx`)
+    fs.writeFileSync(mdxPath, mdx)
+    log(`MDX written: content/sole-report/${slug}.mdx`)
+
+    // ─── Commit and push to preview/full-site ───────────────────────────
+    // Pipeline content always lands on preview/full-site — Big D promotes to main.
+    try {
+      execSync(`git add "${mdxPath}"`, { cwd: ROOT, stdio: 'pipe' })
+      const status = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }).trim()
+      if (status) {
+        const commitMsg = `feat: sole-report — ${article.title.replace(/"/g, "'")}`
+        execSync(`git commit -m "${commitMsg}"`, { cwd: ROOT, stdio: 'pipe' })
+        require('./git-push-guard').safePushToPreview(ROOT, log)
+      } else {
+        log('Git: no changes to commit (slug already exists)')
+      }
+    } catch (err) {
+      log(`ERROR: git push failed — ${err.stderr?.toString().trim() || err.message}`)
+    }
+
+    // ─── Update state ────────────────────────────────────────────────────
+    try {
+      const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+      const raw = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+      raw._sole_report_state = { ...srs, slug, status: 'PUBLISHED', updated: today }
+      fs.writeFileSync(statePath, JSON.stringify(raw, null, 2))
+      log(`State updated: status → PUBLISHED`)
+    } catch (err) {
+      log(`WARNING: could not update state — ${err.message}`)
+    }
+
+    log(`━━━ --sole-report complete — "${article.title}" ━━━\n`)
+    return
+  }
 
   // ─── Load approved shelf products ─────────────────────────────────────────
   log('Loading approved shelf products from Google Sheets...')
@@ -594,7 +731,10 @@ function gitPush(files) {
       ].filter(Boolean).join('\n')).join('\n\n')
     : 'No approved products on shelf yet.'
 
-  const systemPrompt = `${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Blog Agent — you write long-form content for bigsolevibes.com.
+
+## Article Structure
+Every Lounge article MUST use the six-step chapter structure defined in BSV-Memory.md above. Follow the sequence exactly as written there. Do not default to generic article structure (intro → body → conclusion). If the structure is not yet in memory, use: (1) The Hook, (2) The Diagnosis, (3) The Standard, (4) The Evidence, (5) The Move, (6) The Close.
 
 ## Tone — this supersedes "Proprietor voice" for blog posts
 Inviting, not judgmental. Confident, not preachy. There is a quiet knowing smile behind every sentence — like the man who already figured this out and is holding the door open for you without making a big deal of it.
@@ -946,7 +1086,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
     const driveFile = `blog-${post.slug}-decision.md`
 
     const telegramMsg = [
-      `📝 *NEW SOLE REPORT DRAFT*`,
+      `📝 *NEW LOUNGE DRAFT*`,
       `*Title:* ${post.title}`,
       `*Voice:* ${voice}`,
       `*Est. read time:* ${readTime} min`,
@@ -993,7 +1133,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
       // Timed out — save draft to Drive Inbox for next run
       log('No approval decision received in 4 hours — saving draft to Drive Inbox')
       await saveDraftToDrive(post)
-      await sendTelegram(`⏰ *Sole Report draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
+      await sendTelegram(`⏰ *The Lounge draft timed out — saved to Drive Inbox*\nTitle: ${post.title}\nI'll pick up where we left off next run.`)
       log('━━━ blog-agent complete (awaiting approval) ━━━\n')
       return
     }
@@ -1084,7 +1224,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
   log(`Deploy: ${pushed ? 'triggered' : 'skipped (no changes)'}`)
 
   // Notify Big D
-  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/sole-report/${post.slug}.html`)
+  await sendTelegram(`✅ Published: ${post.title} — ${SITE_URL}/the-lounge/${post.slug}.html`)
 
   log(`━━━ blog-agent complete — "${post.title}" ━━━\n`)
 })()

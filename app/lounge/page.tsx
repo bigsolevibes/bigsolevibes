@@ -117,8 +117,8 @@ export default function LoungePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               {
-                label: 'The Weekly Audit',
-                body:  "We test so you don't have to. Curated reviews of the best foot care products — ranked, scored, and proprietor-approved.",
+                label: 'The Shelf',
+                body:  "Every product here has earned its place. The proprietor has already done the work — nothing gets on the shelf that doesn't belong.",
               },
               {
                 label: 'The Standard',
