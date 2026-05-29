@@ -1,16 +1,17 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
+require('dotenv').config()
+const Anthropic        = require('@anthropic-ai/sdk').default
 const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT       = path.join(__dirname, '..')
-const LOG_FILE   = path.join(ROOT, 'logs', 'media-director.log')
-const STATE_FILE = path.join(ROOT, 'logs', 'voice-state.json')
-const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-media-director')
-const REMOTE     = 'big sole vibes:Big Sole Vibes'
+const ROOT                   = path.join(__dirname, '..')
+const LOG_FILE               = path.join(ROOT, 'logs', 'media-director.log')
+const TEMP_DIR               = path.join(os.homedir(), 'tmp', 'bsv-media-director')
+const REMOTE                 = 'big sole vibes:Big Sole Vibes'
+const CULTURAL_CALENDAR_FILE = path.join(ROOT, 'scripts', 'data', 'cultural-calendar.json')
 
-const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
+const { VOICES } = require('../config/bsv-voices')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -32,34 +33,390 @@ const THEME_CALENDAR = {
   sun: { am: 'The Standard',   pm: 'The Invite' },
 }
 
+// ─── Persona assignment ───────────────────────────────────────────────────────
+// Three-persona rotating schedule. AM and PM can differ — both registers
+// reach each audience across the week. No persona runs more than 5 of 14 slots.
+
+const PERSONA_CALENDAR = {
+  mon: { am: 'professional',    pm: 'athlete' },
+  tue: { am: 'style-conscious', pm: 'professional' },
+  wed: { am: 'athlete',         pm: 'style-conscious' },
+  thu: { am: 'professional',    pm: 'athlete' },
+  fri: { am: 'style-conscious', pm: 'professional' },
+  sat: { am: 'athlete',         pm: 'style-conscious' },
+  sun: { am: 'professional',    pm: 'athlete' },
+}
+
+// Voice locked to persona + register. No rotation — persona determines voice.
+//   Professional → The Proprietor (AM) / The Nod (PM)
+//   Athlete      → The Barber (AM) / The Callout (PM)
+//   Style-Con.   → The Standard (AM) / The Nod (PM)
+const PERSONA_VOICE_MAP = {
+  professional:      { am: 'PROPRIETOR', pm: 'NOD' },
+  athlete:           { am: 'BARBER',     pm: 'CALLOUT' },
+  'style-conscious': { am: 'STANDARD',   pm: 'NOD' },
+}
+
+// Content strategy lane per persona
+const PERSONA_LANE = {
+  professional:      'Lane 1 — High-End Drop',
+  athlete:           'Lane 3 — Well-Framed Audit',
+  'style-conscious': 'Lane 2 — Style vs. Mechanics',
+}
+
+// Persona-matched hashtags (from the social-listening brief)
+const PERSONA_HASHTAGS = {
+  professional:      ['#mensstyle', '#bespoke', '#leathergoods', '#shoecare', '#gentlemanstyle'],
+  athlete:           ['#recoverydays', '#athletelife', '#trainhard', '#crossfit', '#runnerscommunity'],
+  'style-conscious': ['#menswear', '#ootd', '#streetstyle', '#complexstyle', '#highsnobiety'],
+}
+
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
 const VALID_DAYS  = ['mon','tue','wed','thu','fri','sat','sun']
 
-// ─── Voice rotation ───────────────────────────────────────────────────────────
-// AM = Lounge register: PROPRIETOR → BARBER → STANDARD (cycle)
-// PM = Drop register:   CALLOUT → NOD → PROPRIETOR (cycle)
-// Never assign the same voice to consecutive slots across AM/PM boundaries.
+// ─── Lounge social cadence ────────────────────────────────────────────────────
+// Wednesday drops that retell the active Lounge chapter in campfire format.
+// Indexed from launch week (week 0 = 2026-05-26). Runs wed-pm slot only.
+const LOUNGE_LAUNCH_MONDAY = new Date('2026-05-26T00:00:00.000Z')
 
-function loadVoiceState() {
+const LOUNGE_SOCIAL_CADENCE = [
+  { week: 0, format: 'Tall Tale',         chapter: 1, articleType: 'hub',   ref: 'the-upgrade-path',   angle: 'The man in the evening light, the mirror, the soap in his hand at 9pm — the moment the reckoning began.' },
+  { week: 1, format: 'The Scene',         chapter: 1, articleType: 'spoke', ref: 'the-cleanser',       angle: 'The soap watching from the edge of the tub. The new cleanser, the silence, the quality of it.' },
+  { week: 2, format: 'Simple Modern Man', chapter: 1, articleType: 'spoke', ref: 'the-moisturizer',    angle: 'The oil-change observation. Maintenance is not vanity. Two minutes, the whole thing.' },
+  { week: 3, format: 'Tall Tale',         chapter: 1, articleType: 'spoke', ref: 'the-label',          angle: 'He turned the bottle over. Sodium tallowate. The moment the soap stopped being a habit and became a question.' },
+  { week: 4, format: 'The Scene',         chapter: 2, articleType: 'hub',   ref: 'the-one-bottle',     angle: 'Parking lot, two bottles. The wrong one he\'d been wearing for years. The right one, once.' },
+  { week: 5, format: 'Simple Modern Man', chapter: 2, articleType: 'spoke', ref: 'the-man-who-packs',          angle: 'Two kinds of men at airport security. The second one had already thought about it.' },
+  { week: 6, format: 'Tall Tale',         chapter: 2, articleType: 'spoke', ref: 'why-cologne-smells-different', angle: 'Same bottle. Different result on you. He thought that was coincidence. It was chemistry.' },
+]
+
+function getLoungeWedCadence(targetDateStr) {
+  // targetDateStr is the day being briefed (e.g. "wed")
+  if (targetDateStr !== 'wed') return null
+  // Compute which Lounge week we're in based on today's date
+  const today = new Date()
+  const todayMonday = new Date(today)
+  const dow = todayMonday.getDay()
+  todayMonday.setDate(todayMonday.getDate() - (dow === 0 ? 6 : dow - 1))
+  todayMonday.setHours(0, 0, 0, 0)
+  const diffMs    = todayMonday.getTime() - LOUNGE_LAUNCH_MONDAY.getTime()
+  const diffWeeks = Math.floor(diffMs / (7 * 24 * 3600 * 1000))
+  if (diffWeeks < 0 || diffWeeks >= LOUNGE_SOCIAL_CADENCE.length) return null
+  return LOUNGE_SOCIAL_CADENCE[diffWeeks]
+}
+
+// ─── Drive context loaders ────────────────────────────────────────────────────
+
+function loadDirective() {
   try {
-    return fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {}
-  } catch { return {} }
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, 'BSV-Directive.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+  } catch { return null }
 }
 
-function saveVoiceState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+async function loadMemory() {
+  const { loadMemoryById } = require('./lib/memory')
+  return loadMemoryById()
 }
 
-function pickVoice(pool, lastVoice, indexKey, state) {
-  let idx = state[indexKey] ?? 0
-  let voice = pool[idx % pool.length]
-  // Advance once if this would repeat the last slot's voice
-  if (voice === lastVoice) {
-    idx++
-    voice = pool[idx % pool.length]
+// ─── Social format map ────────────────────────────────────────────────────────
+// Three social formats defined in BSV-Memory.md. Persona determines default.
+const SOCIAL_FORMAT_MAP = {
+  professional:      'Tall Tale',
+  athlete:           'The Scene',
+  'style-conscious': 'Simple Modern Man',
+}
+
+// ─── Chapter state ────────────────────────────────────────────────────────────
+// media-director owns _chapter_state: reads on run, writes back at completion.
+
+const CHAPTER_STATE_DEFAULTS_MD = {
+  active:         1,
+  name:           'The Bathroom Cabinet',
+  productTease:   'The soap story. The man looked at it and for the first time actually looked at it.',
+  campfireFormat: 'The Confession',
+  loungeUrl:      'bigsolevibes.com/the-lounge/the-upgrade-path',
+}
+
+function loadChapterState() {
+  try {
+    const p = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    if (!fs.existsSync(p)) return { ...CHAPTER_STATE_DEFAULTS_MD }
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'))
+    return raw._chapter_state
+      ? { ...CHAPTER_STATE_DEFAULTS_MD, ...raw._chapter_state }
+      : { ...CHAPTER_STATE_DEFAULTS_MD }
+  } catch { return { ...CHAPTER_STATE_DEFAULTS_MD } }
+}
+
+function saveChapterState(cs) {
+  try {
+    const p   = path.join(ROOT, 'logs', 'watch-drive-state.json')
+    const raw = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {}
+    raw._chapter_state = cs
+    fs.writeFileSync(p, JSON.stringify(raw, null, 2))
+  } catch (err) { log(`WARNING: could not save chapter state — ${err.message}`) }
+}
+
+// ─── Daily directive loader ───────────────────────────────────────────────────
+// Chief writes Plans/daily-directive-YYYY-MM-DD.md when Big D replies 1/2/3.
+// Falls back to yesterday's directive if today's hasn't been chosen yet.
+
+function loadDailyDirective() {
+  const today = new Date()
+  for (let offset = 0; offset <= 1; offset++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - offset)
+    const stamp = d.toISOString().slice(0, 10)
+    const filename = `daily-directive-${stamp}.md`
+    try {
+      execSync(`rclone copy "${REMOTE}/Plans/${filename}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+      const p = path.join(TEMP_DIR, filename)
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf8')
+        log(`Daily directive: loaded ${filename}`)
+        return { filename, content }
+      }
+    } catch {}
   }
-  state[indexKey] = idx + 1
-  return voice
+  log('Daily directive: none found — running persona defaults')
+  return null
+}
+
+// ─── Social report loader ─────────────────────────────────────────────────────
+
+function loadLatestSocialReport() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')
+      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
+      .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort()
+    if (!files.length) return null
+    const latest = files[files.length - 1]
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const p = path.join(TEMP_DIR, latest)
+    return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
+  } catch { return null }
+}
+
+// ─── Social report parser ─────────────────────────────────────────────────────
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractBulletValue(text, label) {
+  const m = text.match(new RegExp(`[-*]\\s*${escapeRegex(label)}[^:\\n]*:\\s*(.+)`))
+  return m ? m[1].trim() : null
+}
+
+function parseSocialReport(content, persona) {
+  if (!content) return null
+
+  const personaHeaders = {
+    professional:      'MAN 1 — THE PROFESSIONAL',
+    athlete:           'MAN 2 — THE ATHLETE',
+    'style-conscious': 'MAN 3 — THE STYLE-CONSCIOUS',
+  }
+  const angleLabels = {
+    professional:      'Angle 1',
+    athlete:           'Angle 2',
+    'style-conscious': 'Angle 3',
+  }
+
+  const result = { verbatimPhrases: [], storyAngle: null, hashtagSignal: '' }
+  const header = personaHeaders[persona]
+  if (!header) return result
+
+  // Extract verbatim phrases from this persona's section
+  const personaSection = content.match(
+    new RegExp(`## ${escapeRegex(header)}[\\s\\S]*?(?=\\n## (?:MAN \\d|Story Angles|Hashtag)|$)`)
+  )
+  if (personaSection) {
+    const verbMatch = personaSection[0].match(/### Verbatim Language\n([\s\S]*?)(?=\n###|\n##|$)/)
+    if (verbMatch) {
+      result.verbatimPhrases = verbMatch[1]
+        .split('\n')
+        .map(l => l.replace(/^[-*•]\s*"?/, '').replace(/"?\s*$/, '').trim())
+        .filter(l => l.length > 3 && !l.startsWith('#') && !l.startsWith('*') && !l.startsWith('_'))
+    }
+  }
+
+  // Extract the story angle for this persona
+  const angleLabel = angleLabels[persona]
+  const anglesSection = content.match(/## Story Angles for Media-Director[\s\S]*?(?=\n## Hashtag|$)/)
+  if (anglesSection) {
+    const angleMatch = anglesSection[0].match(
+      new RegExp(`\\*\\*${escapeRegex(angleLabel)}[^*]*\\*\\*\\n([\\s\\S]*?)(?=\\n\\*\\*Angle \\d|$)`)
+    )
+    if (angleMatch) {
+      const t = angleMatch[1]
+      result.storyAngle = {
+        hook:             extractBulletValue(t, 'Hook'),
+        voiceTag:         extractBulletValue(t, 'BSV voice'),
+        whyThisWeek:      extractBulletValue(t, 'Why this week'),
+        draftOpeningLine: extractBulletValue(t, 'Draft opening line'),
+      }
+    }
+  }
+
+  // Hashtag performance section (truncated — full context passed to creative-agent)
+  const hashtagSection = content.match(/## Hashtag Performance Signal[\s\S]*$/)
+  if (hashtagSection) result.hashtagSignal = hashtagSection[0].slice(0, 600)
+
+  return result
+}
+
+// ─── Cultural moment override ─────────────────────────────────────────────────
+// Checks the calendar first, then asks Claude to reason about the social report.
+// Returns { override, source, moment, proprietor_take, hashtags }.
+
+async function callClaude(prompt) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    log('WARNING: ANTHROPIC_API_KEY not set — cultural Claude reasoning unavailable')
+    return '{"override": false, "reason": "API key not set"}'
+  }
+  const client = new Anthropic({ apiKey })
+  const msg = await client.messages.create({
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    messages:   [{ role: 'user', content: prompt }],
+  })
+  return msg.content[0].text.trim()
+}
+
+async function checkCulturalOverride(socialReport, today) {
+  // Calendar check first — hard-coded takes, no AI cost
+  if (fs.existsSync(CULTURAL_CALENDAR_FILE)) {
+    const calendar    = JSON.parse(fs.readFileSync(CULTURAL_CALENDAR_FILE, 'utf8'))
+    const todayMMDD   = today.toISOString().slice(5, 10)
+    const calendarMatch = calendar.find(e => e.date === todayMMDD)
+    if (calendarMatch) {
+      return {
+        override:       true,
+        source:         'calendar',
+        moment:         calendarMatch.name,
+        chapter:        calendarMatch.chapter,
+        proprietor_take: calendarMatch.proprietor_take,
+        hashtags:       calendarMatch.hashtags,
+      }
+    }
+  }
+
+  // No calendar match — ask Claude to reason about the social report
+  try {
+    const response = await callClaude(`
+You are media-director for Big Sole Vibes — a premium men's grooming brand.
+Today is ${today.toDateString()}.
+
+Here is today's social intelligence report summary:
+${socialReport.slice(0, 2000)}
+
+Is there a dominant cultural moment happening today that warrants overriding
+the standard chapter content brief? A cultural moment qualifies if:
+- It is a major sporting event (championship, finals, major race)
+- It is a trending national conversation that the BSV man would care about
+- It would be conspicuous for a premium men's brand NOT to acknowledge it
+
+Respond in JSON only:
+{
+  "override": true/false,
+  "moment": "name of the moment or null",
+  "reason": "one sentence why or why not",
+  "proprietor_take": "two sentence Proprietor voice take on the moment — deadpan, no product, or null if no override",
+  "hashtags": "5 relevant hashtags or null"
+}`)
+    const cleaned = response.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    const parsed = JSON.parse(cleaned)
+    return { source: 'claude', ...parsed }
+  } catch (err) {
+    log(`WARNING: cultural override check failed — ${err.message}`)
+    return { override: false, source: 'error', reason: err.message }
+  }
+}
+
+// ─── Sole Report brief (Saturday only) ───────────────────────────────────────
+
+function getISOWeek(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
+  const jan4 = new Date(d.getFullYear(), 0, 4)
+  return 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + (jan4.getDay() + 6) % 7) / 7)
+}
+
+async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory }) {
+  const weekNum   = getISOWeek(new Date())
+  const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+
+  // Idempotent — skip if already briefed this week
+  try {
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+    if (state._sole_report_state?.week === weekNum && state._sole_report_state?.status === 'BRIEFED') {
+      log(`Sole Report: already briefed for week ${weekNum} — skipping`)
+      return
+    }
+  } catch {}
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) { log('WARNING: Sole Report brief skipped — ANTHROPIC_API_KEY not set'); return }
+
+  const client = new Anthropic({ apiKey })
+
+  const prompt = `You are Big Sole Vibes media director. Generate the Sole Report article brief for this week.
+
+The Sole Report is a weekly editorial article — GQ register, not lifestyle blog. One clear argument, delivered with Proprietor authority. 800–1,200 words. Direct, intelligent, no storytelling frame.
+
+BSV topic universe: men's skincare (face), fragrance, foot care, grooming tools, body care, recovery. Always tied to the head-to-toe standard serious men should hold.
+
+${bsvDirective ? `## BSV Directive\n${bsvDirective.slice(0, 1000)}\n\n` : ''}${bsvMemory ? `## Brand memory\n${bsvMemory.slice(0, 600)}\n\n` : ''}${socialReport ? `## Current social signals\n${socialReport.content.slice(0, 800)}\n\n` : ''}Pick the topic with the highest editorial potential this week — something trending in the social signals that BSV can say something authoritative about, or a gap in the head-to-toe argument that hasn't been named clearly.
+
+Return JSON only — no markdown fences:
+{
+  "topic_area": "Face|Fragrance|Foot|Body|Grooming|Recovery",
+  "title": "editorial article title — concept-first, argument leads. Not a product review title.",
+  "angle": "GQ or Gilt",
+  "slug": "kebab-case-slug"
+}`
+
+  let brief
+  try {
+    const msg = await client.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      messages:   [{ role: 'user', content: prompt }],
+    })
+    const raw      = msg.content[0].text.trim()
+    const stripped = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const start    = stripped.indexOf('{')
+    const end      = stripped.lastIndexOf('}')
+    if (start === -1 || end === -1) throw new Error('no JSON in response')
+    brief = JSON.parse(stripped.slice(start, end + 1))
+    if (!brief.title || !brief.slug) throw new Error('missing title or slug')
+  } catch (err) {
+    log(`WARNING: Sole Report brief generation failed — ${err.message}`)
+    return
+  }
+
+  try {
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+    state._sole_report_state = {
+      topic_area: brief.topic_area,
+      title:      brief.title,
+      angle:      brief.angle || 'GQ',
+      slug:       brief.slug,
+      week:       weekNum,
+      status:     'BRIEFED',
+      updated:    new Date().toISOString().slice(0, 10),
+    }
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
+    log(`Sole Report brief written: week ${weekNum} — "${brief.title}" [${brief.topic_area}]`)
+  } catch (err) {
+    log(`WARNING: could not write Sole Report state — ${err.message}`)
+  }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -69,6 +426,13 @@ function pickVoice(pool, lastVoice, indexKey, state) {
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
   log('━━━ media-director start ━━━')
+
+  log('Loading directive...')
+  const bsvDirective = loadDirective()
+  log(`Directive: ${bsvDirective ? bsvDirective.length + ' chars' : 'not found'}`)
+  log('Loading memory...')
+  const bsvMemory = await loadMemory()
+  log(`Memory: ${bsvMemory ? bsvMemory.length + ' chars' : 'not found'}`)
 
   // Determine target day — explicit --day flag or default to tomorrow
   let targetDay
@@ -87,45 +451,133 @@ function pickVoice(pool, lastVoice, indexKey, state) {
     log(`Defaulting to tomorrow: ${targetDay}`)
   }
 
-  const themes = THEME_CALENDAR[targetDay]
+  const themes   = THEME_CALENDAR[targetDay]
+  const personas = PERSONA_CALENDAR[targetDay]
 
-  // Load rotation state and assign voices
-  const state    = loadVoiceState()
-  const lastVoice = state.lastVoice || null
+  log('Loading daily directive...')
+  const dailyDirective = loadDailyDirective()
 
-  const amVoice = pickVoice(AM_VOICE_POOL, lastVoice, 'amIndex', state)
-  const pmVoice = pickVoice(PM_VOICE_POOL, amVoice,   'pmIndex', state)
+  log('Loading social intelligence report...')
+  const socialReport = loadLatestSocialReport()
+  log(`Social report: ${socialReport ? socialReport.filename : 'none — persona context will use defaults'}`)
 
-  state.lastVoice = pmVoice
-  saveVoiceState(state)
+  log('Loading chapter state...')
+  const chapterState = loadChapterState()
+  log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
 
-  log(`Themes  — AM: "${themes.am}"  PM: "${themes.pm}"`)
-  log(`Voices  — AM: ${amVoice}  PM: ${pmVoice}`)
-
-  // Call creative-agent for each slot with theme + assigned voice
-  const slotVoices = { am: amVoice, pm: pmVoice }
   for (const period of ['am', 'pm']) {
-    const slug       = `${targetDay}-${period}`
-    const theme      = themes[period]
-    const voiceName  = slotVoices[period]
-    const voiceDef   = VOICES[voiceName]
+    const slug     = `${targetDay}-${period}`
+    const theme    = themes[period]
+    const persona  = personas[period]
+    const voice    = PERSONA_VOICE_MAP[persona][period]
+    const lane     = PERSONA_LANE[persona]
+    const hashtags = PERSONA_HASHTAGS[persona]
+    const voiceDef = VOICES[voice]
 
-    // Serialize the full voice definition so creative-agent has it at execution time
-    const voiceJson = JSON.stringify(voiceDef)
+    const parsed = parseSocialReport(socialReport?.content, persona)
 
-    log(`Spawning creative-agent --slot ${slug} --theme "${theme}" --voice ${voiceName}...`)
+    // Lounge social cadence override — applies to wed-pm only when within cadence window
+    const loungeSlot = period === 'pm' ? getLoungeWedCadence(targetDay) : null
+    if (loungeSlot) {
+      log(`[${slug}] Lounge cadence: Week ${loungeSlot.week} — ${loungeSlot.ref} (${loungeSlot.format})`)
+    }
+
+    const personaContext = {
+      persona,
+      lane,
+      voice,
+      hashtags,
+      socialFormat:     loungeSlot ? loungeSlot.format : (SOCIAL_FORMAT_MAP[persona] ?? 'Tall Tale'),
+      verbatimPhrases:  parsed?.verbatimPhrases  ?? [],
+      storyAngle:       parsed?.storyAngle        ?? null,
+      hashtagSignal:    parsed?.hashtagSignal      ?? '',
+      directive:        dailyDirective?.content   ?? null,
+      chapterState,
+      ...(loungeSlot ? {
+        loungeOverride: {
+          chapter:     loungeSlot.chapter,
+          articleType: loungeSlot.articleType,
+          ref:         loungeSlot.ref,
+          angle:       loungeSlot.angle,
+          format:      loungeSlot.format,
+        },
+      } : {}),
+    }
+
+    const effectiveTheme = loungeSlot
+      ? `The Lounge — Chapter ${loungeSlot.chapter} campfire retelling`
+      : theme
+
+    log(`[${slug}] persona=${persona} voice=${voice} lane="${lane}" theme="${effectiveTheme}"`)
+    log(`[${slug}] chapter mandate: Chapter ${chapterState.active} — ${chapterState.name} | campfire: ${chapterState.campfireFormat}`)
+    if (parsed?.storyAngle?.hook) log(`  angle: "${parsed.storyAngle.hook}"`)
+    if (parsed?.verbatimPhrases?.length) log(`  verbatim phrases: ${parsed.verbatimPhrases.length}`)
+
+    // Cultural moment override — fires before creative-agent; skips chapter brief if true
+    const culturalCheck = await checkCulturalOverride(socialReport?.content || '', new Date())
+    if (culturalCheck.override) {
+      log(`[${slug}] CULTURAL OVERRIDE: ${culturalCheck.moment} (source: ${culturalCheck.source})`)
+
+      const captionText = `${culturalCheck.proprietor_take}\n\n${culturalCheck.hashtags}`
+      const localCaption = path.join(TEMP_DIR, `${slug}.md`)
+      fs.writeFileSync(localCaption, captionText)
+
+      try {
+        execSync(
+          `rclone copyto "${localCaption}" "${REMOTE}/Ready to Post/${slug}.md"`,
+          { stdio: ['pipe', 'pipe', 'pipe'] }
+        )
+        log(`[${slug}] Cultural caption → Drive/Ready to Post/${slug}.md`)
+      } catch (err) {
+        log(`ERROR: [${slug}] Drive upload failed — ${err.message}`)
+      }
+
+      // Log override to watch-drive-state.json
+      try {
+        const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
+        const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {}
+        if (!state._cultural_override) state._cultural_override = {}
+        state._cultural_override[slug] = {
+          moment:    culturalCheck.moment,
+          source:    culturalCheck.source,
+          timestamp: new Date().toISOString(),
+        }
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2))
+        log(`[${slug}] Cultural override logged to watch-drive-state.json`)
+      } catch (err) {
+        log(`WARNING: [${slug}] Could not log cultural override — ${err.message}`)
+      }
+
+      continue // skip creative-agent; chapter brief resumes next slot
+    }
+
     const result = spawnSync(
       process.execPath,
       [
         path.join(__dirname, 'creative-agent.js'),
-        '--slot',  slug,
-        '--theme', theme,
-        '--voice', voiceName,
-        '--voice-def', voiceJson,
+        '--slot',            slug,
+        '--theme',           effectiveTheme,
+        '--voice',           voice,
+        '--voice-def',       JSON.stringify(voiceDef),
+        '--persona-context', JSON.stringify(personaContext),
       ],
       { stdio: 'inherit', env: process.env }
     )
     if (result.status !== 0) log(`ERROR: creative-agent exited ${result.status} for ${slug}`)
+  }
+
+  // Persist chapter state — media-director owns this write
+  saveChapterState(chapterState)
+  log(`Chapter state saved: Chapter ${chapterState.active} — ${chapterState.name}`)
+
+  // Saturday: generate Sole Report brief for Sunday night's blog-agent --sole-report run
+  if (targetDay === 'sat') {
+    log('Saturday run — generating Sole Report brief...')
+    try {
+      await generateSoleReportBrief({ bsvDirective: dailyDirective?.content, socialReport, bsvMemory })
+    } catch (err) {
+      log(`WARNING: Sole Report brief Drive upload failed — ${err.message} — continuing to gemini-bridge`)
+    }
   }
 
   // Chain to gemini-bridge — reads briefs, uploads caption + prompt files to Drive
