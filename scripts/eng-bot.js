@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 const Anthropic    = require('@anthropic-ai/sdk').default
 const fs           = require('fs')

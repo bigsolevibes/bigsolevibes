@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 // chief-of-staff.js — BSV revenue-first daily brief. Runs at 8AM via launchd.
 // North star: Did BSV make money yesterday? If not, why not, what changes today?
 // Priority order: Revenue → Posts → Agent health → Growth → Drive doc

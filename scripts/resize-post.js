@@ -48,6 +48,7 @@ function copyToGDrive(localPath) {
 const platforms = [
   { name: 'instagram', width: 1080, height: 1080 },
   { name: 'youtube', width: 1600, height: 900, format: 'jpeg', quality: 95 },
+  { name: 'bluesky', width: 1600, height: 900, format: 'jpeg', quality: 90 },
   // facebook, twitter, tiktok omitted — paused or no API access
 ]
 
