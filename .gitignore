@@ -30,3 +30,8 @@ posts/briefs/*.txt
 
 # Pipeline logs (local only — never commit)
 logs/
+
+# Credential and token files — never commit
+config/youtube-credentials.json
+config/youtube-token.json
+gen-lang-client*.json
