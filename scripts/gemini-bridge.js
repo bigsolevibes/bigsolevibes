@@ -1,5 +1,5 @@
 require('dotenv').config()
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -201,6 +201,14 @@ TONE — every image feels lived-in, not staged. The man looks complete but slig
 
     log(`    ${slug} ✓`)
   }
+
+  log('Spawning image-gen...')
+  const igen = spawnSync(process.execPath, [path.join(__dirname, 'image-gen.js')], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    timeout: 300000
+  })
+  if (igen.status !== 0) log('WARNING: image-gen exited ' + igen.status)
 
   log('━━━ gemini-bridge complete ━━━\n')
 })()
