@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  ...(process.env.CF_PAGES === '1' ? { output: 'export' } : {}),
   staticPageGenerationTimeout: 120,
   images: {
     remotePatterns: [
