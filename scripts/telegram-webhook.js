@@ -197,7 +197,17 @@ async function processMessage(text) {
 
   if (upper === 'APPROVE' || upper === 'FIX') {
     if (!active) return 'Nothing pending right now.'
-    writeDecisionToDrive(active.driveFile, upper === 'FIX' ? 'FIX' : 'APPROVE', '')
+    // content-gate items have no driveFile — write directly to approved-slots.json
+    if (active.type === 'content-gate') {
+      const approvedPath = path.join(ROOT, 'logs', 'approved-slots.json')
+      let approved = {}
+      try { approved = JSON.parse(fs.readFileSync(approvedPath, 'utf8')) } catch {}
+      approved[active.metadata.slot] = true
+      fs.writeFileSync(approvedPath, JSON.stringify(approved, null, 2))
+      log('Content gate approved for slot: ' + active.metadata.slot)
+    } else {
+      writeDecisionToDrive(active.driveFile, upper === 'FIX' ? 'FIX' : 'APPROVE', '')
+    }
     const remaining = items.filter(i => i.id !== active.id)
     savePendingItems(remaining)
     return upper === 'FIX' ? '✅ Got it Big D. Logged.' : '✅ Got it Big D. Logged.'
