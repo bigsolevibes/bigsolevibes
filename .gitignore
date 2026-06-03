@@ -35,3 +35,12 @@ logs/
 config/youtube-credentials.json
 config/youtube-token.json
 gen-lang-client*.json
+
+# Dashboard — local only, never deploy to CF Pages
+app/api/auth/
+app/api/dashboard/
+app/dashboard/
+lib/auth.ts
+lib/dashboard/
+middleware.ts
+components/dashboard/
