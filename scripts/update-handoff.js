@@ -312,8 +312,16 @@ Use clear Markdown headers, code blocks for commands, and tables where appropria
 Update any dates, file lists, or status sections based on the current state provided.
 Do not invent or fabricate information not present in the context.`
 
-  const userPrompt = existingHandoff
-    ? `Here is the existing handoff document to update:\n\n${existingHandoff}\n\n---\n\nHere is the current project state as of ${now}. Update the handoff document to reflect this state accurately. Preserve any sections that are still current; update or replace sections that have changed.\n\n${projectContext}`
+  // Truncate existing handoff — full doc can be 60K+ chars, only last 20K needed for context
+  const HANDOFF_CHAR_LIMIT = 20000
+  const truncatedHandoff = existingHandoff && existingHandoff.length > HANDOFF_CHAR_LIMIT
+    ? '...[truncated]\n\n' + existingHandoff.slice(-HANDOFF_CHAR_LIMIT)
+    : existingHandoff
+  if (existingHandoff && existingHandoff.length > HANDOFF_CHAR_LIMIT)
+    log(`Existing handoff truncated: ${existingHandoff.length} chars → ${HANDOFF_CHAR_LIMIT}`)
+
+  const userPrompt = truncatedHandoff
+    ? `Here is the existing handoff document to update:\n\n${truncatedHandoff}\n\n---\n\nHere is the current project state as of ${now}. Update the handoff document to reflect this state accurately. Preserve any sections that are still current; update or replace sections that have changed.\n\n${projectContext}`
     : `Generate a comprehensive handoff document for the Big Sole Vibes content production system based on the current project state:\n\n${projectContext}`
 
   // Call Claude API with streaming
@@ -346,7 +354,12 @@ Do not invent or fabricate information not present in the context.`
     }
   } catch (err) {
     log(`ERROR: Claude API call failed: ${err.message}`)
-    process.exit(1)
+    if (fullText.trim().length > 500) {
+      log(`Partial output recovered (${fullText.length} chars) — continuing with truncated handoff`)
+    } else {
+      log('No usable output recovered — aborting')
+      process.exit(1)
+    }
   }
 
   if (!fullText.trim()) {
