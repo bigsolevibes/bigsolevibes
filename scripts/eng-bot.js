@@ -31,6 +31,17 @@ function loadDirective() {
   } catch { return null }
 }
 
+
+// ── Prompt cache helper ───────────────────────────────────────────────────────
+function buildCachedSystem(directive, memory, roleInstructions) {
+  const staticText = [directive || '', memory || ''].filter(Boolean).join('\n\n---\n\n')
+  if (!staticText) return roleInstructions
+  return [
+    { type: 'text', text: staticText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: roleInstructions },
+  ]
+}
+
 async function loadMemory() {
   const { loadMemoryById } = require('./lib/memory')
   return loadMemoryById()
@@ -821,14 +832,14 @@ ${failureText}`
 
   log(`Sending diagnosis request — ${dedupedFailures.length} failure(s), ${userContent.length} chars`)
 
-  const engBotSystem = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
+  const engBotRole = `You are the engineering bot for Big Sole Vibes (BSV) — a solo-operated social media automation system running on a Mac via launchd. The stack is: Node.js scripts, Cloudflare Pages (Next.js), Klaviyo, Meta Graph API, TikTok API, Bluesky ATP, YouTube Data API v3, and rclone for Google Drive. Scripts include: watch-drive.js, distribute.js, sync-shop.js, eng-bot.js, brand-video.js, brand-image.js, product-research.js, product-development.js, update-handoff.js, social-listening.js, marketing-manager.js, media-director.js, brand-manager.js, cost-report.js.
 
 Your job is to diagnose failures extracted from any of these pipeline logs and propose one specific, actionable fix per failure. Be direct and technical. The operator is a developer — no hand-holding. Never say a fix has been applied — all fixes go through Big D approval first. The eng report IS the fix queue.`
 
   const response = await client.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 2500,
-    system:     engBotSystem,
+    system:     buildCachedSystem(directive, memory, engBotRole),
     messages: [{ role: 'user', content: userContent }],
   })
 

@@ -32,6 +32,17 @@ function klaviyoHeaders(apiKey) {
   }
 }
 
+
+// ── Prompt cache helper ───────────────────────────────────────────────────────
+function buildCachedSystem(directive, memory, roleInstructions) {
+  const staticText = [directive || '', memory || ''].filter(Boolean).join('\n\n---\n\n')
+  if (!staticText) return roleInstructions
+  return [
+    { type: 'text', text: staticText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: roleInstructions },
+  ]
+}
+
 async function getListProfiles(apiKey, listId) {
   const profiles = []
   let url = `${KLAVIYO}/lists/${listId}/profiles/?fields[profile]=email,created`
@@ -343,7 +354,7 @@ function buildVoiceReferenceBlock() {
 
   const voiceRefBlock = buildVoiceReferenceBlock()
 
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
+  const bmRoleInstructions = `You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
 
 Your role is quality control. You review everything that has gone out under the BSV name and hold it to a single standard: does this make a serious man respect the brand, or does it make him scroll past?
 
@@ -436,7 +447,7 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
   const stream = await client.messages.stream({
     model:      'claude-sonnet-4-6',
     max_tokens: 6000,
-    system:     systemPrompt,
+    system:     buildCachedSystem(directive, memory, bmRoleInstructions),
     messages:   originalMessages,
   })
 
@@ -457,7 +468,7 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
     const continuation = await client.messages.create({
       model:      'claude-sonnet-4-6',
       max_tokens: 4096,
-      system:     systemPrompt,
+      system:     buildCachedSystem(directive, memory, bmRoleInstructions),
       messages: [
         ...originalMessages,
         { role: 'assistant', content: fullText },

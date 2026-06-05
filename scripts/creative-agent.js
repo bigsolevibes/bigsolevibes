@@ -32,6 +32,17 @@ function loadDirective() {
   } catch { return null }
 }
 
+
+// ── Prompt cache helper ───────────────────────────────────────────────────────
+function buildCachedSystem(directive, memory, roleInstructions) {
+  const staticText = [directive || '', memory || ''].filter(Boolean).join('\n\n---\n\n')
+  if (!staticText) return roleInstructions
+  return [
+    { type: 'text', text: staticText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: roleInstructions },
+  ]
+}
+
 async function loadMemory() {
   const { loadMemoryById } = require('./lib/memory')
   return loadMemoryById()
@@ -267,14 +278,15 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
   const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
-  const systemPrompt = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
+  const roleInstructions = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
 THIS OVERRIDES EVERYTHING BELOW. If any prior document describes a different default voice, ignore it for this post.
 
 ${voiceBlock}
 
 ---
 
-${chapterBlock ? `${chapterBlock}\n\n---\n\n` : ''}${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Creative Agent. One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
+${chapterBlock ? `${chapterBlock}\n\n---\n\n` : ''}You are the BSV Creative Agent.\`
+  const systemPrompt = buildCachedSystem(directive, memory, roleInstructions) One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
 ## Standing Rules (apply to every brief regardless of voice)
 
