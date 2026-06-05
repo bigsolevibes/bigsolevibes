@@ -28,44 +28,24 @@ function loadCostState() {
   try { return JSON.parse(fs.readFileSync(COST_STATE, 'utf8')) }
   catch { log('WARNING: cost-state.json not found'); return {} }
 }
-
 async function fetchCJRevenue() {
   const token = process.env.CJ_API_TOKEN
   const cid   = process.env.CJ_CID
-  if (!token || !cid) {
-    log('WARNING: CJ credentials not set')
-    return { amount: 0, note: 'CJ credentials not configured' }
-  }
+  if (!token || !cid) { log('WARNING: CJ credentials not set'); return { amount: 0, note: 'CJ credentials not configured' } }
   const now   = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
   const end   = now.toISOString().slice(0, 10)
-  const query = [
-    '{ publisherCommissions(',
-    'forPublisher:{cid:"' + cid + '"}',
-    'filters:{sinceDate:"' + start + '" beforeDate:"' + end + '" statuses:[APPROVED,CLOSED]})',
-    '{ count totalCommission { amount currency } } }',
-  ].join(' ')
+  const url   = 'https://commissions.api.cj.com/v3/commissions?date-type=posting&start-date=' + start + '&end-date=' + end + '&website-id=' + cid
   try {
-    const res  = await fetch('https://commissions.api.cj.com/query', {
-      method:  'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ query }),
-    })
-    const data = await res.json()
-    if (data.errors) {
-      const m = data.errors[0]?.message || 'unknown'
-      log('CJ error: ' + m)
-      return { amount: 0, note: 'CJ error: ' + m }
-    }
-    const c      = data?.data?.publisherCommissions
-    const amount = parseFloat(c?.totalCommission?.amount || 0)
-    const count  = c?.count || 0
+    const res   = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/xml' }, signal: AbortSignal.timeout(10000) })
+    const xml   = await res.text()
+    if (!res.ok) { log('CJ API ' + res.status); return { amount: 0, note: 'CJ API ' + res.status } }
+    const tm     = xml.match(/total-matched="(\d+)"/)
+    const count  = tm ? parseInt(tm[1]) : 0
+    const amount = [...xml.matchAll(/<commission-amount>([\d.]+)<\/commission-amount>/g)].reduce((s, m) => s + parseFloat(m[1]), 0)
     log('CJ revenue: ' + fmt(amount) + ' (' + count + ' commissions)')
-    return { amount, count, note: null }
-  } catch (err) {
-    log('CJ exception: ' + err.message)
-    return { amount: 0, note: 'CJ exception: ' + err.message }
-  }
+    return { amount, count, note: count === 0 ? 'CJ: no commissions this month' : null }
+  } catch (err) { log('CJ exception: ' + err.message); return { amount: 0, note: 'CJ exception: ' + err.message } }
 }
 
 function loadAmazonRevenue() {
