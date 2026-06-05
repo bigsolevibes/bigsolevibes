@@ -24,16 +24,6 @@ function log(msg) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
-function listDriveFiles(remotePath) {
-  try {
-    const out = execSync(`rclone ls "${remotePath}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
-    return out.trim().split('\n').filter(Boolean).map(line => {
-      const m = line.trim().match(/^\d+\s+(.+)$/)
-      return m ? m[1] : null
-    }).filter(Boolean)
-  } catch { return [] }
-}
-
 function downloadFile(remotePath, localDir) {
   execSync(`rclone copy "${remotePath}" "${localDir}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
 }
@@ -134,15 +124,19 @@ async function generateImage(apiKey, prompt) {
     const outFilename = `${slot}.png`
     const localPath   = path.join(TEMP_DIR, outFilename)
 
-    // Skip if the output image is already in Drive Ready to Post
-    const alreadyInDrive = listDriveFiles(
-      `${GDRIVE_REMOTE}:Big Sole Vibes/Ready to Post`
-    ).includes(outFilename)
-
-    if (alreadyInDrive) {
-      log(`  ${slot}: already in Ready to Post — skipping`)
-      skipped++
-      continue
+    // Skip only if a local image already exists AND is newer than the prompt file.
+    // This ensures regeneration when gemini-bridge writes a fresh prompt for the slot.
+    const localImagePath  = path.join(READY_DIR, outFilename)
+    const promptLocalPath = path.join(READY_DIR, promptFile)
+    if (fs.existsSync(localImagePath)) {
+      const imageMtime  = fs.statSync(localImagePath).mtimeMs
+      const promptMtime = fs.existsSync(promptLocalPath) ? fs.statSync(promptLocalPath).mtimeMs : 0
+      if (imageMtime >= promptMtime) {
+        log(`  ${slot}: image up to date (image newer than prompt) — skipping`)
+        skipped++
+        continue
+      }
+      log(`  ${slot}: prompt is newer than image — regenerating`)
     }
 
     log(`  ${slot}: generating image...`)
