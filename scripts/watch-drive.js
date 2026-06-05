@@ -706,6 +706,11 @@ function onDirChange() {
 // Fire once at startup to process anything already in TEMP_DIR
 triggerRun()
 
+// Heartbeat — fire every 15 minutes regardless of FSEvents.
+// Needed for held slots to advance (scheduling gate → approval gate)
+// when Drive is stable and no new files land to trigger FSEvents.
+setInterval(triggerRun, 15 * 60 * 1000)
+
 const watcher = fs.watch(TEMP_DIR, { persistent: true }, onDirChange)
 watcher.on('error', err => log(`fs.watch error: ${err.message}`))
 
