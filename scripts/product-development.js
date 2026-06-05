@@ -223,39 +223,47 @@ Top 3 actions for next week, specific and actionable.`
 
   // ── Extract milestone state for Chief of Staff ────────────────────────────────
 
-  log('Extracting milestone state...')
+  // ── Extract milestone state for Chief of Staff (local — no API call) ──────────
+
+  log('Extracting milestone state (local parse)...')
   const STATE_FILE = path.join(ROOT, 'logs', 'product-development-state.json')
   try {
-    const stateMsg = await client.messages.create({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      system:     'Extract structured state from this product development brief. Return ONLY valid JSON — no markdown, no explanation — with these exact fields: last_run (string YYYY-MM-DD), brief_file (string filename), milestone (string, 3–6 words, current milestone name), opportunity (string, one sentence, the single most actionable finding — or empty string if none), action_needed (boolean, true if the Proprietor needs to make a decision this week).',
-      messages:   [{ role: 'user', content: `Today: ${today}\nFile: ${outFile}\n\n${fullText.slice(0, 3000)}` }],
-    })
-    const raw = stateMsg.content[0]?.text?.trim() || ''
-    let stateObj
-    try {
-      stateObj = JSON.parse(raw)
-    } catch {
-      const m = raw.match(/\{[\s\S]*\}/)
-      stateObj = m ? JSON.parse(m[0]) : null
-    }
-    if (stateObj) {
-      fs.writeFileSync(STATE_FILE, JSON.stringify(stateObj, null, 2))
-      log(`State JSON written → ${STATE_FILE}`)
-      log(`  Milestone:     ${stateObj.milestone}`)
-      log(`  Opportunity:   ${stateObj.opportunity || '(none)'}`)
-      log(`  Action needed: ${stateObj.action_needed}`)
-    } else {
-      log('WARNING: could not parse state JSON — writing fallback')
-      fs.writeFileSync(STATE_FILE, JSON.stringify({
-        last_run: today, brief_file: outFile,
-        milestone: 'See brief', opportunity: '', action_needed: false,
-      }, null, 2))
-    }
+    // Derive milestone from which sections have substantive content
+    const hasManufacturers = /## Manufacturer Shortlist[\s\S]{100,}/.test(fullText)
+    const hasPackaging      = /## Packaging Specifications[\s\S]{100,}/.test(fullText)
+    const hasCostModel      = /## Cost Model[\s\S]{100,}/.test(fullText)
+    const hasRegulatory     = /## Regulatory Checklist[\s\S]{100,}/.test(fullText)
+
+    let milestone
+    if (!hasManufacturers)       milestone = 'Manufacturer research'
+    else if (!hasPackaging)      milestone = 'Packaging specifications'
+    else if (!hasRegulatory)     milestone = 'Regulatory checklist'
+    else if (!hasCostModel)      milestone = 'Cost model'
+    else                         milestone = 'Ready for calls'
+
+    // First bullet from Next Steps as the opportunity
+    const nextMatch = fullText.match(/## Next Steps[\s\S]*?\n[\s]*[-*]\s*(.+)/)
+    const opportunity = nextMatch ? nextMatch[1].trim().slice(0, 200) : ''
+
+    // action_needed if Next Steps mentions calls, decisions, or legal review
+    const actionKeywords = /phone call|decision|legal|approve|sign off|choose|select|order sample/i
+    const nextSection = fullText.match(/## Next Steps([\s\S]*?)(?=\n## |$)/)?.[1] || ''
+    const action_needed = actionKeywords.test(nextSection)
+
+    const stateObj = { last_run: today, brief_file: outFile, milestone, opportunity, action_needed }
+    fs.writeFileSync(STATE_FILE, JSON.stringify(stateObj, null, 2))
+    log(`State JSON written → ${STATE_FILE}`)
+    log(`  Milestone:     ${milestone}`)
+    log(`  Opportunity:   ${opportunity || '(none)'}`)
+    log(`  Action needed: ${action_needed}`)
   } catch (err) {
     log(`WARNING: state extraction failed: ${err.message}`)
+    fs.writeFileSync(STATE_FILE, JSON.stringify({
+      last_run: today, brief_file: outFile,
+      milestone: 'See brief', opportunity: '', action_needed: false,
+    }, null, 2))
   }
+
 
   log('━━━ product-development complete ━━━\n')
 })()
