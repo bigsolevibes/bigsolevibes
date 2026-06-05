@@ -476,6 +476,92 @@ function buildTokenBudget() {
   return { breakdown, estTotal, officialTotal, reported: officialTotal ?? estTotal, pct: ((officialTotal ?? estTotal) / DAILY_API_CEILING) * 100 }
 }
 
+// ─── Weekly agent efficiency audit (Sunday only) ──────────────────────────────
+// Reads logs to surface which agents ran, token usage, and whether model tier
+// matches task complexity. No API call — all local log parsing.
+
+function buildAgentEfficiencyAudit() {
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  const cutoff  = new Date(Date.now() - WEEK_MS)
+
+  // Known model assignments per agent (update when scripts change)
+  const MODEL_MAP = {
+    'creative-agent':     { model: 'sonnet-4-6',  type: 'creative',   note: 'Brand voice captions — Sonnet correct' },
+    'media-director':     { model: 'haiku-4-5',   type: 'brief',      note: 'Persona/brief assignment — Haiku correct' },
+    'blog-agent':         { model: 'sonnet-4-6',  type: 'creative',   note: 'Long-form articles — Sonnet correct' },
+    'brand-manager':      { model: 'sonnet-4-6',  type: 'qa',         note: 'Editorial QA — Sonnet correct; watch continuation calls' },
+    'strategist':         { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Weekly strategy — Sonnet correct; runs Sunday only' },
+    'chief-of-staff':     { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Daily standup — Sonnet correct' },
+    'eng-bot':            { model: 'haiku-4-5',   type: 'triage',     note: 'Error triage — Haiku correct' },
+    'social-listening':   { model: 'haiku-4-5',   type: 'synthesis',  note: 'Signal extraction — Haiku correct' },
+    'marketing-manager':  { model: 'haiku-4-5',   type: 'report',     note: 'Audience analysis — Haiku correct' },
+    'product-development':{ model: 'sonnet-4-6',  type: 'research',   note: 'Live web research — Sonnet correct; state now local' },
+    'product-research':   { model: 'sonnet-4-6',  type: 'research',   note: 'Live product discovery — Sonnet correct' },
+    'reddit-agent':       { model: 'haiku-4-5',   type: 'creative',   note: 'Reddit post copy — Haiku acceptable' },
+    'lounge-reconcile':   { model: 'sonnet-4-6',  type: 'editorial',  note: 'Article rewrite — Sonnet correct; runs on-demand' },
+    'update-handoff':     { model: 'none',         type: 'template',   note: 'Template render — no API call ✓' },
+  }
+
+  const results = []
+
+  for (const [agent, meta] of Object.entries(MODEL_MAP)) {
+    const logFile  = path.join(ROOT, 'logs', `${agent}.log`)
+    const logFile1 = path.join(ROOT, 'logs', `${agent}.log.1`)
+
+    let content = ''
+    try { content += fs.readFileSync(logFile, 'utf8') } catch {}
+    try { content += fs.readFileSync(logFile1, 'utf8') } catch {}
+
+    if (!content) continue
+
+    // Find runs in the last 7 days
+    const lines = content.split('\n').filter(l => {
+      const m = l.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/)
+      if (!m) return false
+      return new Date(m[1]) >= cutoff
+    })
+
+    if (!lines.length) continue
+
+    // Count runs (start markers)
+    const runs = lines.filter(l => l.includes('start ━━━') || l.includes('start ---')).length
+
+    // Sum tokens from "Done — N tokens" or "N tokens" patterns
+    let tokens = 0
+    for (const line of lines) {
+      const m = line.match(/(\d+)\s+(?:output\s+)?tokens/)
+      if (m) tokens += parseInt(m[1])
+    }
+
+    // Flag continuation calls (brand-manager overflow)
+    const continuations = lines.filter(l => l.includes('continuation') || l.includes('max_tokens')).length
+
+    results.push({ agent, runs, tokens, continuations, ...meta })
+  }
+
+  if (!results.length) return '(no agent activity in the last 7 days)'
+
+  const lines = [
+    '| Agent | Model | Runs | Tokens | Type | Notes |',
+    '|-------|-------|------|--------|------|-------|',
+  ]
+  for (const r of results.sort((a, b) => b.tokens - a.tokens)) {
+    const flag = r.continuations > 0 ? ` ⚠ ${r.continuations} continuation(s)` : ''
+    lines.push(`| ${r.agent} | ${r.model} | ${r.runs} | ${r.tokens || '—'} | ${r.type} | ${r.note}${flag} |`)
+  }
+
+  // Flags for chief to surface
+  const flags = []
+  for (const r of results) {
+    if (r.continuations > 0) flags.push(`${r.agent}: hit max_tokens ${r.continuations}x this week — prompt is too long, trim input context`)
+    if (r.model === 'sonnet-4-6' && r.type === 'report' && r.tokens < 500) flags.push(`${r.agent}: Sonnet generating <500 tokens — consider Haiku`)
+    if (r.model === 'sonnet-4-6' && r.type === 'triage') flags.push(`${r.agent}: triage task on Sonnet — should be Haiku`)
+  }
+
+  return lines.join('\n') + (flags.length ? '\n\n**Flags:**\n' + flags.map(f => `- ${f}`).join('\n') : '\n\n**No flags.**')
+}
+
+
 // ─── Two-way Telegram inbox ───────────────────────────────────────────────────
 // Fetches new messages from Big D's Telegram replies, logs them, and dispatches
 // keyword actions against the pending items queue.
@@ -761,6 +847,9 @@ async function watchBlogAgent() {
       : '  No Claude calls detected today.',
   ].join('\n')
 
+
+  // Weekly agent efficiency audit — Sunday only, no API call
+  const efficiencyAudit = DAY_OF_WEEK === 0 ? buildAgentEfficiencyAudit() : null
   const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
     + '\n\nYou are the BSV Chief of Staff. You know every agent in your org, their role, and their status. Revenue first. Direct. No padding. No filler sections.'
 
@@ -826,6 +915,7 @@ ${tokenSection}
 ## Cost State
 ${costState ? `Burn: $${costState.avg_daily_burn?.toFixed(4)}/day | Balance: ${costState.balance != null ? '$' + costState.balance.toFixed(2) : 'unknown'} | Runway: ${costState.runway_hours != null ? costState.runway_hours.toFixed(0) + 'h' : 'unknown'}` : '(not available)'}
 
+${efficiencyAudit ? "## Agent Efficiency (weekly)\n" + efficiencyAudit + "\n" : ""}
 ---
 
 Produce this exact format:
@@ -853,6 +943,8 @@ What runs when. Which slots generate for tomorrow. What to watch.
 ## Blockers
 Anything needing Big D. Specific. "Clear" if none.
 
+
+${efficiencyAudit ? "## Agent Efficiency\nReview the table. Call out any flags. If none: Agent pipeline efficient." : ""}
 ## Budget
 ${tokenSection}`
 
