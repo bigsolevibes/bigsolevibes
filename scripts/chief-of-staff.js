@@ -8,7 +8,7 @@ const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { sendTelegram, fetchUpdates, parseInboxKeyword } = require('./telegram')
+const { sendTelegram } = require('./telegram')
 const {
   addPendingItem,
   readDecisionFromDrive,
@@ -616,8 +616,6 @@ async function watchBlogAgent() {
   const client  = new Anthropic({ apiKey })
   const outFile = `standup-${DATE_STAMP}.md`
 
-  // Process Telegram replies first — Big D's phone is the approval interface
-  await processTelegramInbox()
   await processChiefInbox(client)  // Drive inbox fallback (legacy)
 
   // ── P1: Revenue ───────────────────────────────────────────────────────────
@@ -993,10 +991,6 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
   } catch (err) {
     log(`WARNING: Lounge approval failed — ${err.message}`)
   }
-
-  // ── Process Telegram inbox again after standup (catch replies that arrived during run) ──
-
-  await processTelegramInbox()
 
   // ── Blog-agent watchdog ────────────────────────────────────────────────────
 
