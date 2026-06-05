@@ -1,21 +1,18 @@
 require('dotenv').config()
-const Anthropic = require('@anthropic-ai/sdk').default
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT        = path.join(__dirname, '..')
-const LOG_FILE    = path.join(ROOT, 'logs', 'update-handoff.log')
-const TEMP_DIR    = path.join(os.homedir(), 'tmp', 'bsv-handoff')
+const ROOT           = path.join(__dirname, '..')
+const LOG_FILE       = path.join(ROOT, 'logs', 'update-handoff.log')
+const TEMP_DIR       = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'
-const REMOTE      = 'big sole vibes:Big Sole Vibes'
+const REMOTE         = 'big sole vibes:Big Sole Vibes'
 
-const today = new Date()
+const today     = new Date()
 const dateStamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
 const HANDOFF_FILE = `BSV-Handoff-${dateStamp}.md`
-
-// ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
@@ -42,8 +39,7 @@ async function loadMemory() {
 
 function getEnvKeyNames() {
   try {
-    const content = fs.readFileSync(path.join(ROOT, '.env'), 'utf8')
-    return content
+    return fs.readFileSync(path.join(ROOT, '.env'), 'utf8')
       .split('\n')
       .filter(l => l.trim() && !l.startsWith('#'))
       .map(l => l.split('=')[0].trim())
@@ -55,54 +51,42 @@ async function checkMetaTokenExpiry() {
   try {
     const envContent = fs.readFileSync(path.join(ROOT, '.env'), 'utf8')
     const get = key => { const m = envContent.match(new RegExp(`^${key}=(.+)$`, 'm')); return m ? m[1].trim() : null }
-    const token    = get('META_ACCESS_TOKEN')
-    const appId    = get('META_APP_ID')
+    const token     = get('META_ACCESS_TOKEN')
+    const appId     = get('META_APP_ID')
     const appSecret = get('META_APP_SECRET')
     if (!token || !appId || !appSecret) return null
-
-    const appToken = `${appId}|${appSecret}`
-    const res = await fetch(`https://graph.facebook.com/debug_token?input_token=${token}&access_token=${encodeURIComponent(appToken)}`)
+    const res  = await fetch(`https://graph.facebook.com/debug_token?input_token=${token}&access_token=${encodeURIComponent(appId + '|' + appSecret)}`)
     const data = await res.json()
     if (!res.ok || data.error) return null
-
     const expiresAt = data.data?.expires_at
     if (!expiresAt || expiresAt === 0) return { neverExpires: true }
-
-    const expiresMs = expiresAt * 1000
-    const daysLeft = Math.floor((expiresMs - Date.now()) / (1000 * 60 * 60 * 24))
-    return { daysLeft, expiresAt: new Date(expiresMs).toISOString() }
+    const daysLeft = Math.floor((expiresAt * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
+    return { daysLeft, expiresAt: new Date(expiresAt * 1000).toISOString() }
   } catch { return null }
 }
 
 function getRecentLogs(n = 30) {
   try {
     const content = fs.readFileSync(path.join(ROOT, 'logs', 'watch-drive.log'), 'utf8')
-    const lines = content.trim().split('\n')
-    // Cap each line to 200 chars to guard against log flooding artifacts
-    return lines.slice(-n).map(l => l.slice(0, 200)).join('\n')
+    return content.trim().split('\n').slice(-n).map(l => l.slice(0, 200)).join('\n')
   } catch { return '(no log file found)' }
 }
 
 function getPipelineState() {
   try {
-    const raw = fs.readFileSync(path.join(ROOT, 'logs', 'watch-drive-state.json'), 'utf8')
-    return JSON.parse(raw)
-  } catch { return { distributed: [] } }
+    return JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'watch-drive-state.json'), 'utf8'))
+  } catch { return {} }
+}
+
+function getCostState() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'cost-state.json'), 'utf8'))
+  } catch { return null }
 }
 
 function getOutputFiles() {
   try {
-    return fs.readdirSync(path.join(ROOT, 'posts', 'output'))
-      .filter(f => !f.startsWith('.'))
-      .sort()
-  } catch { return [] }
-}
-
-function getContentFiles() {
-  try {
-    const dir = path.join(ROOT, 'content')
-    if (!fs.existsSync(dir)) return []
-    return fs.readdirSync(dir).filter(f => !f.startsWith('.')).sort()
+    return fs.readdirSync(path.join(ROOT, 'posts', 'output')).filter(f => !f.startsWith('.')).sort()
   } catch { return [] }
 }
 
@@ -118,32 +102,29 @@ function getDriveStructure() {
   } catch { return '(rclone unavailable)' }
 }
 
-function getLatestBrandHealth() {
-  const REMOTE = 'big sole vibes:Big Sole Vibes'
+function getAvailableScripts() {
   try {
-    const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim().split('\n')
+    return fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort()
+  } catch { return [] }
+}
+
+function getLatestBrandHealth() {
+  try {
+    const files = execSync(`rclone ls "${REMOTE}/Reports"`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+      .trim().split('\n')
       .map(l => l.trim().split(/\s+/).slice(1).join(' '))
-      .filter(f => f.match(/^brand-health-\d{4}-\d{2}-\d{2}\.md$/))
+      .filter(f => /^brand-health-\d{4}-\d{2}-\d{2}\.md$/.test(f))
       .sort()
     if (!files.length) return null
     const latest = files[files.length - 1]
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
     const p = path.join(TEMP_DIR, latest)
     if (!fs.existsSync(p)) return null
-    // Extract only the ## Growth Metrics section (first ~25 lines)
     const content = fs.readFileSync(p, 'utf8')
-    const metricsStart = content.indexOf('## Growth Metrics')
-    if (metricsStart === -1) return { filename: latest, metrics: null }
-    const metricsEnd = content.indexOf('\n## ', metricsStart + 1)
-    const metrics = metricsEnd !== -1
-      ? content.slice(metricsStart, metricsEnd).trim()
-      : content.slice(metricsStart, metricsStart + 600).trim()
-    return { filename: latest, metrics }
+    const start = content.indexOf('## Growth Metrics')
+    if (start === -1) return { filename: latest, metrics: null }
+    const end = content.indexOf('\n## ', start + 1)
+    return { filename: latest, metrics: (end !== -1 ? content.slice(start, end) : content.slice(start, start + 600)).trim() }
   } catch { return null }
 }
 
@@ -151,8 +132,7 @@ function getHandoffFindings() {
   try {
     const p = path.join(ROOT, 'logs', 'handoff-findings.md')
     if (!fs.existsSync(p)) return null
-    const content = fs.readFileSync(p, 'utf8').trim()
-    return content || null
+    return fs.readFileSync(p, 'utf8').trim() || null
   } catch { return null }
 }
 
@@ -163,22 +143,161 @@ function clearHandoffFindings() {
   } catch {}
 }
 
-function getExistingHandoff() {
-  try {
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-    // Find the most recent dated handoff on Drive
-    const listing = execSync(`rclone ls "${REMOTE_HANDOFF}"`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
-    const files = listing.trim().split('\n')
-      .map(l => l.trim().split(/\s+/).slice(1).join(' '))
-      .filter(f => /^BSV-Handoff-\d{4}-\d{2}-\d{2}\.md$/.test(f))
-      .sort()
-    if (!files.length) return null
-    const latest = files[files.length - 1]
-    execSync(`rclone copy "${REMOTE_HANDOFF}/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
-    const localPath = path.join(TEMP_DIR, latest)
-    if (fs.existsSync(localPath)) return fs.readFileSync(localPath, 'utf8')
-  } catch {}
-  return null
+// ─── Pipeline state analysis (no LLM needed) ─────────────────────────────────
+
+function analysePipeline(state) {
+  const slots     = Object.entries(state)
+  const pending   = slots.filter(([, v]) => ['instagram','bluesky'].some(p => v[p]?.status === 'pending'))
+  const success   = slots.filter(([, v]) => ['instagram','bluesky'].every(p => v[p]?.status === 'success'))
+  const held      = slots.filter(([, v]) => v._hold_since)
+  const approval  = slots.filter(([, v]) => v._approval_requested)
+  const exhausted = slots.filter(([, v]) => ['instagram','bluesky'].some(p => v[p]?.status === 'exhausted'))
+
+  const statusLine = pending.length === 0
+    ? '✓ Queue clear — uo pending slots'
+    : `⚠ ${pending.length} slot(s) pending distribution`
+
+  return { pending, success, held, approval, exhausted, statusLine }
+}
+
+// ─── Template builder ─────────────────────────────────────────────────────────
+
+function buildHandoff({
+  now, dateStamp, envKeys, tokenExpiry, recentLogs, pipelineState, pipeline,
+  outputFiles, gitLog, driveStructure, scripts, brandHealth, handoffFindings,
+  costState, memory, directive,
+}) {
+  const tokenLine = tokenExpiry?.neverExpires
+    ? 'META_ACCESS_TOKEN: long-lived, no expiry ✓'
+    : tokenExpiry?.daysLeft !== undefined
+      ? `META_ACCESS_TOKEN: expires in ${tokenExpiry.daysLeft}d (${tokenExpiry.expiresAt})${tokenExpiry.daysLeft <= 7 ? ' ⚠ EXPIRING SOON' : ''}`
+      : 'META_ACCESS_TOKEN: expiry unknown'
+
+  const costLine = costState
+    ? `Balance: $${(costState.balance ?? 0).toFixed(2)} | Avg burn: $${(costState.avg_daily_burn ?? 0).toFixed(4)}/day | Runway: ${costState.runway_hours ? costState.runway_hours.toFixed(1) + 'h' : 'unknown'}`
+    : 'Cost state unavailable — run cost-report.js'
+
+  const approvedSlots = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'approved-slots.json'), 'utf8')) } catch { return {} }
+  })()
+
+  const slotRows = Object.entries(pipelineState).map(([slot, v]) => {
+    const ig  = v.instagram?.status ?? '—'
+    const bsky = v.bluesky?.status ?? '—'
+    const flags = [
+      v._hold_since       ? `hold:${v._hold_since}` : null,
+      v._approval_requested ? 'APPROVAL PENDING' : null,
+      approvedSlots[slot]   ? 'approved' : null,
+    ].filter(Boolean).join(' ')
+    return `| ${slot.padEnd(18)} | ${ig.padEnd(10)} | ${bsky.padEnd(10)} | ${flags} |`
+  }).join('\n')
+
+  const sections = [
+    `# BSV Handoff — ${dateStamp}`,
+    `_Generated: ${now} — template-rendered, no LLM_`,
+    ``,
+    `---`,
+    ``,
+    `## System Overview`,
+    ``,
+    `Big Sole Vibes (BSV) is a premium men's grooming brand. This pipeline automates social content creation, image generation, branding, and distribution to Instagram and Bluesky.`,
+    ``,
+    '**Pipeline chain:** social-listening → media-director → creative-agent → gemini-bridge → image-gen → watch-drive → distribute',
+    ``,
+    `**Scheduled via launchd** on MacBook Air (24GB M-series). All agents are Node.js scripts.`,
+    ``,
+    `---`,
+    ``,
+    `## Current Status`,
+    ``,
+    `**Date:** ${now}`,
+    `**Token:** ${tokenLine}`,
+    `**Cost:** ${costLine}`,
+    ``,
+    `**Pipeline:** ${pipeline.statusLine}`,
+    pipeline.approval.length ? `**⚠ Approval required:** ${pipeline.approval.map(([s]) => s).join(', ')}` : '',
+    pipeline.held.length     ? `**Held slots:** ${pipeline.held.map(([s, v]) => `${s} (since ${v._hold_since})`).join(', ')}` : '',
+    pipeline.exhausted.length ? `**Exhausted:** ${pipeline.exhausted.map(([s]) => s).join(', ')}` : '',
+    ``,
+    handoffFindings ? `### Pipeline Alerts\n\`\`\`\n${handoffFindings}\n\`\`\`` : '',
+    ``,
+    `---`,
+    ``,
+    `## Slot Queue`,
+    ``,
+    `| Slot               | Instagram  | Bluesky    | Notes |`,
+    `|--------------------|------------|------------|-------|`,
+    slotRows || '_(no slots in state)_',
+    ``,
+    `---`,
+    ``,
+    `## Recent Pipeline Activity`,
+    ``,
+    '```',
+    recentLogs,
+    '```',
+    ``,
+    `---`,
+    ``,
+    `## Environment`,
+    ``,
+    `**Configured keys (values never logged):**`,
+    envKeys.map(k => `- ${k}`).join('\n'),
+    ``,
+    `---`,
+    ``,
+    `## Git Log`,
+    ``,
+    '```',
+    gitLog,
+    '```',
+    ``,
+    `---`,
+    ``,
+    `## posts/output/ Contents`,
+    ``,
+    outputFiles.length ? outputFiles.map(f => `- ${f}`).join('\n') : '_(empty)_',
+    ``,
+    `---`,
+    ``,
+    `## Google Drive Structure`,
+    ``,
+    '```',
+    driveStructure,
+    '```',
+    ``,
+    `---`,
+    ``,
+    `## Available Scripts`,
+    ``,
+    scripts.map(s => `- scripts/${s}`).join('\n'),
+    ``,
+    `---`,
+    ``,
+    `## Audience`,
+    ``,
+    brandHealth?.metrics ?? '_(no brand-health report found)_',
+    ``,
+    `---`,
+    ``,
+    `## Phase 2 — Product Strategy`,
+    ``,
+    `- **First product:** Proprietor\\u2019s Foot Balm — private label, custom formulation`,
+    `- **Packaging:** Midnight #0D1B2A + Bourbon #C17D2E colorway`,
+    `- **Tagline:** "Nothing goes on this shelf that hasn't earned its place. This earned it."`,
+    `- **Price target:** $35–50 retail`,
+    `- **Launch condition:** 10K+ engaged followers AND affiliate revenue flowing`,
+    `- **Revenue path:** Amazon Associates → CJ/Impact affiliate → private label → full BSV line`,
+    `- **Drive folder:** Big Sole Vibes/Product Development/`,
+    ``,
+    `---`,
+    ``,
+    `## Strategic Memory`,
+    ``,
+    memory ? memory.slice(0, 8000) + (memory.length > 8000 ? '\n\n_[truncated]_' : '') : '_(BSV-Memory.md not found)_',
+  ].filter(s => s !== null && s !== undefined)
+
+  return sections.join('\n')
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -192,238 +311,106 @@ function getExistingHandoff() {
   log('Loading directive...')
   const directive = loadDirective()
   log(`Directive: ${directive ? directive.length + ' chars' : 'not found'}`)
+
   log('Loading memory...')
   const memory = await loadMemory()
   log(`Memory: ${memory ? memory.length + ' chars' : 'not found'}`)
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    log('ERROR: ANTHROPIC_API_KEY not set in .env')
-    process.exit(1)
-  }
-
-  // Collect state
   log('Collecting project state...')
-  const envKeys         = getEnvKeyNames()
-  const recentLogs      = getRecentLogs(30)
-  const pipelineState   = getPipelineState()
-  const outputFiles     = getOutputFiles()
-  const contentFiles    = getContentFiles()
-  const gitLog          = getGitLog()
-  const driveStructure  = getDriveStructure()
-  const existingHandoff = getExistingHandoff()
-  const tokenExpiry     = await checkMetaTokenExpiry()
-  const brandHealth     = getLatestBrandHealth()
+  const envKeys        = getEnvKeyNames()
+  const recentLogs     = getRecentLogs(30)
+  const pipelineState  = getPipelineState()
+  const outputFiles    = getOutputFiles()
+  const gitLog         = getGitLog()
+  const driveStructure = getDriveStructure()
+  const scripts        = getAvailableScripts()
+  const tokenExpiry    = await checkMetaTokenExpiry()
+  const brandHealth    = getLatestBrandHealth()
   const handoffFindings = getHandoffFindings()
-  const now = new Date().toISOString()
+  const costState      = getCostState()
+  const now            = new Date().toISOString()
 
-  log(`Env keys: ${envKeys.join(', ')}`)
+  log(`Env keys: ${envKeys.length}`)
   log(`Output files: ${outputFiles.length}`)
-  log(`Distributed posts: ${pipelineState.distributed?.length ?? 0}`)
-  log(`Brand health: ${brandHealth ? brandHealth.filename : 'none'}`)
+  log(`Scripts: ${scripts.length}`)
+  log(`Brand health: ${brandHealth?.filename ?? 'none'}`)
+  log(`Cost state: ${costState ? 'loaded' : 'unavailable'}`)
+
   if (tokenExpiry?.daysLeft !== undefined) {
-    const msg = tokenExpiry.daysLeft <= 7
+    log(tokenExpiry.daysLeft <= 7
       ? `⚠ META_ACCESS_TOKEN expires in ${tokenExpiry.daysLeft} day(s) — regenerate now`
-      : `META_ACCESS_TOKEN expires in ${tokenExpiry.daysLeft} day(s) (${tokenExpiry.expiresAt})`
-    log(msg)
+      : `META_ACCESS_TOKEN expires in ${tokenExpiry.daysLeft} day(s)`)
   }
 
-  // Build context for Claude
-  const tokenExpiryLine = tokenExpiry?.neverExpires
-    ? 'META_ACCESS_TOKEN: does not expire (long-lived token with no expiry)'
-    : tokenExpiry?.daysLeft !== undefined
-      ? `META_ACCESS_TOKEN: expires in ${tokenExpiry.daysLeft} day(s) on ${tokenExpiry.expiresAt}${tokenExpiry.daysLeft <= 7 ? ' ⚠ EXPIRING SOON — regenerate immediately' : ''}`
-      : 'META_ACCESS_TOKEN: expiry unknown (could not reach debug_token API)'
+  const pipeline = analysePipeline(pipelineState)
+  log(`Pipeline: ${pipeline.statusLine}`)
+  if (pipeline.approval.length) log(`Approval pending: ${pipeline.approval.map(([s]) => s).join(', ')}`)
+  if (pipeline.held.length)     log(`Held: ${pipeline.held.map(([s]) => s).join(', ')}`)
 
-  const projectContext = `
-## Current Date/Time
-${now}
-
-## Meta Access Token Status
-${tokenExpiryLine}
-
-## Configured Environment Variables (key names only)
-${envKeys.join('\n')}
-
-## Recent Pipeline Activity (last 30 log lines)
-\`\`\`
-${recentLogs}
-\`\`\`
-
-## Pipeline State (watch-drive-state.json)
-\`\`\`json
-${JSON.stringify(pipelineState, null, 2)}
-\`\`\`
-
-## posts/output/ contents
-${outputFiles.map(f => `- ${f}`).join('\n') || '(empty)'}
-
-## content/ files
-${contentFiles.map(f => `- ${f}`).join('\n') || '(empty)'}
-
-## Google Drive folder structure
-\`\`\`
-${driveStructure}
-\`\`\`
-
-## Git log (last 10 commits)
-\`\`\`
-${gitLog}
-\`\`\`
-
-## Available scripts
-${fs.readdirSync(path.join(ROOT, 'scripts')).filter(f => f.endsWith('.js')).sort().map(s => `- scripts/${s}`).join('\n')}
-
-${brandHealth?.metrics ? `## Audience — Current Follower Counts (from ${brandHealth.filename})\n${brandHealth.metrics}\n` : ''}
-${handoffFindings ? `## Pipeline Alerts (from logs/handoff-findings.md)\n${handoffFindings}\n` : ''}
-## Phase 2 — BSV Own Product Line (fixed strategy, always include)
-- **First product:** Proprietor's Foot Balm — private label, custom formulation
-- **Packaging:** Midnight #0D1B2A and Bourbon #C17D2E colorway
-- **Positioning:** "Nothing goes on this shelf that hasn't earned its place. This earned it."
-- **Revenue path:** Amazon Associates → Impact.com/Manscaped affiliate deals → private label balm → full BSV product line
-- **Launch condition:** When audience is proven and affiliate revenue is flowing
-- **Research needed:** Private label foot cream manufacturers, MOQ, packaging costs
-- **Drive folder:** Big Sole Vibes/Product Development/ — manufacturer research, formulation notes, packaging concepts
-`.trim()
-
-  const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are maintaining a living handoff document for the Big Sole Vibes (BSV) content production system.
-BSV is a premium men's foot care brand. The system automates social content creation, branding, and distribution.
-
-Your job is to produce a complete, current, developer-ready handoff document in Markdown.
-The document should allow any developer or collaborator to immediately understand:
-- What the system does and how it works end-to-end
-- Current status of the pipeline (what's been posted, what's in progress)
-- What credentials are configured (by name only, never values)
-- How to use each script
-- The Google Drive folder structure and its purpose
-- Any known issues or next steps worth flagging
-
-The document MUST always include a "Phase 2 — Product Strategy" section covering:
-- Proprietor's Foot Balm (private label, custom formulation)
-- Midnight/Bourbon packaging colorway (#0D1B2A / #C17D2E)
-- Revenue path: Amazon Associates → Manscaped affiliate → private label → full product line
-- Launch condition: audience proven, affiliate revenue flowing
-- Research backlog: private label manufacturers, MOQ, packaging costs
-- Drive folder: Big Sole Vibes/Product Development/
-Keep this section stable and authoritative across every nightly rewrite — update only if new product information appears in the project context.
-
-Write the document as a professional, dense technical reference — not a tutorial.
-Use clear Markdown headers, code blocks for commands, and tables where appropriate.
-Update any dates, file lists, or status sections based on the current state provided.
-Do not invent or fabricate information not present in the context.`
-
-  // Truncate existing handoff — full doc can be 60K+ chars, only last 20K needed for context
-  const HANDOFF_CHAR_LIMIT = 20000
-  const truncatedHandoff = existingHandoff && existingHandoff.length > HANDOFF_CHAR_LIMIT
-    ? '...[truncated]\n\n' + existingHandoff.slice(-HANDOFF_CHAR_LIMIT)
-    : existingHandoff
-  if (existingHandoff && existingHandoff.length > HANDOFF_CHAR_LIMIT)
-    log(`Existing handoff truncated: ${existingHandoff.length} chars → ${HANDOFF_CHAR_LIMIT}`)
-
-  const userPrompt = truncatedHandoff
-    ? `Here is the existing handoff document to update:\n\n${truncatedHandoff}\n\n---\n\nHere is the current project state as of ${now}. Update the handoff document to reflect this state accurately. Preserve any sections that are still current; update or replace sections that have changed.\n\n${projectContext}`
-    : `Generate a comprehensive handoff document for the Big Sole Vibes content production system based on the current project state:\n\n${projectContext}`
-
-  // Call Claude API with streaming
-  log('Calling Claude API...')
-  const client = new Anthropic({ apiKey })
-
-  let fullText = ''
-
-  try {
-    const stream = await client.messages.stream({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 16384,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    })
-
-    process.stdout.write('Generating')
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        fullText += event.delta.text
-        process.stdout.write('.')
-      }
-    }
-    process.stdout.write('\n')
-
-    const finalMsg = await stream.finalMessage()
-    log(`Done — ${finalMsg.usage?.output_tokens ?? '?'} output tokens, stop_reason: ${finalMsg.stop_reason}`)
-    if (finalMsg.stop_reason === 'max_tokens') {
-      log('WARNING: response was truncated at max_tokens — using partial output')
-    }
-  } catch (err) {
-    log(`ERROR: Claude API call failed: ${err.message}`)
-    if (fullText.trim().length > 500) {
-      log(`Partial output recovered (${fullText.length} chars) — continuing with truncated handoff`)
-    } else {
-      log('No usable output recovered — aborting')
-      process.exit(1)
-    }
-  }
-
-  if (!fullText.trim()) {
-    log('ERROR: Claude returned empty response')
-    process.exit(1)
-  }
+  log('Building handoff document...')
+  const fullText = buildHandoff({
+    now, dateStamp, envKeys, tokenExpiry, recentLogs, pipelineState, pipeline,
+    outputFiles, gitLog, driveStructure, scripts, brandHealth, handoffFindings,
+    costState, memory, directive,
+  })
+  log(`Document built: ${fullText.length} chars`)
 
   // Save locally
   const localOutput = path.join(TEMP_DIR, HANDOFF_FILE)
   fs.writeFileSync(localOutput, fullText)
-  log(`Saved locally: ${localOutput} (${fullText.length} chars)`)
+  log(`Saved locally: ${localOutput}`)
 
-  // Upload to Google Drive (overwrites previous version)
+  // Upload dated handoff
   try {
     execSync(`rclone copyto "${localOutput}" "${REMOTE_HANDOFF}/${HANDOFF_FILE}"`, { stdio: ['pipe','pipe','pipe'] })
     log(`Uploaded → ${REMOTE_HANDOFF}/${HANDOFF_FILE}`)
     if (handoffFindings) {
       clearHandoffFindings()
-      log('Cleared logs/handoff-findings.md after successful upload')
+      log('Cleared logs/handoff-findings.md')
     }
   } catch (err) {
-    log(`ERROR: rclone upload failed: ${err.stderr?.toString().trim() || err.message}`)
+    log(`ERROR: handoff upload failed — ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)
   }
 
-  // Write BSV-Session-Context.md — fixed filename, nightly overwrite
+  // Build and upload BSV-Session-Context.md
   log('Building BSV-Session-Context.md...')
   try {
     const latestStandup = (() => {
       try {
-        const standupFiles = fs.readdirSync(path.join(ROOT, 'logs'))
-          .filter(f => /^standup-\d{4}-\d{2}-\d{2}\.txt$/.test(f))
-          .sort()
-        if (!standupFiles.length) return null
-        return fs.readFileSync(path.join(ROOT, 'logs', standupFiles[standupFiles.length - 1]), 'utf8')
+        const files = fs.readdirSync(path.join(ROOT, 'logs'))
+          .filter(f => /^standup-\d{4}-\d{2}-\d{2}\.txt$/.test(f)).sort()
+        if (!files.length) return null
+        return fs.readFileSync(path.join(ROOT, 'logs', files[files.length - 1]), 'utf8')
       } catch { return null }
     })()
 
     const sessionContext = [
-      '# BSV Session Context',
+      `# BSV Session Context`,
       `**Generated:** ${now}`,
-      '**Next update:** Tonight 4AM',
-      '',
-      '---',
-      '## Brand Directive',
+      `**Next update:** Tonight 4AM`,
+      ``,
+      `---`,
+      `## Brand Directive`,
       directive || '_(BSV-Directive.md not found on Drive)_',
-      '',
-      '---',
-      '## Strategic Memory',
+      ``,
+      `---`,
+      `## Strategic Memory`,
       memory || '_(BSV-Memory.md not found)_',
-      '',
-      '---',
-      '## Morning Standup',
+      ``,
+      `---`,
+      `## Morning Standup`,
       latestStandup || '_(no standup found in logs/)_',
-      '',
-      '---',
-      '## Pipeline State',
+      ``,
+      `---`,
+      `## Pipeline State`,
       fullText,
     ].join('\n')
 
-    const sessionContextPath = path.join(TEMP_DIR, 'BSV-Session-Context.md')
-    fs.writeFileSync(sessionContextPath, sessionContext)
-    execSync(`rclone copyto "${sessionContextPath}" "${REMOTE_HANDOFF}/BSV-Session-Context.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    log(`Uploaded → ${REMOTE_HANDOFF}/BSV-Session-Context.md`)
+    const sessionPath = path.join(TEMP_DIR, 'BSV-Session-Context.md')
+    fs.writeFileSync(sessionPath, sessionContext)
+    execSync(`rclone copyto "${sessionPath}" "${REMOTE_HANDOFF}/BSV-Session-Context.md"`, { stdio: ['pipe','pipe','pipe'] })
+    log('Uploaded → BSV-Session-Context.md')
   } catch (err) {
     log(`WARNING: BSV-Session-Context.md upload failed — ${err.message}`)
   }
