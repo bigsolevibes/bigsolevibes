@@ -4,6 +4,7 @@ import Link from 'next/link'
 import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import EmailCapture from '@/components/EmailCapture'
+import OpeningCrawl from '@/app/components/OpeningCrawl'
 import { getAllPosts } from '@/lib/mdx'
 
 type FeaturedProduct = {
@@ -35,8 +36,11 @@ export default function HomePage() {
       <SiteNav />
       <main className="bg-bsv-bg">
 
+        {/* ── OPENING CRAWL ─────────────────────────────────────────────── */}
+        <OpeningCrawl />
+
         {/* ── HERO ──────────────────────────────────────────────────────── */}
-        <section className="relative bg-bsv-bg py-28 sm:py-36 border-b border-white/10 overflow-hidden">
+        <section id="hero" className="relative bg-bsv-bg py-28 sm:py-36 border-b border-white/10 overflow-hidden">
 
           {/* Ambient grain texture */}
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -58,7 +62,7 @@ export default function HomePage() {
               He has, by every available metric, figured it out.
             </p>
 
-            <p className="font-display text-xl sm:text-2xl text-bsv-cream leading-relaxed mb-20">
+            <p className="font-display text-2xl sm:text-3xl text-bsv-cream leading-relaxed font-semibold mb-20">
               His feet filed a formal complaint in 2019. It is still under review.
             </p>
 
@@ -92,15 +96,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── THE LOUNGE ────────────────────────────────────────────────── */}
+        {/* ── THE SOLE REPORT ───────────────────────────────────────────── */}
         <section className="py-24 border-t border-white/10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-baseline justify-between mb-4">
               <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
-                THE LOUNGE
+                THE SOLE REPORT
               </h2>
               <Link
-                href="/the-lounge"
+                href="/sole-report"
                 className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
               >
                 VIEW ALL →
@@ -113,7 +117,7 @@ export default function HomePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
               {posts.map((post, i) => {
-                const spanClass  = posts.length === 2 && i === 0 ? 'md:col-span-2' : ''
+                const spanClass   = posts.length === 2 && i === 0 ? 'md:col-span-2' : ''
                 const borderClass = i < posts.length - 1
                   ? 'border-b md:border-b-0 md:border-r border-white/10'
                   : ''
@@ -141,7 +145,7 @@ export default function HomePage() {
 
             <div className="mt-8 sm:hidden">
               <Link
-                href="/the-lounge"
+                href="/sole-report"
                 className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
               >
                 VIEW ALL →
