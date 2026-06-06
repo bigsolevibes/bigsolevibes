@@ -37,12 +37,11 @@ export default function EmailCapture() {
   return (
     <section id="email-capture" className="py-24 bg-bsv-bg border-t border-white/10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <p className="font-heading text-xs tracking-widest text-bsv-amber mb-4">THE LOUNGE</p>
-        <h2 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide mb-4">
-          GET ON THE LIST
+        <h2 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide mb-6">
+          THE BIG SOLE BRIEFING
         </h2>
         <p className="text-bsv-muted text-base mb-10 max-w-md mx-auto">
-          Intelligence from the shelf. Product drops, grooming notes, and the standard delivered to your inbox. No spam. Unsubscribe anytime.
+          The Proprietor sends a dispatch when something earns it. Product finds. Notes from the shelf. Occasional reminders that you are, technically, one continuous person from head to toe. Join the rational resistance.
         </p>
 
         {status === 'success' ? (
@@ -70,7 +69,7 @@ export default function EmailCapture() {
               disabled={status === 'loading'}
               className="bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest px-10 py-4 transition-opacity hover:opacity-90 whitespace-nowrap disabled:opacity-50"
             >
-              {status === 'loading' ? 'JOINING…' : 'JOIN'}
+              {status === 'loading' ? 'JOINING…' : 'RECTIFY THE ERROR'}
             </button>
           </form>
         )}

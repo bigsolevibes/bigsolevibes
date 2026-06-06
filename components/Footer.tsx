@@ -66,7 +66,7 @@ export default function Footer() {
             <Link href="/" className="font-heading text-3xl text-bsv-amber tracking-wider">
               BIG SOLE VIBES
             </Link>
-            <p className="text-bsv-muted text-sm mt-2">We found what you were looking for.</p>
+            <p className="text-bsv-muted text-sm mt-2">Head to toe considered. The feet were last. They&apos;re used to it.</p>
           </div>
 
           {/* Nav */}
