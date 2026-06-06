@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react'
 
-// Unsplash royalty-free images: prehistoric cave / Roman / Victorian / 1950s / modern
+// Generated via scripts/gen-crawl-images.js (Imagen 4) — style progresses with the eras:
+// cave/roman = Monty Python flat-cutout collage animation, victorian = hand-tinted engraving
+// blending toward photographic, midcentury = mostly photographic w/ vintage grade,
+// modern = fully photorealistic cinematic (matches BSV visual standard)
 const BG_IMAGES = [
-  'https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=1920&q=80',
-  'https://images.unsplash.com/photo-1552914461-04b0c7b5e7b6?auto=format&fit=crop&w=1920&q=80',
-  'https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&w=1920&q=80',
-  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=1920&q=80',
-  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=1920&q=80',
+  '/crawl/cave.jpg',
+  '/crawl/roman.jpg',
+  '/crawl/victorian.jpg',
+  '/crawl/midcentury.jpg',
+  '/crawl/modern.jpg',
 ]
 
 const CRAWL_PARAGRAPHS = [
