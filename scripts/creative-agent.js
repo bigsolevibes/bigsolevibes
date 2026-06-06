@@ -148,6 +148,32 @@ function buildVoiceBlock(voiceDef) {
   return lines.join('\n')
 }
 
+// ─── Product block builder ────────────────────────────────────────────────────
+
+function buildProductBlock(product) {
+  if (!product) return ''
+  const shelfUrl = 'https://bigsolevibes.com/shop/'
+  const lines = [
+    '## Featured Product — Wire Into This Brief',
+    '',
+    `**Product Name:** ${product['Product Name']}`,
+  ]
+  if (product['Price'])    lines.push(`**Price:** ${product['Price']}`)
+  if (product['Category']) lines.push(`**Category:** ${product['Category']}`)
+  if (product['Narrative']) {
+    lines.push('')
+    lines.push('**Narrative (Proprietor voice — pull the scene from this):**')
+    lines.push(product['Narrative'])
+  }
+  lines.push('')
+  lines.push(`**Affiliate Link:** ${product['Affiliate Link']}`)
+  lines.push(`**Shelf URL:** ${shelfUrl}`)
+  lines.push('')
+  lines.push('IMAGE: The product appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench. Not the hero of the shot.')
+  lines.push('CAPTION: Tell this product\'s story. The man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to the shelf URL above — not "link in bio".')
+  return lines.join('\n')
+}
+
 // ─── Four confirmed visual scenes ─────────────────────────────────────────────
 
 const SCENE_BLOCK = `FOUR CANONICAL SCENES — pick ONE and write the full scene description in IMAGE BRIEF. Do not name all four. Do not list options. Choose the one that fits this slot's theme and persona, then write it in full as a single cinematic shot.
@@ -174,6 +200,7 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
   const voiceArg       = process.argv.indexOf('--voice')
   const voiceDefArg    = process.argv.indexOf('--voice-def')
   const personaCtxArg  = process.argv.indexOf('--persona-context')
+  const productArg     = process.argv.indexOf('--product')
 
   const slot      = slotArg  !== -1 ? process.argv[slotArg  + 1] : null
   const theme     = themeArg !== -1 ? process.argv[themeArg + 1] : null
@@ -181,6 +208,10 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
 
   const personaContext = personaCtxArg !== -1
     ? (() => { try { return JSON.parse(process.argv[personaCtxArg + 1]) } catch { return null } })()
+    : null
+
+  const product = productArg !== -1
+    ? (() => { try { return JSON.parse(process.argv[productArg + 1]) } catch { return null } })()
     : null
 
   if (!slot || !theme) {
@@ -275,23 +306,29 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
 
   const voiceBlock   = buildVoiceBlock(voiceDef)
   const personaBlock = buildPersonaBlock(personaContext)
+  const productBlock = buildProductBlock(product)
+  if (product) log(`Product context: "${product['Product Name']}"`)
+
 
   // Caption hashtag guidance — use persona-matched tags when available
   const personaHashtags = personaContext?.hashtags?.length
     ? personaContext.hashtags.slice(0, 3).join(' ') + ' #BigSoleVibes'
     : '#BigSoleVibes'
-  const igGuidance   = `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
+  const igGuidance = product
+    ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to https://bigsolevibes.com/shop/ — not "link in bio". Hashtags: ${personaHashtags}`
+    : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
   const roleInstructions = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
 THIS OVERRIDES EVERYTHING BELOW. If any prior document describes a different default voice, ignore it for this post.
 
 ${voiceBlock}
+${productBlock ? `\n---\n\n${productBlock}` : ''}
 
 ---
 
 ${chapterBlock ? `${chapterBlock}\n\n---\n\n` : ''}You are the BSV Creative Agent.\`
-  const systemPrompt = buildCachedSystem(directive, memory, roleInstructions) One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
+One job: write the brief. Everything you produce must align with the Proprietor's Directive above.
 
 ## Standing Rules (apply to every brief regardless of voice)
 
@@ -321,7 +358,7 @@ VOICE_USED: ${voiceDef.name}
 POST_TIME: [post time]
 VOICE_GUIDANCE: ${voiceDef.name} — ${voiceDef.description} Hard guardrails active.
 ---
-IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. No product placement. Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. The product or category appears as a prop in the scene, not the hero of the shot. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.]
+IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench — not the hero of the shot.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.]
 VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood as image. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 ON-IMAGE COPY:
   Line 1 (Cream, Playfair Display): [short declarative statement — 4–8 words, no punctuation]
@@ -331,6 +368,8 @@ BLUESKY: [${bskyGuidance}]
 YOUTUBE: [Community post. 3–4 sentences. Slightly warmer, direct address. Ends with a reason to follow — not a generic CTA.]
 TIKTOK: [Hook line for typewriter effect on screen. Then 1–2 line caption. Max 2 hashtags. Hook creates a 3-second stop — names something specific, not a question.]
 ---`
+
+  const systemPrompt = buildCachedSystem(directive, memory, roleInstructions)
 
   const narrativeBlock = approvedNarrative
     ? `## Approved Shelf Narrative — use as brief source

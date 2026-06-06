@@ -12,6 +12,7 @@ const REMOTE                 = 'big sole vibes:Big Sole Vibes'
 const CULTURAL_CALENDAR_FILE = path.join(ROOT, 'scripts', 'data', 'cultural-calendar.json')
 
 const { VOICES } = require('../config/bsv-voices')
+const { connect: sheetConnect, readAllRows } = require('./sheets-client')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -348,6 +349,24 @@ function getISOWeek(date) {
   return 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + (jan4.getDay() + 6) % 7) / 7)
 }
 
+// ─── Product shelf assignment ─────────────────────────────────────────────────
+
+const SLOT_WEEK_INDEX = {
+  'mon-am':  0, 'mon-pm':  1,
+  'tue-am':  2, 'tue-pm':  3,
+  'wed-am':  4, 'wed-pm':  5,
+  'thu-am':  6, 'thu-pm':  7,
+  'fri-am':  8, 'fri-pm':  9,
+  'sat-am': 10, 'sat-pm': 11,
+  'sun-am': 12, 'sun-pm': 13,
+}
+
+function assignProductToSlot(products, slot, weekNumber) {
+  if (!products.length) return null
+  const slotIndex = SLOT_WEEK_INDEX[slot] ?? 0
+  return products[(weekNumber * 14 + slotIndex) % products.length]
+}
+
 async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory }) {
   const weekNum   = getISOWeek(new Date())
   const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
@@ -465,6 +484,19 @@ Return JSON only — no markdown fences:
   const chapterState = loadChapterState()
   log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
 
+  const weekNumber = getISOWeek(new Date())
+
+  log('Loading approved products from sheet...')
+  let approvedProducts = []
+  try {
+    const conn = await sheetConnect()
+    const rows = await readAllRows(conn)
+    approvedProducts = rows.filter(r => r['Status'] === 'Approved' && r['Affiliate Link'])
+    log(`Approved products: ${approvedProducts.length}`)
+  } catch (err) {
+    log(`WARNING: sheet unavailable — product assignment skipped (${err.message})`)
+  }
+
   for (const period of ['am', 'pm']) {
     const slug     = `${targetDay}-${period}`
     const theme    = themes[period]
@@ -551,6 +583,9 @@ Return JSON only — no markdown fences:
       continue // skip creative-agent; chapter brief resumes next slot
     }
 
+    const assignedProduct = assignProductToSlot(approvedProducts, slug, weekNumber)
+    if (assignedProduct) log(`[${slug}] Product: "${assignedProduct['Product Name']}"`)
+
     const result = spawnSync(
       process.execPath,
       [
@@ -560,6 +595,7 @@ Return JSON only — no markdown fences:
         '--voice',           voice,
         '--voice-def',       JSON.stringify(voiceDef),
         '--persona-context', JSON.stringify(personaContext),
+        '--product',         JSON.stringify(assignedProduct ?? null),
       ],
       { stdio: 'inherit', env: process.env }
     )
