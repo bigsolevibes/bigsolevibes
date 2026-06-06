@@ -14,6 +14,7 @@
     "@aws-sdk/client-s3": "^3.1044.0",
     "@google/genai": "^1.52.0",
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "anthropic": "^0.0.0",
     "bcryptjs": "^3.0.3",
     "canvas": "^3.2.3",
