@@ -150,11 +150,16 @@ function buildVoiceBlock(voiceDef) {
 
 // ─── Four confirmed visual scenes ─────────────────────────────────────────────
 
-const SCENE_BLOCK = `FOUR CANONICAL SCENES — every IMAGE BRIEF must name one:
-(1) THE TRANSITION: suit, leather chair, whiskey or rocks glass, city skyline visible, one shoe coming off. End of day. Still composed. The hook is what held up all day except what was inside those shoes.
-(2) THE ATHLETE'S TOLL: post-game locker room. Dirty uniforms. Cleats off on the bench. Brotherhood around him — teammates in background. He's looking at his feet or wrapping something. He did all of this on those today.
-(3) THE CHEF: still in whites after a long service. Recliner or beat-up couch backstage. Shoes on the floor beside him, feet finally up. The kitchen is done. He's not.
-(4) THE INTIMATE MOMENT: couple close on a couch, evening. Shoes coming off. Everything about him is right except one thing. Foot care is the gap between his standard and reality. The moment is honest, not embarrassing.`
+const SCENE_BLOCK = `FOUR CANONICAL SCENES — pick ONE and write the full scene description in IMAGE BRIEF. Do not name all four. Do not list options. Choose the one that fits this slot's theme and persona, then write it in full as a single cinematic shot.
+
+(1) THE TRANSITION — suit, leather chair, end of day. One shoe off. He's looking at his foot with a deadpan, slightly amused expression. He accounted for everything today — except this. The city is visible behind him. He's not devastated. He just noticed.
+(2) THE ATHLETE'S TOLL — post-game locker room. Cleats off on the bench. Still in uniform. Teammates visible in soft focus behind him. He did everything on those feet today. He's doing the math now.
+(3) THE CHEF — still in whites after long service. Shoes on the floor, feet finally up on a beat-up chair or recliner. The kitchen is done. He's not. The expression is somewhere between relief and recognition.
+(4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off. Everything about him reads right — except one thing. He knows it. She might know it too. The gap is real. The moment is honest, not embarrassing.
+
+HEAD TO TOE RULE: The full body should be visible or strongly implied in the frame. Head, torso, hands, feet — the whole man. The foot appears somewhere in frame as the quiet punchline — edge of shot, soft focus, corner. Only bring the foot to center frame if foot care is the explicitly featured product.
+
+TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought. Think Monty Python logic applied to a very specific grooming gap — the humor is in the recognition, not the joke.`
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -316,7 +321,7 @@ VOICE_USED: ${voiceDef.name}
 POST_TIME: [post time]
 VOICE_GUIDANCE: ${voiceDef.name} — ${voiceDef.description} Hard guardrails active.
 ---
-IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. No product placement. MANDATORY: name the scene (THE TRANSITION / THE ATHLETE'S TOLL / THE CHEF / THE INTIMATE MOMENT), name the setting, time of day, what the man is doing, what he's feeling. Film still specificity — a DP could light it from this description alone. REJECTED without appeal if: no human subject, empty room, floating objects, stock photo energy.]
+IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. No product placement. Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. The product or category appears as a prop in the scene, not the hero of the shot. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.]
 VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood as image. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 ON-IMAGE COPY:
   Line 1 (Cream, Playfair Display): [short declarative statement — 4–8 words, no punctuation]

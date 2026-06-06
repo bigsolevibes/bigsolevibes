@@ -94,33 +94,26 @@ function buildCaptionMd(fields) {
 }
 
 // ─── BSV visual preamble ──────────────────────────────────────────────────────
-// Prepended to every image and video prompt before it reaches Gemini.
-// Establishes the creative standard so individual briefs don't need to repeat it.
+// Prepended to every image and video prompt before it reaches Gemini/Imagen.
+// ONE scene only. The brief selects the scene — this preamble sets the rules.
 
-const BSV_VISUAL_PREAMBLE = `BIG SOLE VIBES — VISUAL COMMAND STANDARD
+const BSV_VISUAL_PREAMBLE = `SINGLE FRAME ONLY. ONE photograph. ONE person. ONE moment. ONE location.
+DO NOT generate a collage, grid, panel layout, mood board, contact sheet, or multiple images.
+DO NOT show more than one version of the same scene. If you are about to produce multiple frames, STOP and produce only the first.
 
-Every image must have: a specific person, a specific setting, a specific time of day, and a specific emotional beat. If there is no human subject and no personal story in the frame, the prompt is rejected before generation.
+BIG SOLE VIBES — VISUAL STANDARD
 
-No empty rooms. No floating objects. No boardroom tables without a man at them. No stock photo compositions. No generic "lifestyle." The man IS the product. Every frame is a portrait of the standard.
+The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. The man has already made up his mind — we are catching him mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The gap is real. The man is real. The humor is in the recognition, not the joke.
 
-THREE CANONICAL SHOTS — every brief is one of these:
+WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. The product or category appears as a prop in the scene, not the hero of the shot. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline. It is never the subject unless the brief explicitly calls for it.
 
-(1) THE TRANSITION
-A high-end loft or private office. 7:00 PM. Warm, low amber light. A man in a sharp charcoal tailored suit — tie loosened, top button undone, jacket still on. He's sitting on the edge of a mid-century leather sofa or a solid wood chair. One shoe is off. He's looking at his foot with a deadpan, slightly amused expression — acknowledging the unsung hero of his day. He's successful and exhausted, the kind of tired you only get from winning. This is the moment between the public man and the private one.
+VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A). Cinematic grain. 35mm editorial feel. Dark wood, leather, low light. No stock photo energy. No product labels. No logos. No text in the image.
 
-(2) THE SOCIAL RISK
-A modern living room or upscale apartment. Evening. A couple on a couch — things are moving in the right direction. The energy is easy, close, good. But there's a flicker — shoes are coming off, and for one beat, he knows his feet aren't where the rest of him is. The hook is the gap between his external standard and one thing he hasn't closed yet. The moment is honest, not embarrassing — it's the recognition.
+TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. The man looks like he just thought of something — not like he is being photographed.
 
-(3) THE ATHLETE'S TOLL
-Post-game or post-practice. Locker room bench, concrete floor, harsh overhead light cutting against warm shadows. Soccer, basketball, baseball — he did all of this on his feet today. Cleats or sneakers beside him. He's still in his uniform. He's looking down at his feet or wrapping something — the body is done; the man isn't. Cinematic, honest, earned.
+HEAD TO TOE: The full body should be visible or strongly implied. Head, torso, hands, feet — the whole man. This is a head-to-toe brand. The foot is the wink at the bottom of the frame. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. Otherwise: foot is present, incidental, the period at the end of the sentence.
 
-VISUAL LANGUAGE: warm amber light (#C17D2E), deep navy shadows (#0D1B2A), cinematic grain, masculine restraint. No product placement. No logos in the generated image. No text. Square 1:1 for images unless otherwise specified.
-
-HEAD TO TOE — CAMPAIGN VISUAL RULE (applies to every image and video unless the brief explicitly states otherwise):
-A bare foot must appear somewhere in the frame — corner of shot, edge of frame, soft focus, partially visible. The foot is never the subject unless the product being featured is foot care. When foot care is the featured product, the foot moves to center frame, sharp focus, fully lit — this is the reveal moment. In all other cases: the foot is present, incidental, slightly visible — the wink, not the headline. Never center the foot unless the brief explicitly calls for it.
-
-TONE — every image feels lived-in, not staged. The man looks complete but slightly caught — not posed. There is always a story happening just outside the frame. Casual confidence, never try-hard. Dark wood, leather, low light where the scene allows — the lounge aesthetic.
-
+SCENE (from the brief below):
 `
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

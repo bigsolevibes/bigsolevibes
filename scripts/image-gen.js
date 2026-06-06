@@ -143,16 +143,10 @@ async function generateImage(apiKey, prompt) {
     log(`    prompt: ${visualPrompt.slice(0, 120)}${visualPrompt.length > 120 ? '…' : ''}`)
 
     const finalPrompt = [
-      'PHOTOGRAPHY RULES — STRICT:',
-      'ONE image. ONE person. ONE location. ONE moment in time.',
-      'This is a single full-bleed photograph, not a composite.',
-      'FORBIDDEN: collage, grid, 2x2 panel, split-screen, mood board, multiple frames, multiple poses, multiple outfits, multiple settings, before/after, side-by-side.',
-      'If you are about to generate more than one frame or panel, STOP. Generate only the primary scene.',
-      'Style: dark cinematic editorial photography. Shot on 35mm. One consistent color grade.',
-      'HEAD TO TOE RULE: A bare foot must appear somewhere in the frame — corner, edge of shot, soft focus, partially visible. The foot is never the subject unless the featured product is foot care. When foot care is the product, the foot is center frame, sharp focus, fully lit. Otherwise: the foot is the wink, not the headline. Never center the foot unless explicitly instructed.',
-      'TONE: Lived-in, not staged. The man looks complete but slightly caught — not posed. There is always a story happening just outside the frame. Casual confidence, never try-hard. Lounge aesthetic where the scene allows — dark wood, leather, low light.',
-      'Subject: ' + visualPrompt,
-    ].join('\n')
+      '⚠ SINGLE IMAGE ONLY. ONE frame. ONE photograph. Do not produce a grid, collage, panel layout, mood board, contact sheet, or multiple versions. If you are about to generate more than one image, STOP. Generate only the single scene described below.',
+      'Style: dark cinematic editorial photography. 35mm film. One consistent color grade. Square 1:1 format.',
+      visualPrompt,
+    ].join('\n\n')
 
     try {
       const buf = await generateImage(apiKey, finalPrompt)
