@@ -304,11 +304,12 @@ function checkAgentHealth() {
 }
 
 // ─── Priority 4: Growth ───────────────────────────────────────────────────────
-// Parses the two most recent marketing reports for subscriber counts.
-// Flags flat or declining trends with a specific recommendation.
+// Reads subscriber counts from marketing reports + uses web_search to surface
+// what is actually working in men's grooming/lifestyle content right now.
+// Returns metrics + 2-3 specific, actionable growth plays for chief to include.
 
-function checkGrowth() {
-  const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null }
+async function checkGrowth() {
+  const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null, intelligenceReport: null }
 
   const parseSubscribers = (content) => {
     if (!content) return null
@@ -320,6 +321,7 @@ function checkGrowth() {
     }
   }
 
+  // ── Subscriber counts from marketing reports ──────────────────────────────
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
       encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
@@ -331,41 +333,70 @@ function checkGrowth() {
     if (!files.length) {
       result.trend = 'no marketing reports'
       result.recommendation = 'Run marketing-manager.js to establish subscriber baseline'
-      return result
-    }
-
-    const loadReport = (f) => {
-      try {
-        execSync(`rclone copy "${REMOTE}/Reports/${f}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
-        return fs.readFileSync(path.join(TEMP_DIR, f), 'utf8')
-      } catch { return null }
-    }
-
-    const latestContent = loadReport(files[files.length - 1])
-    const prevContent   = files.length >= 2 ? loadReport(files[files.length - 2]) : null
-
-    const latest = parseSubscribers(latestContent)
-    const prev   = parseSubscribers(prevContent)
-
-    if (latest) {
-      result.lounge = latest.lounge
-      result.drop   = latest.drop
-      result.total  = (latest.lounge || 0) + (latest.drop || 0)
-    }
-
-    if (latest && prev) {
-      const latestN = (latest.lounge || 0) + (latest.drop || 0)
-      const prevN   = (prev.lounge || 0) + (prev.drop || 0)
-      const delta   = latestN - prevN
-      if (delta > 0)      result.trend = `+${delta} vs last report`
-      else if (delta < 0) { result.trend = `${delta} vs last report`; result.recommendation = 'Subscriber decline — check opt-out rates and post high-engagement content today' }
-      else                { result.trend = 'flat vs last report'; result.recommendation = 'Flat growth — post a strong visual with a direct follow/subscribe CTA today' }
     } else {
-      result.trend = 'only one report — no trend yet'
+      const loadReport = (f) => {
+        try {
+          execSync(`rclone copy "${REMOTE}/Reports/${f}" "${TEMP_DIR}/"`, { stdio: ['pipe','pipe','pipe'] })
+          return fs.readFileSync(path.join(TEMP_DIR, f), 'utf8')
+        } catch { return null }
+      }
+
+      const latestContent = loadReport(files[files.length - 1])
+      const prevContent   = files.length >= 2 ? loadReport(files[files.length - 2]) : null
+      const latest = parseSubscribers(latestContent)
+      const prev   = parseSubscribers(prevContent)
+
+      if (latest) {
+        result.lounge = latest.lounge
+        result.drop   = latest.drop
+        result.total  = (latest.lounge || 0) + (latest.drop || 0)
+      }
+
+      if (latest && prev) {
+        const latestN = (latest.lounge || 0) + (latest.drop || 0)
+        const prevN   = (prev.lounge || 0) + (prev.drop || 0)
+        const delta   = latestN - prevN
+        if (delta > 0)      result.trend = `+${delta} vs last report`
+        else if (delta < 0) { result.trend = `${delta} vs last report`; result.recommendation = 'Subscriber decline — check opt-out rates and post high-engagement content today' }
+        else                { result.trend = 'flat vs last report' }
+      } else {
+        result.trend = 'only one report — no trend yet'
+      }
     }
   } catch (err) {
-    log(`Growth check error: ${err.message}`)
+    log(`Growth metrics error: ${err.message}`)
     result.trend = `error: ${err.message.slice(0, 60)}`
+  }
+
+  // ── Growth intelligence — web search for what's working right now ─────────
+  try {
+    log('Growth: running intelligence search...')
+    const growthPrompt = `You are the growth strategist for Big Sole Vibes (BSV) — a premium men's foot care and grooming brand at bigsolevibes.com. Current audience: ~3 followers total, 6 email subscribers. Zero revenue. Early stage.
+
+BSV's content approach: product stories from the shelf, driving to bigsolevibes.com/shop/. Voice: The Proprietor — deadpan, confident, never explains itself. Platforms: Instagram, Bluesky, YouTube. Content: still images + short video.
+
+Search for:
+1. What men's grooming / lifestyle content is performing on Instagram and YouTube right now (June 2026)?
+2. What affiliate content formats are converting for small brands in this space?
+3. Any specific growth tactics or platform features (Reels, YouTube Shorts, Bluesky features) that small accounts are using to break through?
+
+Return 3 specific, actionable growth plays BSV can execute THIS WEEK. Be concrete — not "post more reels" but what kind of reel, what hook, what CTA. Format as a numbered list.`
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }],
+      messages: [{ role: 'user', content: growthPrompt }]
+    })
+
+    const textBlock = response.content.find(b => b.type === 'text')
+    if (textBlock) {
+      result.intelligenceReport = textBlock.text.trim()
+      log(`Growth intelligence: ${result.intelligenceReport.slice(0, 80)}...`)
+    }
+  } catch (err) {
+    log(`Growth intelligence error: ${err.message}`)
+    result.intelligenceReport = null
   }
 
   log(`Growth: total=${result.total ?? 'unknown'} (lounge=${result.lounge ?? '?'}, drop=${result.drop ?? '?'}), trend=${result.trend}`)
@@ -389,6 +420,41 @@ function getHandoffFindings() {
     if (!fs.existsSync(p)) return null
     return fs.readFileSync(p, 'utf8').trim() || null
   } catch { return null }
+}
+
+// ─── Chief's running memory ───────────────────────────────────────────────────
+// BSV-Memory.md is a snapshot that gets overwritten nightly — it doesn't carry
+// day-to-day continuity. This file does: one append-only `## YYYY-MM-DD` entry
+// per run, read back (last ~7) at the top of the next run, so Chief can say
+// "yesterday I flagged X — still true today?" instead of starting blank each
+// morning. Mirrors BSV-BigC-Audit-Log.md (the equivalent for chat sessions).
+
+const CHIEF_AUDIT_LOG = path.join(ROOT, 'logs', 'chief-audit-log.md')
+
+function getRecentAuditEntries(n = 7) {
+  try {
+    if (!fs.existsSync(CHIEF_AUDIT_LOG)) return null
+    const text = fs.readFileSync(CHIEF_AUDIT_LOG, 'utf8').trim()
+    if (!text) return null
+    const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+    return entries.slice(-n).join('\n\n').trim() || null
+  } catch { return null }
+}
+
+function appendAuditEntry(entry) {
+  try {
+    fs.mkdirSync(path.dirname(CHIEF_AUDIT_LOG), { recursive: true })
+    if (!fs.existsSync(CHIEF_AUDIT_LOG)) {
+      fs.writeFileSync(CHIEF_AUDIT_LOG,
+        '# BSV Chief Audit Log\n' +
+        'Running day-by-day record of what Chief of Staff found and decided each morning — ' +
+        'read back (last ~7 entries) at the top of every run so today builds on yesterday ' +
+        'instead of starting blank. Append-only; one `## YYYY-MM-DD` entry per run.\n\n')
+    }
+    fs.appendFileSync(CHIEF_AUDIT_LOG, entry.trim() + '\n\n')
+  } catch (err) {
+    log(`WARNING: audit log append failed — ${err.message}`)
+  }
 }
 
 function getPostStateRaw() {
@@ -722,12 +788,13 @@ async function watchBlogAgent() {
   // ── P4: Growth ────────────────────────────────────────────────────────────
 
   log('P4: Growth...')
-  const growth = checkGrowth()
+  const growth = await checkGrowth()
 
   // ── Supporting context ────────────────────────────────────────────────────
 
   const tokenBudget   = buildTokenBudget()
   const findings      = getHandoffFindings()
+  const auditLog      = getRecentAuditEntries(7)
   const directive     = loadDriveFile(`${REMOTE}/BSV-Directive.md`, TEMP_DIR)
   const memory        = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
   const orgChart      = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
@@ -769,7 +836,7 @@ async function watchBlogAgent() {
     } catch { return null }
   })()
 
-  log(`Context: directive=${!!directive}, strategy=${!!chiefDirective}, memory=${!!memory}, org=${!!orgChart}, handoff=${!!handoff}, social=${socialReport?.filename || 'none'}, marketing=${mktReport?.filename || 'none'}`)
+  log(`Context: directive=${!!directive}, strategy=${!!chiefDirective}, memory=${!!memory}, org=${!!orgChart}, handoff=${!!handoff}, auditLog=${!!auditLog}, social=${socialReport?.filename || 'none'}, marketing=${mktReport?.filename || 'none'}`)
   log(`Ready to Post: ${readyToPost}`)
   log(`Token budget: est $${tokenBudget.estTotal.toFixed(4)} (${tokenBudget.pct.toFixed(1)}% of $${DAILY_API_CEILING})`)
 
@@ -851,10 +918,21 @@ async function watchBlogAgent() {
   // Weekly agent efficiency audit — Sunday only, no API call
   const efficiencyAudit = DAY_OF_WEEK === 0 ? buildAgentEfficiencyAudit() : null
   const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
-    + '\n\nYou are the BSV Chief of Staff. You know every agent in your org, their role, and their status. Revenue first. Direct. No padding. No filler sections.'
+    + `\n\nYou are the BSV Chief of Staff. You know every agent in your org, their role, and their status. Revenue first. Direct. No padding. No filler sections.
+
+REQUIRED FORMAT — every brief must start with these two sections before anything else:
+
+## BIG D — DO THIS TODAY
+(3 bullets max. Specific actions only. What Big D personally needs to decide, approve, or do. No vague suggestions.)
+
+## BIG C — DO THIS TODAY
+(3 bullets max. What Big C (the AI creative/strategy partner) should build, fix, or write in today's session. Specific enough to act on immediately.)
+
+After those two sections, write the full operational brief. The action lists must come FIRST — Big D reads them before coffee.`
 
   const standupUser = `${chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
 
+${auditLog ? `## Recent History (your own running log — last ~7 days)\nUse this to track continuity: is something you flagged before still unresolved? Did an action you recommended actually happen? Don't repeat a flag verbatim if it's already being tracked — note whether it's improving, stuck, or worse.\n${auditLog}\n\n---\n` : ''}
 ## Revenue
 Yesterday: ${revenueYd}${revenueWk}
 Affiliate links deployed: ${revenue.linksDeployed ? `YES — ${revenue.shopLinkCount} product(s) in shop` : 'NO — shop has no affiliate links'}
@@ -873,7 +951,10 @@ Healthy: ${agents.ok.slice(0, 10).join(', ')}
 
 ## Growth
 Total: ${growth.total ?? 'unknown'} (Lounge: ${growth.lounge ?? '?'}, Drop: ${growth.drop ?? '?'}) | ${growth.trend}
-${growth.recommendation ? `Recommendation: ${growth.recommendation}` : ''}
+${growth.recommendation ? `Trend note: ${growth.recommendation}` : ''}
+
+### Growth Intelligence (what's working right now)
+${growth.intelligenceReport || '(not available)'}
 
 ## Pipeline Alerts
 ${findings || '(none)'}
@@ -1087,6 +1168,23 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
   // ── Blog-agent watchdog ────────────────────────────────────────────────────
 
   await watchBlogAgent()
+
+  // ── Append today's entry to the running audit log ─────────────────────────
+  // Factual, scannable record — not prose — so tomorrow's run (and Big D) can
+  // see at a glance what was found, flagged, and actioned without re-deriving it.
+  try {
+    const lines = [
+      `## ${DATE_STAMP} — ${DAY_NAME}`,
+      `**Revenue:** ${revenueYd}${revenueWk ? ` | week: ${revenueWk.replace(/^\s*\|\s*/, '')}` : ''}${revenue.error ? ` — CJ error: ${revenue.error}` : ''}`,
+      `**Action today:** ${revenue.action || 'none'}`,
+      `**Posts (${posts.dayAbbr}):** confirmed [${posts.confirmed.join(', ') || 'none'}] · gaps [${posts.gaps.join(', ') || 'none'}]${posts.stuckMediaSlots.length ? ` · stuck media [${posts.stuckMediaSlots.join(', ')}]` : ''}`,
+      `**Agent issues:** ${agents.issues.length ? agents.issues.map(i => `${i.name} [${i.severity}]: ${i.msg}`).join('; ') : 'none'}`,
+      `**Growth:** total ${growth.total ?? 'unknown'} (Lounge ${growth.lounge ?? '?'} / Drop ${growth.drop ?? '?'}) — ${growth.trend}${growth.recommendation ? ` — ${growth.recommendation}` : ''}`,
+    ]
+    appendAuditEntry(lines.join('\n'))
+  } catch (err) {
+    log(`WARNING: could not build audit log entry — ${err.message}`)
+  }
 
   log('━━━ chief-of-staff complete ━━━\n')
 })()
