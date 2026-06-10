@@ -317,7 +317,7 @@ function checkAgentHealth() {
 // Returns metrics + 2-3 specific, actionable growth plays for chief to include.
 
 async function checkGrowth() {
-  const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null, intelligenceReport: null }
+  const result = { lounge: null, drop: null, total: null, trend: 'unknown', recommendation: null }
 
   const parseSubscribers = (content) => {
     if (!content) return null
@@ -374,37 +374,6 @@ async function checkGrowth() {
   } catch (err) {
     log(`Growth metrics error: ${err.message}`)
     result.trend = `error: ${err.message.slice(0, 60)}`
-  }
-
-  // ── Growth intelligence — web search for what's working right now ─────────
-  try {
-    log('Growth: running intelligence search...')
-    const growthPrompt = `You are the growth strategist for Big Sole Vibes (BSV) — a premium men's foot care and grooming brand at bigsolevibes.com. Current audience: ~3 followers total, 6 email subscribers. Zero revenue. Early stage.
-
-BSV's content approach: product stories from the shelf, driving to bigsolevibes.com/shop/. Voice: The Proprietor — deadpan, confident, never explains itself. Platforms: Instagram, Bluesky, YouTube. Content: still images + short video.
-
-Search for:
-1. What men's grooming / lifestyle content is performing on Instagram and YouTube right now (June 2026)?
-2. What affiliate content formats are converting for small brands in this space?
-3. Any specific growth tactics or platform features (Reels, YouTube Shorts, Bluesky features) that small accounts are using to break through?
-
-Return 3 specific, actionable growth plays BSV can execute THIS WEEK. Be concrete — not "post more reels" but what kind of reel, what hook, what CTA. Format as a numbered list.`
-
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }],
-      messages: [{ role: 'user', content: growthPrompt }]
-    })
-
-    const textBlock = response.content.find(b => b.type === 'text')
-    if (textBlock) {
-      result.intelligenceReport = textBlock.text.trim()
-      log(`Growth intelligence: ${result.intelligenceReport.slice(0, 80)}...`)
-    }
-  } catch (err) {
-    log(`Growth intelligence error: ${err.message}`)
-    result.intelligenceReport = null
   }
 
   log(`Growth: total=${result.total ?? 'unknown'} (lounge=${result.lounge ?? '?'}, drop=${result.drop ?? '?'}), trend=${result.trend}`)
@@ -965,8 +934,6 @@ Healthy: ${agents.ok.slice(0, 10).join(', ')}
 Total: ${growth.total ?? 'unknown'} (Lounge: ${growth.lounge ?? '?'}, Drop: ${growth.drop ?? '?'}) | ${growth.trend}
 ${growth.recommendation ? `Trend note: ${growth.recommendation}` : ''}
 
-### Growth Intelligence (what's working right now)
-${growth.intelligenceReport || '(not available)'}
 
 ## Pipeline Alerts
 ${findings || '(none)'}
