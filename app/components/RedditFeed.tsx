@@ -37,39 +37,64 @@ export default function RedditFeed() {
     <section className="py-16 border-t border-white/5">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-8">
 
-        <div>
-          <p className="font-heading text-xs tracking-widest text-bsv-amber mb-2 uppercase">
-            The Community
-          </p>
-          <p className="text-bsv-muted text-sm leading-relaxed">
-            r/bigsolevibes — where the man who already holds the standard compares notes.
+        {/* Section header */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <span className="font-heading text-xs tracking-widest text-bsv-amber uppercase">
+              Field Intelligence
+            </span>
+            <span className="flex-1 h-px bg-white/5" />
+            <a
+              href="https://www.reddit.com/r/bigsolevibes/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-heading text-xs tracking-widest text-bsv-muted hover:text-bsv-amber transition-colors uppercase"
+            >
+              r/bigsolevibes ↗
+            </a>
+          </div>
+          <p className="text-bsv-muted text-sm leading-relaxed italic">
+            Where the man who already holds the standard compares notes.
           </p>
         </div>
 
         {hasPosts ? (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {threads!.posts.slice(0, 5).map((post, i) => (
               <a
                 key={i}
                 href={post.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col gap-2 p-5 border border-white/5 hover:border-bsv-amber/30 transition-colors bg-bsv-card"
+                className="group flex gap-0 border border-white/5 hover:border-bsv-amber/20 transition-colors bg-bsv-card overflow-hidden"
               >
-                <p className="font-heading text-sm leading-snug text-bsv-cream">
-                  {post.title}
-                </p>
-                {post.summary && (
-                  <p className="text-bsv-muted text-xs leading-relaxed">
-                    {post.summary}{post.summary.length >= 220 ? '…' : ''}
+                {/* Amber left accent — the "premium forum" signal */}
+                <span className="w-0.5 flex-shrink-0 bg-bsv-amber/30 group-hover:bg-bsv-amber/60 transition-colors" />
+                <div className="flex flex-col gap-2 p-5">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-heading text-xs tracking-widest text-bsv-amber/50 uppercase">
+                      Thread
+                    </span>
+                    <span className="w-4 h-px bg-white/10" />
+                    <span className="font-heading text-xs text-bsv-muted">u/{post.author}</span>
+                    {post.score > 0 && (
+                      <>
+                        <span className="text-white/10">·</span>
+                        <span className="font-heading text-xs text-bsv-amber/60">↑ {post.score}</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="font-body text-sm leading-snug text-bsv-cream group-hover:text-white transition-colors">
+                    {post.title}
                   </p>
-                )}
-                <div className="flex items-center gap-4 mt-1">
-                  <span className="font-heading text-xs text-bsv-muted">u/{post.author}</span>
-                  {post.score > 0 && (
-                    <span className="font-heading text-xs text-bsv-amber">↑ {post.score}</span>
+                  {post.summary && (
+                    <p className="text-bsv-muted text-xs leading-relaxed">
+                      {post.summary}{post.summary.length >= 220 ? '…' : ''}
+                    </p>
                   )}
-                  <span className="font-heading text-xs text-bsv-muted ml-auto">VIEW THREAD ↗</span>
+                  <span className="font-heading text-xs tracking-widest text-bsv-muted group-hover:text-bsv-amber transition-colors uppercase mt-1">
+                    Read the thread ↗
+                  </span>
                 </div>
               </a>
             ))}
