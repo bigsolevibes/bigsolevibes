@@ -39,7 +39,7 @@ export default function PrivacyPage() {
         <div className="flex flex-col gap-2">
           <p className="font-heading text-xs tracking-widest" style={{ color: AMBER }}>LEGAL</p>
           <h1 className="font-body text-4xl sm:text-5xl leading-none" style={{ color: CREAM }}>Privacy Policy</h1>
-          <p className="font-body text-sm" style={{ color: MUTED }}>Effective date: May 1, 2025</p>
+          <p className="font-body text-sm" style={{ color: MUTED }}>Effective date: June 10, 2026</p>
         </div>
 
         <div className="w-16 h-px" style={{ backgroundColor: AMBER }} />
@@ -73,6 +73,13 @@ export default function PrivacyPage() {
         <Section title="EMAIL & KLAVIYO">
           <p>We use <strong style={{ color: CREAM }}>Klaviyo</strong> to manage our email list and send newsletters. Your email address and first name are stored in Klaviyo on our behalf. Klaviyo's privacy policy is available at klaviyo.com/legal/privacy-policy.</p>
           <p className="mt-2">You can unsubscribe at any time using the link in any email we send. Once unsubscribed, we will not contact you again.</p>
+        </Section>
+
+        <Section title="SOCIAL MEDIA & TIKTOK">
+          <p>Big Sole Vibes maintains a presence on social media platforms including TikTok, Instagram, X (Twitter), YouTube, Bluesky, and Facebook. We use the TikTok API to publish content — videos and images — from our brand account (<strong style={{ color: CREAM }}>@bigsolevibes</strong>) to TikTok.</p>
+          <p className="mt-2">Through our use of the TikTok API, we access only the permissions necessary to post content on behalf of our own account. We do not collect, store, or process personal data from other TikTok users. We do not use TikTok Login Kit or request access to any TikTok user's profile, followers, or private information.</p>
+          <p className="mt-2">Content published to TikTok is subject to TikTok's own Terms of Service and Privacy Policy, available at tiktok.com/legal/page/us/privacy-policy.</p>
+          <p className="mt-2">To request deletion of any data associated with our TikTok integration, contact us at <a href="mailto:hello@bigsolevibes.com" className="underline hover:opacity-70" style={{ color: AMBER }}>hello@bigsolevibes.com</a>. Requests will be processed within 30 days.</p>
         </Section>
 
         <Section title="AMAZON AFFILIATE LINKS">
