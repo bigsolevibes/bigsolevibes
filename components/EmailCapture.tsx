@@ -69,7 +69,7 @@ export default function EmailCapture() {
               disabled={status === 'loading'}
               className="bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest px-10 py-4 transition-opacity hover:opacity-90 whitespace-nowrap disabled:opacity-50"
             >
-              {status === 'loading' ? 'JOINING…' : 'RECTIFY THE ERROR'}
+              {status === 'loading' ? 'JOINING…' : 'JOIN THE BRIEFING'}
             </button>
           </form>
         )}
