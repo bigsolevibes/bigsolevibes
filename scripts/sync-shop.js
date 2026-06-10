@@ -790,7 +790,7 @@ function buildShopPage(approvedProducts) {
   ` : `
   <!-- Affiliate bar -->
   <div class="affiliate-bar">
-    BSV participates in the Amazon Associates Program. Links on this page are affiliate links — we may earn a commission at no cost to you.
+    Some links on this page are affiliate links — we may earn a commission at no cost to you. We only recommend products that have earned a place on the shelf.
   </div>
 
   <!-- Jump nav -->
