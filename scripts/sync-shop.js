@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config({ quiet: true })
 const { execSync }  = require('child_process')
 const fs            = require('fs')
 const path          = require('path')
@@ -90,11 +90,24 @@ function categoryIcon(cat) {
   return map[cat] || 'ti-star'
 }
 
+// ─── Affiliate overrides (local file takes precedence over sheet) ─────────────
+const AFFILIATE_OVERRIDES_PATH = path.join(__dirname, 'data', 'affiliate-overrides.json')
+const AFFILIATE_OVERRIDES = fs.existsSync(AFFILIATE_OVERRIDES_PATH)
+  ? JSON.parse(fs.readFileSync(AFFILIATE_OVERRIDES_PATH, 'utf8'))
+  : {}
+
+function getAffiliateOverride(product) {
+  const name = (product['Product Name'] || '').trim()
+  const key = Object.keys(AFFILIATE_OVERRIDES).find(k => k.toLowerCase() === name.toLowerCase())
+  return key ? AFFILIATE_OVERRIDES[key].affiliate_url : null
+}
+
 // ─── Shared URL builder ───────────────────────────────────────────────────────
 
 function buildAmazonUrl(product) {
   const asin         = (product['ASIN']          || '').trim()
-  const affiliateUrl = (product['Affiliate_URL'] || '').trim()
+  const override     = getAffiliateOverride(product)
+  const affiliateUrl = override || (product['Affiliate_URL'] || '').trim()
   const tag          = process.env.AMAZON_AFFILIATE_TAG || 'bigsolevibes-20'
   if (affiliateUrl && /^https?:\/\//i.test(affiliateUrl)) return affiliateUrl
   if (/^https?:\/\//i.test(asin)) {
@@ -120,22 +133,47 @@ const C = {
 function buildProductCard(product) {
   const amazonUrl = buildAmazonUrl(product)
 
-  // Scene image from R2 (Image_URL). Placeholder when not yet generated.
+  // Scene image: prefer Sheet Image_URL → fall back to local public/posts/output/{slug}-scene.jpg
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
-  const useImage    = rawImageUrl && rawImageUrl !== 'NEEDS_RENDER'
-  const heroHtml    = useImage
-    ? `<div class="card-hero"><img src="${rawImageUrl}?v=2" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
+  const cardId0 = (product['Product Name'] || '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const localScenePath = path.join(ROOT, 'public', 'posts', 'output', `${cardId0}-scene.jpg`)
+  const localSceneUrl  = fs.existsSync(localScenePath) ? `/posts/output/${cardId0}-scene.jpg` : null
+  const imageUrl  = (rawImageUrl && rawImageUrl !== 'NEEDS_RENDER') ? rawImageUrl : localSceneUrl
+  const heroHtml  = imageUrl
+    ? `<div class="card-hero"><img src="${imageUrl}?v=2" alt="${escapeHtml(product['Product Name'] || '')}" loading="lazy"></div>`
     : `<div class="card-hero card-hero--placeholder"><span class="card-hero-mono">BSV</span></div>`
 
-  // Narrative — [DRAFT] prefix stripped; renders as-is
+  // Narrative — [DRAFT] prefix stripped; first sentence shown, rest expandable
   const narrative = (product['Narrative'] || '').trim().replace(/^\[DRAFT\]\s*/i, '')
-  const narrativeHtml = narrative
-    ? `<p class="card-narrative">${escapeHtml(narrative)}</p>`
+  let narrativeHtml = ''
+  if (narrative) {
+    const m = narrative.match(/^(.*?[.!?])\s*(.+)?$/s)
+    const lead = m ? m[1].trim() : narrative
+    const rest = m && m[2] ? m[2].trim() : ''
+    const uid  = Math.random().toString(36).slice(2, 8)
+    narrativeHtml = rest
+      ? `<p class="card-narrative">${escapeHtml(lead)} <span class="card-narrative-rest" id="rest-${uid}" hidden>${escapeHtml(rest)}</span><button class="card-expand" onclick="var r=document.getElementById('rest-${uid}');r.hidden=!r.hidden;this.textContent=r.hidden?'Read more':'Read less';">Read more</button></p>`
+      : `<p class="card-narrative">${escapeHtml(narrative)}</p>`
+  }
+
+  // Highlights — from sheet column if present, else skip
+  const highlights = (product['Highlights'] || '').trim()
+  const highlightsHtml = highlights
+    ? `<ul class="card-highlights">${highlights.split('|').map(h => `<li>${escapeHtml(h.trim())}</li>`).join('')}</ul>`
     : ''
 
-  const priceHtml = product['Price']
-    ? `<span class="card-price">${escapeHtml(product['Price'])}</span>`
-    : ''
+  // Price — always show something
+  const price = (product['Price'] || '').trim()
+  const priceHtml = price
+    ? `<span class="card-price">${escapeHtml(price)}</span>`
+    : `<span class="card-price card-price--check">See price →</span>`
+
+  // Badge — "Proprietor's Pick" for Featured products, or custom Badge column
+  const customBadge = (product['Badge'] || '').trim()
+  const isFeatured  = (product['Featured'] || '').trim().toLowerCase() === 'true'
+  const badgeText   = customBadge || (isFeatured ? "Proprietor's Pick" : '')
+  const badgeHtml   = badgeText ? `<span class="card-badge">★ ${escapeHtml(badgeText)}</span>` : ''
 
   const cardId = (product['Product Name'] || '')
     .toLowerCase()
@@ -146,8 +184,13 @@ function buildProductCard(product) {
         <article class="locker-card" id="${cardId}">
           ${heroHtml}
           <div class="card-body">
+            <div class="card-meta-row">
+              <span class="card-cat-chip">${escapeHtml(displayCategory(product['Category'] || ''))}</span>
+              ${badgeHtml}
+            </div>
             <h3 class="card-name">${escapeHtml(product['Product Name'] || '')}</h3>
             ${narrativeHtml}
+            ${highlightsHtml}
             <div class="card-footer">
               ${priceHtml}
               <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
@@ -470,11 +513,87 @@ function buildShopPage(approvedProducts) {
       border-top: 1px solid rgba(255,255,255,0.05);
       margin-top: 0.25rem;
     }
+    /* ── Card meta row (chip + badge) ── */
+    .card-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .card-cat-chip {
+      font-family: var(--font-bebas);
+      font-size: 0.625rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      background: rgba(74,99,128,0.15);
+      border: 1px solid rgba(74,99,128,0.3);
+      padding: 0.2rem 0.5rem;
+      border-radius: 1px;
+      white-space: nowrap;
+      text-transform: uppercase;
+    }
+    .card-badge {
+      font-family: var(--font-bebas);
+      font-size: 0.625rem;
+      letter-spacing: 0.1em;
+      color: var(--amber);
+      border: 1px solid rgba(193,125,46,0.4);
+      padding: 0.2rem 0.5rem;
+      border-radius: 1px;
+      white-space: nowrap;
+    }
+
+    /* ── Narrative expand ── */
+    .card-expand {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-playfair);
+      font-style: italic;
+      font-size: 0.8125rem;
+      color: var(--amber);
+      padding: 0;
+      margin-left: 0.25rem;
+      opacity: 0.75;
+      transition: opacity 0.15s;
+    }
+    .card-expand:hover { opacity: 1; }
+
+    /* ── Highlights ── */
+    .card-highlights {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem 0.75rem;
+      padding: 0;
+      margin: 0;
+    }
+    .card-highlights li {
+      font-family: var(--font-playfair);
+      font-size: 0.8125rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .card-highlights li::before {
+      content: '·';
+      color: var(--amber);
+      font-size: 1rem;
+      line-height: 1;
+    }
+
     .card-price {
       font-family: var(--font-playfair);
-      font-size: 0.9375rem;
+      font-size: 1rem;
+      font-weight: 600;
       color: var(--cream);
-      opacity: 0.55;
+    }
+    .card-price--check {
+      font-size: 0.8125rem;
+      font-weight: normal;
+      font-style: italic;
+      color: var(--muted);
     }
     .card-cta {
       display: inline-flex;
@@ -785,7 +904,11 @@ function gitPush() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(path.dirname(SHOP_OUT),  { recursive: true })
 
-  const dryRun = process.argv.includes('--dry-run')
+  // A flag file at logs/.sync-shop-live overrides --dry-run (used by MCP run_diagnostic)
+  const LIVE_FLAG = path.join(ROOT, 'logs', '.sync-shop-live')
+  const forceLive = fs.existsSync(LIVE_FLAG)
+  if (forceLive) { try { fs.unlinkSync(LIVE_FLAG) } catch {} }
+  const dryRun = !forceLive && process.argv.includes('--dry-run')
 
   log(`━━━ sync-shop start ━━━${dryRun ? ' [dry-run]' : ''}`)
 
@@ -802,8 +925,16 @@ function gitPush() {
     process.exit(1)
   }
 
-  // Filter approved only
-  const approved = allRows.filter(r => (r['Status'] || '').trim().toLowerCase() === 'approved')
+  // Filter approved only — skip blank rows, deduplicate by product name
+  const seen = new Set()
+  const approved = allRows.filter(r => {
+    if ((r['Status'] || '').trim().toLowerCase() !== 'approved') return false
+    const name = (r['Product Name'] || '').trim()
+    if (!name) return false
+    if (seen.has(name)) { log(`WARNING: duplicate skipped — "${name}"`); return false }
+    seen.add(name)
+    return true
+  })
   log(`Approved: ${approved.length} product(s) — Pending: ${allRows.length - approved.length}`)
 
   // Build HTML

@@ -1,0 +1,9 @@
+{
+  "_note": "Direct affiliate links that override Amazon fallback. Key = product name (case-insensitive match). Managed here until Google Sheet API is reachable from the pipeline.",
+  "Spongelle Men Super Buffer": {
+    "affiliate_url": "https://spongelle.com/SFGCP6TP",
+    "affiliate_network": "Spongelle Direct",
+    "commission": "15%",
+    "promo": "30% off for customer"
+  }
+}
