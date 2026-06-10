@@ -762,6 +762,29 @@ async function watchBlogAgent() {
   log('P3: Agent health...')
   const agents = checkAgentHealth()
 
+  // ── Update org chart state — chief owns this ──────────────────────────────
+  try {
+    const orgState = {
+      lastUpdated: new Date().toISOString(),
+      agents: {}
+    }
+    for (const agent of AGENT_ROSTER) {
+      const issue = agents.issues.find(i => i.name === agent.name)
+      const isOk  = agents.ok.includes(agent.name)
+      orgState.agents[agent.name] = {
+        essential: agent.essential,
+        weekly:    agent.weekly,
+        status:    issue ? (issue.severity === 'error' ? 'error' : 'warning') : isOk ? 'ok' : 'unknown',
+        msg:       issue ? issue.msg : null,
+        fix:       issue ? issue.fix : null,
+      }
+    }
+    fs.writeFileSync(path.join(ROOT, 'logs', 'org-chart-state.json'), JSON.stringify(orgState, null, 2))
+    log('Org chart state updated')
+  } catch (err) {
+    log(`Org chart update error: ${err.message}`)
+  }
+
   // ── P4: Growth ────────────────────────────────────────────────────────────
 
   log('P4: Growth...')
