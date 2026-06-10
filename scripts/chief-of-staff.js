@@ -230,23 +230,31 @@ function checkPosts() {
 // commands. Essential agents get Telegram alerts on error.
 
 const AGENT_ROSTER = [
+  // ── Core pipeline — essential, expected every 2h ──────────────────────────
   { name: 'watch-drive',       essential: true,  weekly: false },
   { name: 'eng-bot',           essential: true,  weekly: false },
   { name: 'media-director',    essential: true,  weekly: false },
   { name: 'creative-agent',    essential: true,  weekly: false },
-  { name: 'distribute',        essential: false, weekly: false },
-  { name: 'social-listening',  essential: false, weekly: false },
+  { name: 'distribute',        essential: true,  weekly: false },
+  { name: 'change-agent',      essential: true,  weekly: false },
+  { name: 'update-handoff',    essential: true,  weekly: false },
+  // ── Supporting — non-essential, expected every 2h ─────────────────────────
+  { name: 'drive-sync',        essential: false, weekly: false },
   { name: 'gemini-bridge',     essential: false, weekly: false },
   { name: 'image-gen',         essential: false, weekly: false },
   { name: 'video-gen',         essential: false, weekly: false },
-  { name: 'update-handoff',    essential: false, weekly: false },
-  { name: 'change-agent',      essential: true,  weekly: false },
+  { name: 'cost-report',       essential: false, weekly: false },
+  { name: 'accounting-agent',  essential: false, weekly: false },
+  { name: 'reddit-agent',      essential: false, weekly: false },
+  // ── Weekly agents — expected once per week ────────────────────────────────
+  { name: 'strategist',        essential: false, weekly: true  },
   { name: 'brand-manager',     essential: false, weekly: true  },
   { name: 'marketing-manager', essential: false, weekly: true  },
+  { name: 'social-listening',  essential: false, weekly: true  },
   { name: 'product-research',  essential: false, weekly: true  },
-  { name: 'cj-research',       essential: false, weekly: true  },
+  { name: 'product-development',essential: false, weekly: true },
   { name: 'blog-agent',        essential: false, weekly: true  },
-  { name: 'cost-report',       essential: false, weekly: false },
+  { name: 'sole-report-agent', essential: false, weekly: true  },
 ]
 
 function checkAgentHealth() {
@@ -826,14 +834,18 @@ async function watchBlogAgent() {
       return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
     } catch { return null }
   })()
-  const chiefDirective = (() => {
+  // Full strategy brief from strategist.js (runs Sunday, sets the week)
+  const weekStrategy = (() => {
     try {
       const p = path.join(ROOT, 'logs', 'strategy-active.md')
-      if (!fs.existsSync(p)) return null
-      const md = fs.readFileSync(p, 'utf8')
-      const m  = md.match(/##\s+Chief Directive[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
-      return m ? m[1].trim() : null
+      return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').slice(0, 3000) : null
     } catch { return null }
+  })()
+  // Chief Directive is the action-oriented extract from the strategy brief
+  const chiefDirective = (() => {
+    if (!weekStrategy) return null
+    const m = weekStrategy.match(/##\s+Chief Directive[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    return m ? m[1].trim() : null
   })()
 
   log(`Context: directive=${!!directive}, strategy=${!!chiefDirective}, memory=${!!memory}, org=${!!orgChart}, handoff=${!!handoff}, auditLog=${!!auditLog}, social=${socialReport?.filename || 'none'}, marketing=${mktReport?.filename || 'none'}`)
@@ -930,7 +942,7 @@ REQUIRED FORMAT — every brief must start with these two sections before anythi
 
 After those two sections, write the full operational brief. The action lists must come FIRST — Big D reads them before coffee.`
 
-  const standupUser = `${chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
+  const standupUser = `${weekStrategy ? `## This Week's Strategy (from strategist.js — Sunday brief)\n${weekStrategy}\n\n---\n\n` : chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
 
 ${auditLog ? `## Recent History (your own running log — last ~7 days)\nUse this to track continuity: is something you flagged before still unresolved? Did an action you recommended actually happen? Don't repeat a flag verbatim if it's already being tracked — note whether it's improving, stuck, or worse.\n${auditLog}\n\n---\n` : ''}
 ## Revenue
