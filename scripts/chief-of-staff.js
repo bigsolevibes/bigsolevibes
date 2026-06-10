@@ -239,6 +239,7 @@ const AGENT_ROSTER = [
   { name: 'change-agent',      essential: true,  weekly: false },
   { name: 'update-handoff',    essential: true,  weekly: false },
   // ── Supporting — non-essential, expected every 2h ─────────────────────────
+  { name: 'org-chart-agent',   essential: false, weekly: false },
   { name: 'drive-sync',        essential: false, weekly: false },
   { name: 'gemini-bridge',     essential: false, weekly: false },
   { name: 'image-gen',         essential: false, weekly: false },
@@ -781,6 +782,14 @@ async function watchBlogAgent() {
     }
     fs.writeFileSync(path.join(ROOT, 'logs', 'org-chart-state.json'), JSON.stringify(orgState, null, 2))
     log('Org chart state updated')
+    // Spawn org-chart-agent to rebuild the HTML
+    const { spawnSync } = require('child_process')
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'org-chart-agent.js')], {
+      cwd: ROOT, encoding: 'utf8', timeout: 15000,
+      env: { ...process.env, HOME: process.env.HOME }
+    })
+    if (r.status === 0) log('org-chart-agent: HTML rebuilt')
+    else log(`org-chart-agent error: ${(r.stderr || '').slice(0, 200)}`)
   } catch (err) {
     log(`Org chart update error: ${err.message}`)
   }
