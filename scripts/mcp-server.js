@@ -1,7 +1,7 @@
-require('dotenv').config()
+require('dotenv').config({ quiet: true })
 const { McpServer }               = require('@modelcontextprotocol/sdk/server/mcp.js')
 const { StdioServerTransport }    = require('@modelcontextprotocol/sdk/server/stdio.js')
-const { execSync, spawnSync }     = require('child_process')
+const { execSync, spawnSync, spawn } = require('child_process')
 const { z }                       = require('zod')
 const path                        = require('path')
 const fs                          = require('fs')
@@ -227,11 +227,16 @@ server.tool(
     if (!fs.existsSync(scriptPath)) {
       return { content: [{ type: 'text', text: `Script not found: ${scriptPath}` }] }
     }
-    const result = spawnSync(process.execPath, [scriptPath, '--dry-run'], {
-      cwd: ROOT, env: { ...process.env }, encoding: 'utf8', timeout: 30000,
+    // sync-shop handles its own git push — don't add --dry-run
+    const LIVE_SCRIPTS = new Set(['sync-shop'])
+    const isLive = LIVE_SCRIPTS.has(script.replace(/\.js$/, ''))
+    const args = isLive ? [scriptPath] : [scriptPath, '--dry-run']
+    console.error(`[bsv-mcp] run_diagnostic: ${script} isLive=${isLive} args=${JSON.stringify(args)}`)
+    const result = spawnSync(process.execPath, args, {
+      cwd: ROOT, env: { ...process.env }, encoding: 'utf8', timeout: 60000,
     })
     const out = [result.stdout, result.stderr].filter(Boolean).join('\n').trim()
-    return { content: [{ type: 'text', text: out || '(no output)' }] }
+    return { content: [{ type: 'text', text: `[isLive=${isLive}]\n` + (out || '(no output)') }] }
   }
 )
 
@@ -260,6 +265,423 @@ server.tool(
     }
   }
 )
+
+// ── approve_slot ─────────────────────────────────────────────────────────────
+server.tool(
+  'approve_slot',
+  'Approve a content slot for distribution. Writes to logs/approved-slots.json so watch-drive will release it.',
+  {
+    slot: z.string().describe('Slot name, e.g. fri-am, mon-pm'),
+  },
+  async ({ slot }) => {
+    const filePath = path.join(LOGS_DIR, 'approved-slots.json')
+    let existing = {}
+    try { existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {}
+    existing[slot] = true
+    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2))
+    return { content: [{ type: 'text', text: `✓ Approved: ${slot}\nwatch-drive will release it on next poll (≤15 min).` }] }
+  }
+)
+
+// ── deny_slot ─────────────────────────────────────────────────────────────────
+server.tool(
+  'deny_slot',
+  'Deny a content slot — removes from approved-slots.json and clears pipeline state so it can be re-uploaded.',
+  {
+    slot:   z.string().describe('Slot name, e.g. fri-am, mon-pm'),
+    reason: z.string().optional().describe('Optional reason for denial'),
+  },
+  async ({ slot, reason }) => {
+    // Remove from approved-slots
+    const filePath = path.join(LOGS_DIR, 'approved-slots.json')
+    let existing = {}
+    try { existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {}
+    delete existing[slot]
+    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2))
+
+    // Clear from pipeline state
+    const state = readState()
+    const cleared = !!state[slot]
+    delete state[slot]
+    writeState(state)
+
+    // ── Capture brief for denial learning ─────────────────────────────────────
+    // Read the brief that was denied so agents learn from it.
+    // Writes to logs/denial-log.json (read by brand-manager + creative-agent).
+    try {
+      const briefPath = path.join(ROOT, 'posts', 'briefs', `${slot}-brief.txt`)
+      const briefText = fs.existsSync(briefPath) ? fs.readFileSync(briefPath, 'utf8') : null
+
+      const extract = (label, text) => {
+        if (!text) return null
+        const m = text.match(new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?![A-Z_]+:)[^\\n]+)*)`, 'i'))
+        return m ? m[1].trim().slice(0, 300) : null
+      }
+
+      const entry = {
+        date:        new Date().toISOString().slice(0, 10),
+        timestamp:   new Date().toISOString(),
+        slot,
+        reason:      reason || null,
+        voice:       extract('VOICE', briefText),
+        theme:       extract('THEME', briefText),
+        instagram:   extract('INSTAGRAM', briefText),
+        imageBrief:  extract('IMAGE BRIEF', briefText),
+        hasBrief:    !!briefText,
+      }
+
+      const DENIAL_LOG = path.join(LOGS_DIR, 'denial-log.json')
+      let log = []
+      try { log = JSON.parse(fs.readFileSync(DENIAL_LOG, 'utf8')) } catch {}
+      log.unshift(entry) // newest first
+      if (log.length > 100) log = log.slice(0, 100) // cap at 100 entries
+      fs.writeFileSync(DENIAL_LOG, JSON.stringify(log, null, 2))
+
+      // Also push a summary into creative-directives.json so it's visible immediately
+      const DIRECTIVES_FILE = path.join(LOGS_DIR, 'creative-directives.json')
+      let directives = {}
+      try { directives = JSON.parse(fs.readFileSync(DIRECTIVES_FILE, 'utf8')) } catch {}
+      if (!directives.denials) directives.denials = []
+      directives.denials.unshift({
+        date: entry.date, slot, reason: reason || null,
+        instagram: entry.instagram?.slice(0, 150),
+        imageBrief: entry.imageBrief?.slice(0, 150),
+      })
+      if (directives.denials.length > 20) directives.denials = directives.denials.slice(0, 20)
+      directives.denials_updatedAt = new Date().toISOString()
+      fs.writeFileSync(DIRECTIVES_FILE, JSON.stringify(directives, null, 2))
+    } catch (err) {
+      console.error(`[deny_slot] denial logging failed: ${err.message}`)
+    }
+
+    const msg = [`✗ Denied: ${slot}`]
+    if (reason) msg.push(`Reason: ${reason}`)
+    msg.push(cleared ? 'Cleared from pipeline state — re-upload to Drive to reprocess.' : 'Not found in pipeline state.')
+    msg.push('Brief captured in denial-log.json — agents will learn from this.')
+    return { content: [{ type: 'text', text: msg.join('\n') }] }
+  }
+)
+
+// ── get_slot_image ────────────────────────────────────────────────────────────
+server.tool(
+  'get_slot_image',
+  'Get the Instagram preview image for a slot as a base64 data URI (resized to ~400px for fast display).',
+  {
+    slot: z.string().describe('Slot name, e.g. fri-am, mon-pm'),
+  },
+  async ({ slot }) => {
+    const candidates = [
+      path.join(ROOT, 'public', 'posts', 'output', `${slot}-instagram.png`),
+      path.join(ROOT, 'posts', 'output', `${slot}-instagram.png`),
+      path.join(ROOT, 'public', 'posts', 'output', `${slot}-bluesky.jpg`),
+    ]
+    const src = candidates.find(p => fs.existsSync(p))
+    if (!src) {
+      return { content: [{ type: 'text', text: `NO_IMAGE` }] }
+    }
+
+    // Resize to 400px wide using sips (macOS built-in) for fast transfer
+    const tmpOut = path.join(require('os').tmpdir(), `bsv-preview-${slot}.jpg`)
+    try {
+      execSync(`sips -s format jpeg -s formatOptions 75 --resampleWidth 400 "${src}" --out "${tmpOut}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000,
+      })
+      const data = fs.readFileSync(tmpOut)
+      fs.unlinkSync(tmpOut)
+      return { content: [{ type: 'text', text: `data:image/jpeg;base64,${data.toString('base64')}` }] }
+    } catch {
+      // sips failed — fall back to raw base64 of bluesky jpg if available
+      const jpg = candidates[2]
+      if (fs.existsSync(jpg)) {
+        const data = fs.readFileSync(jpg)
+        return { content: [{ type: 'text', text: `data:image/jpeg;base64,${data.toString('base64')}` }] }
+      }
+      return { content: [{ type: 'text', text: `NO_IMAGE` }] }
+    }
+  }
+)
+
+// ── get_slot_brief ────────────────────────────────────────────────────────────
+server.tool(
+  'get_slot_brief',
+  'Get the caption/brief content for a slot. Reads from posts/briefs/{slot}-brief.txt or ~/tmp/bsv-ready/{slot}.md.',
+  {
+    slot: z.string().describe('Slot name, e.g. fri-am, mon-pm'),
+  },
+  async ({ slot }) => {
+    const briefPath  = path.join(ROOT, 'posts', 'briefs', `${slot}-brief.txt`)
+    const captionPath = path.join(process.env.HOME || '', 'tmp', 'bsv-ready', `${slot}.md`)
+
+    if (fs.existsSync(briefPath)) {
+      const text = fs.readFileSync(briefPath, 'utf8')
+      return { content: [{ type: 'text', text: text }] }
+    }
+    if (fs.existsSync(captionPath)) {
+      const text = fs.readFileSync(captionPath, 'utf8')
+      return { content: [{ type: 'text', text: text }] }
+    }
+    return { content: [{ type: 'text', text: `No brief found for slot "${slot}".` }] }
+  }
+)
+
+// ── clear_drive_slot ──────────────────────────────────────────────────────────
+server.tool(
+  'clear_drive_slot',
+  'Remove a slot\'s files from Drive "Ready to Post/" so watch-drive stops re-queuing old content. Also clears the slot and its -flow variant from pipeline state.',
+  {
+    slot: z.string().describe('Slot name, e.g. fri-am, wed-pm'),
+  },
+  async ({ slot }) => {
+    const REMOTE = 'big sole vibes:Big Sole Vibes/Ready to Post'
+    const msgs = []
+
+    // Clear Drive files matching slot* and slot-flow*
+    try {
+      execSync(
+        `rclone delete "${REMOTE}" --include "${slot}.*" --include "${slot}-flow.*" --include "${slot}-*prompt*"`,
+        { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
+      )
+      msgs.push(`Drive: cleared "${slot}*" from Ready to Post/`)
+    } catch (e) {
+      msgs.push(`Drive warning: ${e.stderr?.toString().trim() || e.message}`)
+    }
+
+    // Clear from pipeline state
+    const state = readState()
+    const cleared = []
+    for (const key of [slot, `${slot}-flow`]) {
+      if (state[key]) { delete state[key]; cleared.push(key) }
+    }
+    if (cleared.length) {
+      writeState(state)
+      msgs.push(`Pipeline: cleared ${cleared.join(', ')}`)
+    } else {
+      msgs.push('Pipeline: slot not in state (already clear)')
+    }
+
+    return { content: [{ type: 'text', text: msgs.join('\n') }] }
+  }
+)
+
+// ── run_media_director ────────────────────────────────────────────────────────
+server.tool(
+  'run_media_director',
+  'Regenerate content briefs and images for a given day using the shelf product rotation. Fires media-director.js --day {day} and returns immediately — check pipeline state in ~2 minutes.',
+  {
+    day: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']).describe('Day to regenerate, e.g. wed'),
+  },
+  async ({ day }) => {
+    const script = path.join(ROOT, 'scripts', 'media-director.js')
+    const child = spawn(process.execPath, [script, '--day', day], {
+      cwd: ROOT,
+      env: { ...process.env },
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ media-director started for ${day}.\nBriefs + images generating now — takes ~2 minutes.\nRefresh the dashboard to see new slots appear.`,
+      }],
+    }
+  }
+)
+
+// ── run_edition_agent ─────────────────────────────────────────────────────────
+server.tool(
+  'run_edition_agent',
+  'Generate a new monthly BSV edition (J. Peterman-style story + product vignettes). Uploads draft to Drive for review. Use approve_edition to publish once Big D approves.',
+  {
+    dry_run: z.boolean().default(false).describe('Preview output without saving to Drive or state files'),
+    force:   z.boolean().default(false).describe('Re-run even if an edition was generated in the last 30 days'),
+    products: z.string().optional().describe('Comma-separated product names to feature (overrides automatic selection)'),
+  },
+  async ({ dry_run, force, products }) => {
+    const script = path.join(ROOT, 'scripts', 'edition-agent.js')
+    const args   = [script]
+    if (dry_run)  args.push('--dry-run')
+    if (force)    args.push('--force')
+    if (products) args.push('--products', products)
+
+    const child = spawn(process.execPath, args, {
+      cwd:      ROOT,
+      env:      { ...process.env },
+      detached: true,
+      stdio:    'ignore',
+    })
+    child.unref()
+
+    const mode = dry_run ? 'dry-run (no files saved)' : 'full run — uploading draft to Drive'
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ edition-agent started (${mode}).\nGenerating story + vignettes via Claude — takes ~60–90 seconds.\nCheck logs/edition-agent.log for progress.\nDraft will appear in Drive › Big Sole Vibes › Editions when done.`,
+      }],
+    }
+  }
+)
+
+// ── approve_edition ───────────────────────────────────────────────────────────
+server.tool(
+  'approve_edition',
+  'Approve the current edition draft and publish it to The Lounge. Pushes public/the-lounge/edition-N-MONTH.html to preview/full-site and saves the Lounge URL so social posts CTA to the story.',
+  {},
+  async () => {
+    const stateFile = path.join(ROOT, 'logs', 'edition-state.json')
+    let state
+    try {
+      state = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
+    } catch {
+      return { content: [{ type: 'text', text: '✗ No edition state found. Run run_edition_agent first.' }] }
+    }
+
+    if (!state.editionNumber) {
+      return { content: [{ type: 'text', text: '✗ Edition state exists but has no editionNumber — re-run edition-agent.' }] }
+    }
+
+    if (state.approved) {
+      return {
+        content: [{
+          type: 'text',
+          text: `Edition #${state.editionNumber} (${state.monthYear}) is already approved.\nLounge URL: ${state.loungeUrl || '(not yet published)'}`,
+        }],
+      }
+    }
+
+    const script = path.join(ROOT, 'scripts', 'edition-agent.js')
+    const child  = spawn(process.execPath, [script, '--approve'], {
+      cwd:      ROOT,
+      env:      { ...process.env },
+      detached: true,
+      stdio:    'ignore',
+    })
+    child.unref()
+
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ Approving Edition #${state.editionNumber} (${state.monthYear || ''}).\nPublishing to The Lounge now — takes ~15 seconds.\nCheck logs/edition-agent.log to confirm the push.\nOnce done, social vignettes will CTA to the edition story page.`,
+      }],
+    }
+  }
+)
+
+// ── install_edition_schedule ──────────────────────────────────────────────────
+server.tool(
+  'install_edition_schedule',
+  'One-time setup: install the launchd plist so edition-agent runs automatically on the 1st of each month at 6am. Safe to call multiple times.',
+  {},
+  async () => {
+    const plist  = path.join(ROOT, 'config', 'com.bsv.edition-agent.plist')
+    const dest   = path.join(process.env.HOME, 'Library', 'LaunchAgents', 'com.bsv.edition-agent.plist')
+
+    if (!fs.existsSync(plist)) {
+      return { content: [{ type: 'text', text: `✗ Plist not found at ${plist} — make sure config/com.bsv.edition-agent.plist exists.` }] }
+    }
+
+    try {
+      fs.copyFileSync(plist, dest)
+    } catch (e) {
+      return { content: [{ type: 'text', text: `✗ Copy failed: ${e.message}` }] }
+    }
+
+    // Unload first (silently) in case it was already loaded, then reload
+    sh(`launchctl unload "${dest}" 2>/dev/null || true`)
+    const loadResult = sh(`launchctl load "${dest}"`)
+
+    const status = sh(`launchctl list | grep com.bsv.edition-agent`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Edition schedule installed.`,
+          `Plist: ${dest}`,
+          `Runs: 1st of each month at 6:00 AM`,
+          loadResult ? `launchctl: ${loadResult}` : null,
+          status ? `Status: ${status}` : null,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
+  }
+)
+
+// ── add_product_to_queue ──────────────────────────────────────────────────────
+server.tool(
+  'add_product_to_queue',
+  'Big D quick-add: submit a product you discovered yourself. Runs a full Track 2 evaluation (web search + scoring) and writes approved picks to the product sheet as "Big D Pick". Use for products found organically — no terminal required.',
+  {
+    product_name: z.string().describe('Full product name and brand, e.g. "Gehwol Fusskraft Blue" or "Dr. Bronner\'s Hemp Tea Tree Soap"'),
+    asin: z.string().optional().describe('Amazon ASIN if you have it — e.g. B0012ABCDE. Leave blank and research will find it.'),
+    signal: z.string().optional().describe('Why you think it belongs — e.g. "saw it at the barber", "wife uses it, works great", "spotted on GMA". Helps the curator score crossover proof.'),
+    dry_run: z.boolean().default(false).describe('Preview evaluation without writing to sheet'),
+  },
+  async ({ product_name, asin, signal, dry_run }) => {
+    const script = path.join(ROOT, 'scripts', 'product-research.js')
+    const args   = [script, '--track2', '--product', product_name]
+
+    if (asin)    args.push('--asin', asin)
+    if (signal)  args.push('--signal', `Big D Pick: ${signal}`)
+    if (dry_run) args.push('--dry-run')
+
+    // If no ASIN supplied, use a placeholder — research will search for it
+    if (!asin) args.push('--asin', 'LOOKUP')
+
+    const child = spawn(process.execPath, args, {
+      cwd: ROOT,
+      env: { ...process.env },
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+
+    const mode = dry_run ? 'dry-run preview' : 'full evaluation + sheet write'
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ "${product_name}" submitted for evaluation (${mode}).\n${asin ? `ASIN: ${asin}` : 'ASIN: research will look it up'}\n${signal ? `Signal: ${signal}` : ''}\n\nCheck logs/product-research.log in ~60 seconds for results.`,
+      }],
+    }
+  }
+)
+
+// ── run_sync_shop ─────────────────────────────────────────────────────────────
+server.tool(
+  'run_sync_shop',
+  'Rebuild public/shop/index.html from the Google Sheet and push to preview/full-site. Returns immediately — the push takes ~10 seconds.',
+  {},
+  async () => {
+    const script = path.join(ROOT, 'scripts', 'sync-shop.js')
+    const child = spawn(process.execPath, [script], {
+      cwd: ROOT,
+      env: { ...process.env },
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+    return {
+      content: [{
+        type: 'text',
+        text: '✓ sync-shop launched. Check logs/sync-shop.log in ~15 seconds to confirm the push.',
+      }],
+    }
+  }
+)
+
+// ─── Auto-restart on file change ─────────────────────────────────────────────
+// When mcp-server.js is saved, exit cleanly so the MCP host relaunches with
+// the updated tool list. No manual restart needed after adding new tools.
+{
+  let restartTimer
+  fs.watch(__filename, () => {
+    clearTimeout(restartTimer)
+    restartTimer = setTimeout(() => {
+      console.error('[bsv-mcp] File changed — exiting for host restart…')
+      process.exit(0)
+    }, 500)
+  })
+}
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 

@@ -398,19 +398,46 @@ End with one quiet line that makes the reader want it without asking them to buy
 // ─── Track 2 direct evaluation ────────────────────────────────────────────────
 
 async function runTrack2Evaluation({ productName, asin, crossoverSignal, affiliateNetwork, client, dryRun, conn, existingAsins, directive, memory }) {
+  // ── ASIN lookup ── If asin is LOOKUP (Big D quick-add without ASIN), find it first
+  if (!asin || asin === 'LOOKUP') {
+    log(`ASIN not provided — searching Amazon for "${productName}"...`)
+    try {
+      const lookupResp = await client.messages.create({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+        messages:   [{ role: 'user', content: `Search Amazon for "${productName}" and return ONLY the ASIN (format: B0XXXXXXXXX). If not found, return NOT_FOUND.` }],
+      })
+      const lookupText = lookupResp.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      const asinMatch  = lookupText.match(/\b(B0[A-Z0-9]{8})\b/)
+      if (asinMatch) {
+        asin = asinMatch[1]
+        log(`ASIN found: ${asin}`)
+      } else {
+        log(`WARNING: could not find ASIN for "${productName}" — evaluation will proceed with UNKNOWN`)
+        asin = 'UNKNOWN'
+      }
+    } catch (err) {
+      log(`WARNING: ASIN lookup failed — ${err.message}`)
+      asin = 'UNKNOWN'
+    }
+  }
+
   log(`Track 2 evaluation: "${productName}" (${asin})`)
   log(`Crossover signal: ${crossoverSignal}`)
 
   const systemPrompt = `${directive ? `${directive}\n\n---\n\n` : ''}${memory ? `${memory}\n\n---\n\n` : ''}You are the BSV Product Curator evaluating a Track 2 Cultural Crossover product.
 
+Gate 0 — Masculine use gate (mandatory before scoring): Would the BSV man put this on his bathroom counter himself — or would he only have it if his partner bought it for him? Track 2 is specifically for products crossing from a female-primary audience into male use. That crossover must be documented. A product with zero male-use evidence fails Gate 0 regardless of quality. If the crossover signal provided is "Big D Pick" — treat that as firsthand evidence of male use (value: 10–15 pts toward crossover proof) and proceed.
+
 Track 2 scoring — 100 points total:
-- Crossover proof (25 pts): Documented evidence crossing from women's to men's. National TV appearance = 25. Viral Reddit thread = 15–20. Single mention = 5–10.
+- Crossover proof (25 pts): Documented evidence crossing from women's to men's. "Big D Pick" firsthand signal = 10–15. National TV appearance = 25. Viral Reddit thread = 15–20. Single mention = 5–10. No evidence at all = 0 (fail Gate 0).
 - Ritual fit (25 pts): Fits BSV man's recovery, grooming, or maintenance rotation. Not medical, not clinically positioned.
 - Ingredient/quality floor (25 pts): Real actives (shea, urea, argan, jojoba, essential oils). No synthetic fragrance as primary. No medicated or antifungal positioning.
 - Affiliate availability (25 pts): Amazon Associates or active affiliate network confirmed.
 
 Minimum 60/100 to make the shelf.
-Permanent exclusions: antifungal, medicated, clinical problem-solving, no affiliate link, out of stock.
+Permanent exclusions: antifungal, medicated, clinical problem-solving, no affiliate link, out of stock, zero male-use evidence.
 Track 2 does NOT exclude based on retail tier, brand recognition, or whether the brand sells at Grooming Lounge.`
 
   const userPrompt = `Evaluate this product for the BSV Track 2 shelf.
@@ -712,7 +739,9 @@ Amazon is not a sourcing channel. It is a confirmation step only: after a produc
 
 ## Brand alignment gates — run before scoring
 
-Every product must pass four gates before scoring begins. Fail any gate: reject. Do not spend scoring tokens on a product that doesn't belong in the room.
+Every product must pass five gates before scoring begins. Fail any gate: reject. Do not spend scoring tokens on a product that doesn't belong in the room.
+
+**Gate 0 — Masculine use gate (first gate, no exceptions):** Is this product primarily designed for, marketed to, or used by men — or would a man use it without needing his partner to buy it for him? Ask this directly: "Would the BSV man put this on his bathroom counter himself, or would he only have it if someone else brought it home?" If the answer is the latter — if the product is primarily marketed to women, positioned as feminine care, or is a crossover product with no documented male-use evidence — reject it. A product can be high quality, well-reviewed, and perfectly formulated and still be wrong for the BSV shelf. This gate is a hard stop: quality does not override it.
 
 **Gate 1 — Retailer gate:** Is the product sold at Grooming Lounge, Art of Shaving, MR PORTER, Gilt, or Huckberry? If it exists only on Amazon page one and no curated retailer stocks it, reject it.
 
@@ -828,7 +857,10 @@ From these searches, build a list of specific product names and brands. Note whi
 
 ## PHASE 2 — Brand alignment gates
 
-Run every product from Phase 1 through these four gates before scoring. A product that fails any gate is rejected — do not score it.
+Run every product from Phase 1 through these five gates before scoring. A product that fails any gate is rejected — do not score it.
+
+**Gate 0 — Masculine use gate (run this first, always)**
+Ask this question directly: "Would the BSV man put this on his bathroom counter himself — or would he only have it if his partner bought it for him?" If the honest answer is the latter: reject. A product can be high quality, well-reviewed, and perfectly formulated and still be wrong for this shelf. This gate is non-negotiable. Quality does not override it. Also reject any product whose packaging, brand voice, or primary customer base is clearly women — regardless of whether the ingredients could theoretically work for men. Document clearly if a product fails this gate so it never resurfaces.
 
 **Gate 1 — Retailer gate**
 Is this product available at Grooming Lounge, Art of Shaving, MR PORTER, Gilt, or Huckberry? If it exists only on Amazon page one and no curated retailer stocks it — reject.
@@ -842,7 +874,7 @@ Does the product language include any of: sandalwood, cedarwood, oud, eucalyptus
 **Gate 4 — Competitor gate**
 Does this product directly compete with the Proprietor's Foot Balm positioning (premium foot balm, $35–50)? If yes — do NOT reject. Flag it in the Competitive Intelligence section instead.
 
-Record gate results for every product. Only products that pass Gates 1–3 move to scoring.
+Record gate results for every product. Only products that pass Gates 0–3 move to scoring.
 
 ---
 
