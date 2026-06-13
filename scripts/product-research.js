@@ -30,6 +30,9 @@ function log(msg) {
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
 function loadDirective() {
+  // Check local repo copy first (fast + always available), then fall back to Drive
+  const localPath = path.join(ROOT, 'BSV-Directive.md')
+  if (fs.existsSync(localPath)) return fs.readFileSync(localPath, 'utf8')
   try {
     execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
     const p = path.join(TEMP_DIR, 'BSV-Directive.md')
