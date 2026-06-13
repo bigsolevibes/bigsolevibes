@@ -787,6 +787,50 @@ server.tool(
   }
 )
 
+// ── get_research_summary ──────────────────────────────────────────────────────
+server.tool(
+  'get_research_summary',
+  'Get the latest product research summary for standup. Reads logs/product-research-state.json — written automatically at end of each product-research run.',
+  {},
+  async () => {
+    const stateFile = path.join(ROOT, 'logs', 'product-research-state.json')
+    if (!fs.existsSync(stateFile)) {
+      return { content: [{ type: 'text', text: '⚠ No research state found. Run product-research first (run_product_research tool or wait for Saturday night schedule).' }] }
+    }
+
+    let state
+    try {
+      state = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
+    } catch (e) {
+      return { content: [{ type: 'text', text: `✗ Could not read state file: ${e.message}` }] }
+    }
+
+    const lines = [
+      `**Product Research** — Last run: ${state.last_run}`,
+      `New picks queued: ${state.new_picks}`,
+    ]
+
+    if (state.picks?.length) {
+      lines.push('\nPicks added this cycle:')
+      state.picks.forEach(p => lines.push(`  • ${p.name} (${p.asin}) — ${p.category}, ${p.score}, ${p.price}`))
+    } else {
+      lines.push('\nNo new picks this cycle.')
+    }
+
+    if (state.shelf_gaps_raw) {
+      lines.push('\nShelf gaps:')
+      lines.push(state.shelf_gaps_raw.split('\n').slice(0, 6).join('\n'))
+    }
+
+    if (state.held_back_raw) {
+      lines.push('\nHeld back (near-misses for next cycle):')
+      lines.push(state.held_back_raw.split('\n').slice(0, 6).join('\n'))
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  }
+)
+
 // ─── Auto-restart on file change ─────────────────────────────────────────────
 // When mcp-server.js is saved, exit cleanly so the MCP host relaunches with
 // the updated tool list. No manual restart needed after adding new tools.

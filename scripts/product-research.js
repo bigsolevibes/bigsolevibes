@@ -577,6 +577,80 @@ Then score against the Track 2 rubric and return ONLY this JSON object (no markd
   log(`Track 2: appended "${pick.name}" (${pick.asin}) → Pending`)
 }
 
+// ─── Self-updating directive ──────────────────────────────────────────────────
+
+function extractSection(text, heading) {
+  const re = new RegExp(`##\\s*${heading}[\\s\\S]*?(?=\\n##|$)`, 'i')
+  const m = text.match(re)
+  return m ? m[0].trim() : ''
+}
+
+function updateDirectiveFromReport(reportText) {
+  const localPath = path.join(ROOT, 'BSV-Directive.md')
+  if (!fs.existsSync(localPath)) {
+    log('WARNING: BSV-Directive.md not found — skipping directive update')
+    return
+  }
+
+  const heldBackSection  = extractSection(reportText, 'Held Back')
+  const shelfGapsSection = extractSection(reportText, 'Shelf Gaps')
+  const discoverySection = extractSection(reportText, 'Discovery Notes')
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  let huntBlock = `### Specific Products to Hunt\n\nAuto-updated from research run ${today}.\n\n`
+
+  if (heldBackSection) {
+    huntBlock += `**Near-misses from last cycle — evaluate these first next run:**\n\n`
+    huntBlock += heldBackSection.replace(/^##[^\n]*\n/, '').trim().slice(0, 700) + '\n\n'
+  }
+
+  if (shelfGapsSection) {
+    huntBlock += `**Open shelf gaps to fill:**\n\n`
+    huntBlock += shelfGapsSection.replace(/^##[^\n]*\n/, '').trim().slice(0, 400) + '\n\n'
+  }
+
+  if (discoverySection) {
+    huntBlock += `**Source intelligence from last cycle:**\n\n`
+    huntBlock += discoverySection.replace(/^##[^\n]*\n/, '').trim().slice(0, 400) + '\n\n'
+  }
+
+  const directive = fs.readFileSync(localPath, 'utf8')
+  const sectionRe = /### Specific Products to Hunt[\s\S]*?(?=\n###|\n##|$)/
+  const updated = sectionRe.test(directive)
+    ? directive.replace(sectionRe, huntBlock.trimEnd())
+    : directive + '\n\n' + huntBlock.trimEnd()
+
+  fs.writeFileSync(localPath, updated)
+  log(`Directive auto-updated — "Specific Products to Hunt" refreshed from ${today} report`)
+}
+
+function writeResearchState(picks, added, reportText) {
+  const heldBackSection  = extractSection(reportText, 'Held Back')
+  const shelfGapsSection = extractSection(reportText, 'Shelf Gaps')
+  const discoverySection = extractSection(reportText, 'Discovery Notes')
+
+  const state = {
+    last_run:        new Date().toISOString().slice(0, 10),
+    new_picks:       added,
+    picks:           (picks || []).map(p => ({
+      name:     p.name,
+      asin:     p.asin,
+      category: p.category,
+      score:    p.score,
+      price:    p.price,
+    })),
+    held_back_raw:   heldBackSection.replace(/^##[^\n]*\n/, '').trim().slice(0, 800),
+    shelf_gaps_raw:  shelfGapsSection.replace(/^##[^\n]*\n/, '').trim().slice(0, 400),
+    discovery_notes: discoverySection.replace(/^##[^\n]*\n/, '').trim().slice(0, 400),
+  }
+
+  const stateFile = path.join(ROOT, 'logs', 'product-research-state.json')
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true })
+  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2))
+  log(`Research state → logs/product-research-state.json`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -1091,13 +1165,13 @@ ${fullText}`,
   }
 
   // Write picks to Google Sheet as Pending — sync-shop.js deploys approved rows
+  let picksAdded = 0
   try {
     if (!conn) {
       conn = await connect()
       await ensureHeaders(conn)
     }
 
-    let added = 0
     for (const pick of picks) {
       if (existingAsins.has(pick.asin)) {
         log(`  Sheet: ${pick.asin} already present — skipping`)
@@ -1115,11 +1189,17 @@ ${fullText}`,
         await appendPick(conn, pick)
         log(`  Sheet: appended "${pick.name}" (${pick.asin}) → Pending`)
       }
-      added++
+      picksAdded++
     }
-    log(`Sheet update complete — ${added} new row(s) ${dryRun ? 'would be added (dry-run)' : 'added'}, ${picks.length - added} skipped`)
+    log(`Sheet update complete — ${picksAdded} new row(s) ${dryRun ? 'would be added (dry-run)' : 'added'}, ${picks.length - picksAdded} skipped`)
   } catch (err) {
     log(`WARNING: sheet update failed — ${err.message}`)
+  }
+
+  // ─── Auto-update directive + write state for standup MCP ──────────────────
+  if (fullText) {
+    try { updateDirectiveFromReport(fullText) } catch (e) { log(`WARNING: directive update failed — ${e.message}`) }
+    try { writeResearchState(picks, picksAdded, fullText) } catch (e) { log(`WARNING: state write failed — ${e.message}`) }
   }
 
   log('━━━ product-research complete ━━━\n')
