@@ -162,6 +162,19 @@ SCENE (from the brief below):
       log(`    ERROR: caption upload failed: ${err.stderr?.toString().trim() || err.message}`)
     }
 
+    // ── Flow caption .md → Drive Ready to Post ───────────────────────────────
+    // The -flow slot (video/story format) needs its own caption file so
+    // watch-drive can distribute it. Same caption as the still — watch-drive
+    // won't distribute until BOTH the media and this caption file are present.
+    const flowCaptionLocal = path.join(TEMP_DIR, `${slug}-flow.md`)
+    fs.writeFileSync(flowCaptionLocal, captionContent)
+    try {
+      uploadFile(flowCaptionLocal, `${REMOTE}/Ready to Post/${slug}-flow.md`)
+      log(`    ✓ uploaded → Ready to Post/${slug}-flow.md`)
+    } catch (err) {
+      log(`    ERROR: flow caption upload failed: ${err.stderr?.toString().trim() || err.message}`)
+    }
+
     // ── Image prompt → Drive Ready to Post ───────────────────────────────────
     const imagePrompt = fields.image_brief
     if (imagePrompt) {
