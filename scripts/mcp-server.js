@@ -719,6 +719,74 @@ server.tool(
   }
 )
 
+// ── run_product_research ──────────────────────────────────────────────────────
+server.tool(
+  'run_product_research',
+  'Run a full product research cycle — web searches, scoring, writes approved picks to the Google Sheet. Takes 3–5 minutes. Returns immediately; check logs/product-research.log for progress.',
+  {
+    skip_research: z.boolean().default(false).describe('Skip web search phase and re-score existing candidates only'),
+    dry_run:       z.boolean().default(false).describe('Preview picks without writing to the sheet'),
+  },
+  async ({ skip_research, dry_run }) => {
+    const script = path.join(ROOT, 'scripts', 'product-research.js')
+    const args   = [script]
+    if (skip_research) args.push('--skip-research')
+    if (dry_run)       args.push('--dry-run')
+
+    const child = spawn(process.execPath, args, {
+      cwd:      ROOT,
+      env:      { ...process.env },
+      detached: true,
+      stdio:    'ignore',
+    })
+    child.unref()
+
+    const mode = dry_run ? 'dry-run (no sheet write)' : 'full run — writing to product sheet'
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ product-research started (${mode}).\nSearching web + scoring products now — takes 3–5 minutes.\nCheck logs/product-research.log for progress.\nApproved picks will appear in the Google Sheet product queue when done.`,
+      }],
+    }
+  }
+)
+
+// ── install_product_research_schedule ─────────────────────────────────────────
+server.tool(
+  'install_product_research_schedule',
+  'One-time setup: install the launchd plist so product-research runs automatically every Saturday at 11pm. Safe to call multiple times.',
+  {},
+  async () => {
+    const plist = path.join(ROOT, 'config', 'com.bsv.product-research.plist')
+    const dest  = path.join(process.env.HOME, 'Library', 'LaunchAgents', 'com.bsv.product-research.plist')
+
+    if (!fs.existsSync(plist)) {
+      return { content: [{ type: 'text', text: `✗ Plist not found at ${plist} — make sure config/com.bsv.product-research.plist exists.` }] }
+    }
+
+    try { fs.copyFileSync(plist, dest) } catch (e) {
+      return { content: [{ type: 'text', text: `✗ Copy failed: ${e.message}` }] }
+    }
+
+    sh(`launchctl unload "${dest}" 2>/dev/null || true`)
+    const loadResult = sh(`launchctl load "${dest}"`)
+    const status     = sh(`launchctl list | grep com.bsv.product-research`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Product research schedule installed.`,
+          `Plist: ${dest}`,
+          `Runs: Every Saturday at 11:00 PM`,
+          loadResult ? `launchctl: ${loadResult}` : null,
+          status     ? `Status: ${status}` : null,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
+  }
+)
+
 // ─── Auto-restart on file change ─────────────────────────────────────────────
 // When mcp-server.js is saved, exit cleanly so the MCP host relaunches with
 // the updated tool list. No manual restart needed after adding new tools.

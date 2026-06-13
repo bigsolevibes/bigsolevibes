@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bsv.product-research</string>
+
+  <!-- Runs every Saturday at 11:00 PM — new finds ready Sunday morning -->
+  <!-- To trigger manually: launchctl start com.bsv.product-research -->
+  <!-- Or via MCP: run_product_research tool -->
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/davidgeer/claude/bigsolevibes-web/scripts/product-research.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>6</integer>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/product-research-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/product-research-launchd.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/davidgeer</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
