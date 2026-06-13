@@ -33,6 +33,28 @@ Track 2 (Cultural crossover): Products already working in adjacent audiences (at
 
 Both tracks apply to foot care every week.
 
+### Approved Sources — Next Cycle Priority
+
+The standard source list (Grooming Lounge, MR PORTER, Kiehl's, Molton Brown, Art of Shaving, Gilt, Huckberry, Le Labo, Lab Series) has been substantially exhausted for foot care. These channels must be added and prioritized every cycle until foot care slots are filled:
+
+- **Bluemercury** (bluemercury.com) — confirmed stocking Margaret Dabbs London and Nécessaire. Add to Phase 1 approved sources immediately.
+- **Nécessaire brand direct** (necessaire.com) — fast-absorbing body/foot serum, Bluemercury-stocked, men's-adjacent positioning. Evaluate for standard-tier.
+- **ELEMIS Body Performance collection** — confirmed active product line, JavaScript-blocked in prior cycles. Browse manually or use a rendered browser.
+
+### Specific Products to Hunt
+
+These were named by prior research as the most likely fills for the open foot care slots. Evaluate these by name before running broader discovery:
+
+**Standard tier ($40-70):**
+- **Gehwol Fusskraft Blue** — German podiatric brand, 140+ years old, professional-grade, non-medicated, sold through podiatry and specialist grooming channels. Not a first-page Google result. This is the most likely standard-tier candidate. Search Amazon and Bluemercury.
+- **Margaret Dabbs London Intensive Hydrating Foot Lotion** — British podiatrist brand, professional provenance, stocked at Bluemercury and Nordstrom.
+- **Nécessaire The Body Serum** — fast-absorbing, clinically-oriented, gender-neutral, available at Bluemercury.
+
+**Aspiration tier ($100-200):**
+- **Birkenstock Care Essentials Nourishing Foot Balm** — 250 years of foot heritage, strong brand narrative, men's customer base. No Amazon ASIN confirmed as of 2026-06-13. Check Amazon availability every cycle. If ASIN found, this is a strong aspiration-tier candidate.
+- **Dr. Barbara Sturm Body products** — aspiration pricing, stocked at MR PORTER. Evaluate for foot-adjacent positioning.
+- **Gehwol professional lines** (higher-tier products sold through licensed podiatrists) — search for premium SKUs above $80.
+
 ### Amazon First
 
 All picks must have an Amazon ASIN and be available via tag bigsolevibes-20. No Amazon availability means hold until alternative affiliate channel is confirmed.
