@@ -699,12 +699,15 @@ server.tool(
       msgs.push(`Staged: ${files.join(', ')}`)
     }
 
-    // Commit
-    const result = sh(`git commit -m ${JSON.stringify(message)}`)
-    if (result.startsWith('fatal') || result.startsWith('error')) {
-      return { content: [{ type: 'text', text: `❌ Commit failed:\n${result}\n\n${msgs.join('\n')}` }] }
+    // Commit — use spawnSync so exit code is reliable independent of stderr content
+    const commitResult = spawnSync('git', ['commit', '-m', message], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    if (commitResult.status !== 0) {
+      const err = (commitResult.stderr || commitResult.stdout || '').trim()
+      return { content: [{ type: 'text', text: `❌ Commit failed:\n${err}\n\n${msgs.join('\n')}` }] }
     }
-    msgs.push(`Committed: ${result.split('\n')[0]}`)
+    msgs.push(`Committed: ${(commitResult.stdout || '').split('\n')[0].trim()}`)
 
     // Optional push
     if (push) {
