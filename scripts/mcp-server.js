@@ -669,6 +669,53 @@ server.tool(
   }
 )
 
+// ── commit_changes ────────────────────────────────────────────────────────────
+server.tool(
+  'commit_changes',
+  'Stage files and commit to the current branch (preview/full-site) on the local machine. Clears any stale git lock files first so sandbox-written commits never leave orphaned locks. Optionally pushes after committing.',
+  {
+    files:   z.array(z.string()).describe('File paths to stage, relative to repo root (e.g. ["scripts/foo.js", "scripts/bar.js"]). Pass ["--all"] to stage all tracked changes.'),
+    message: z.string().describe('Commit message'),
+    push:    z.boolean().default(false).describe('Push to origin after committing (default false)'),
+  },
+  async ({ files, message, push }) => {
+    const msgs = []
+
+    // Clear stale lock files left by sandbox git processes
+    for (const lock of ['HEAD.lock', 'index.lock']) {
+      const p = path.join(ROOT, '.git', lock)
+      if (fs.existsSync(p)) {
+        try { fs.rmSync(p); msgs.push(`Cleared stale ${lock}`) } catch (e) { msgs.push(`Warning: could not clear ${lock}: ${e.message}`) }
+      }
+    }
+
+    // Stage
+    if (files.length === 1 && files[0] === '--all') {
+      sh('git add -u')
+      msgs.push('Staged: all tracked changes')
+    } else {
+      const quoted = files.map(f => `"${f}"`).join(' ')
+      sh(`git add ${quoted}`)
+      msgs.push(`Staged: ${files.join(', ')}`)
+    }
+
+    // Commit
+    const result = sh(`git commit -m ${JSON.stringify(message)}`)
+    if (result.startsWith('fatal') || result.startsWith('error')) {
+      return { content: [{ type: 'text', text: `❌ Commit failed:\n${result}\n\n${msgs.join('\n')}` }] }
+    }
+    msgs.push(`Committed: ${result.split('\n')[0]}`)
+
+    // Optional push
+    if (push) {
+      const pushResult = sh('git push')
+      msgs.push(`Push: ${pushResult.split('\n')[0]}`)
+    }
+
+    return { content: [{ type: 'text', text: msgs.join('\n') }] }
+  }
+)
+
 // ─── Auto-restart on file change ─────────────────────────────────────────────
 // When mcp-server.js is saved, exit cleanly so the MCP host relaunches with
 // the updated tool list. No manual restart needed after adding new tools.

@@ -230,14 +230,15 @@ function checkPosts() {
 // commands. Essential agents get Telegram alerts on error.
 
 const AGENT_ROSTER = [
-  // ── Core pipeline — essential, expected every 2h ──────────────────────────
-  { name: 'watch-drive',       essential: true,  weekly: false },
-  { name: 'eng-bot',           essential: true,  weekly: false },
-  { name: 'media-director',    essential: true,  weekly: false },
-  { name: 'creative-agent',    essential: true,  weekly: false },
-  { name: 'distribute',        essential: true,  weekly: false },
-  { name: 'change-agent',      essential: true,  weekly: false },
-  { name: 'update-handoff',    essential: true,  weekly: false },
+  // ── Core pipeline — continuous, expected every 2h ─────────────────────────
+  { name: 'watch-drive',       essential: true,  weekly: false, daily: false },
+  { name: 'eng-bot',           essential: true,  weekly: false, daily: false },
+  { name: 'change-agent',      essential: true,  weekly: false, daily: false },
+  // ── Daily agents — run once per night via launchd, stale window = 25h ─────
+  { name: 'media-director',    essential: true,  weekly: false, daily: true  },
+  { name: 'creative-agent',    essential: true,  weekly: false, daily: true  },
+  { name: 'distribute',        essential: true,  weekly: false, daily: true  },
+  { name: 'update-handoff',    essential: true,  weekly: false, daily: true  },
   // ── Supporting — non-essential, expected every 2h ─────────────────────────
   { name: 'org-chart-agent',   essential: false, weekly: false },
   { name: 'drive-sync',        essential: false, weekly: false },
@@ -274,7 +275,7 @@ function checkAgentHealth() {
     }
 
     const ageMins  = (now - fs.statSync(logPath).mtimeMs) / 60000
-    const staleMins = agent.weekly ? 7 * 24 * 60 : 120
+    const staleMins = agent.weekly ? 7 * 24 * 60 : agent.daily ? 25 * 60 : 120
     const isStale  = ageMins > staleMins && agent.essential
 
     // Read last 60 lines for errors and output signal

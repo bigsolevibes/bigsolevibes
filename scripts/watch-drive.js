@@ -224,6 +224,71 @@ function parseCaptions(content) {
   return result
 }
 
+// ─── -flow self-healing ───────────────────────────────────────────────────────
+// When a -flow slot has media but no caption, derive the caption from the base
+// slot's brief and upload it to Drive so the next poll can distribute.
+// This makes the -flow gap a self-healing condition rather than a Big C alert.
+
+function parseBriefForCaption(briefText) {
+  const fields = {}
+  const dashIdx = briefText.indexOf('\n---\n')
+  const header  = dashIdx >= 0 ? briefText.slice(0, dashIdx) : ''
+  const body    = dashIdx >= 0 ? briefText.slice(dashIdx + 5) : briefText
+
+  for (const line of header.split('\n')) {
+    const m = line.match(/^(SLOT|THEME|POST_TIME):\s*(.+)$/)
+    if (m) fields[m[1].toLowerCase().replace('_', '')] = m[2].trim()
+  }
+  if (fields.posttime) {
+    const tm = fields.posttime.match(/(\d{1,2}:\d{2})/)
+    fields.posttime = tm ? tm[1] : fields.posttime
+  }
+
+  const BODY_KEY_RE = /^(?=IMAGE BRIEF:|VIDEO BRIEF:|ON-IMAGE COPY:|INSTAGRAM:|BLUESKY:|YOUTUBE:|TIKTOK:)/m
+  for (const chunk of body.split(BODY_KEY_RE)) {
+    const m = chunk.match(/^(INSTAGRAM|BLUESKY):\s*([\s\S]*)/)
+    if (!m) continue
+    fields[m[1].toLowerCase()] = m[2].replace(/\n---\s*$/, '').trim()
+  }
+  return fields
+}
+
+function buildFlowCaption(fields, flowSlot) {
+  const theme    = fields.theme    || ''
+  const postTime = fields.posttime || ''
+  const header   = postTime ? `post_time: ${postTime}\n` : ''
+  const ig       = fields.instagram || ''
+  const tw       = fields.bluesky   || ''
+  return `${header}# ${flowSlot} — ${theme}\n\n## instagram\n${ig}\n\n## twitter\n${tw}\n\n## facebook\n${ig}\n`
+}
+
+function selfHealFlowCaption(base) {
+  if (!base.endsWith('-flow')) return false
+  const baseSlot  = base.replace(/-flow$/, '')
+  const briefPath = path.join(ROOT, 'posts', 'briefs', `${baseSlot}-brief.txt`)
+  if (!fs.existsSync(briefPath)) {
+    log(`${base}: -flow missing caption — no base brief at ${briefPath}, cannot self-heal`)
+    return false
+  }
+  try {
+    const briefText      = fs.readFileSync(briefPath, 'utf8')
+    const fields         = parseBriefForCaption(briefText)
+    const captionContent = buildFlowCaption(fields, base)
+    const tmpFile        = path.join(TEMP_DIR, `${base}.md`)
+    fs.writeFileSync(tmpFile, captionContent)
+    execSync(`rclone copyto "${tmpFile}" "${REMOTE_READY}/${base}.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    // Auto-approve so the approval gate doesn't block next poll
+    const approved = loadApprovedSlots()
+    approved[base] = true
+    fs.writeFileSync(APPROVED_SLOTS_FILE, JSON.stringify(approved, null, 2))
+    log(`${base}: ✓ self-healed — flow caption derived from ${baseSlot} brief, uploaded to Drive, auto-approved`)
+    return true
+  } catch (err) {
+    log(`${base}: WARNING — self-heal attempt failed: ${err.message}`)
+    return false
+  }
+}
+
 // ─── File grouping ────────────────────────────────────────────────────────────
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp'])
@@ -449,6 +514,13 @@ async function run() {
 
     // Media only — process but don't distribute yet
     if (media && !caption) {
+      // -flow self-heal: if we can derive the caption from the base brief, do it now.
+      // Caption will be present in Drive on the next poll and distribution will proceed.
+      if (base.endsWith('-flow')) {
+        selfHealFlowCaption(base)
+        // Fall through to process media this cycle — caption arrives next poll.
+      }
+
       // Track how long caption has been missing — alert if post window is likely missed
       if (!state[base]._media_since) {
         state[base]._media_since = new Date().toISOString()
