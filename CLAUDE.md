@@ -2,11 +2,23 @@
 
 Before responding to any message in any session, read **in this order** and **present the stand-up to Big D immediately**:
 
-1. **`BSV-Start-Here.md`** — orientation + precedence rules. Read this FIRST.
-2. **Latest `BSV-Handoff-YYYY-MM-DD.md` in Drive's `Handoff/` folder** — chief's daily brief, generated every morning at 9:30am. **Read this and present it to Big D as the opening of every session.** Don't summarize into nothing — surface the revenue status, today's action, agent health, growth signal, and the action list. This is the stand-up. Big D should not have to ask for it.
-3. **`BSV-Session-Context.md` in Drive's `Handoff/` folder** — operational snapshot. When it conflicts with `BSV-Memory.md` on current state, trust this one.
-4. `BSV-Memory.md` — brand story, voice, strategic decisions. Slow-changing bible, not current state.
-5. `BSV-BigC-Audit-Log.md` — last 5–10 entries. Append at end of any session where something durable happened.
+1. **`BSV-Start-Here.md`** — orientation + precedence rules. Read this FIRST. (local — fast)
+2. **Latest `standup-YYYY-MM-DD.md` in Drive's `Reports/` folder** — the chief brief. Has explicit BIG D and BIG C action items. Most actionable doc in the stack — surface it in full, including both action lists.
+3. **`BSV-Session-Context.md` in Drive's `Handoff/` folder** — strategic context. When it conflicts with `BSV-Memory.md` on current state, trust this one.
+4. **`BSV-BigC-Audit-Log.md`** — last 5–10 entries. Append at end of any session where something durable happened. (local — fast)
+
+**Read on demand only — do NOT read every session:**
+- `BSV-Handoff-YYYY-MM-DD.md` — only if session-context is missing or stale
+- `eng-report-YYYY-MM-DD.md` — only if standup flags active agent failures
+- `cost-report-YYYY-MM-DD.md` — only if standup flags a budget alert
+- `BSV-Memory.md` — only when brand voice or strategic decisions are in question
+
+**Present the stand-up to Big D as the opening of every session.** Cover all five sections — don't summarize into nothing:
+- **Revenue** — yesterday's commissions, week total, action today
+- **Posts** — confirmed, gaps, stuck media
+- **Agent health** — errors and warnings surfaced from the eng report
+- **Cost** — balance, burn rate, runway (from cost report)
+- **Growth** — follower counts, email list, trend
 
 **The stand-up is non-negotiable.** If Big D opens with anything other than "skip the brief" — present it first, then address their message.
 
@@ -84,6 +96,8 @@ Google Drive "Ready to Post/"
 | `marketing-manager.js` | Marketing planning agent |
 | `media-director.js` | Weekly content plan agent |
 | `brand-manager.js` | Brand consistency agent |
+| `learn.js` | Big D correction → pipeline. `--note "what was wrong"` appends to BSV-Directive.md (Drive, read by all agents) and `logs/creative-directives.json` (read by creative-agent on every brief). `--list` shows active corrections. `--clear` removes them. Big C calls this any time Big D flags bad output. |
+| `edition-agent.js` | Monthly J. Peterman-style story engine — selects 5–6 shelf products, writes an 800–1000 word themed edition story, generates per-product vignettes + image briefs, uploads draft to Drive for approval, saves `logs/edition-state.json`; `--approve` activates it; `--force` re-runs; `--dry-run` generates without saving |
 | `cost-report.js` | Daily AI spend tracker, uploads to Drive |
 | `gemini-bridge.js` | Gemini API wrapper (Imagen 4 / Veo 3.1) |
 | `image-gen.js` | Image generation pipeline |
@@ -117,6 +131,7 @@ Big Sole Vibes/
   Brand/             — brand report .md files
   Handoff/           — BSV-Handoff-v5.md (nightly)
   Product Development/
+  Editions/              — monthly edition drafts: edition-N-YYYY-MM-draft.md (pending Big D approval)
 ```
 
 ---
@@ -137,7 +152,8 @@ Big Sole Vibes/
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | YouTube OAuth |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_PUBLIC_URL` | Cloudflare R2 |
 | `KLAVIYO_API_KEY` / `KLAVIYO_LOUNGE_LIST_ID` / `KLAVIYO_DROP_LIST_ID` | Email capture |
-| `ZOHO_SMTP_HOST` / `ZOHO_SMTP_USER` / `ZOHO_SMTP_PASSWORD` | Eng-bot email digest |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API — eng-bot alerts, chief escalations, missed-post OMG |
+| `TELEGRAM_CHAT_ID` | Telegram chat ID to receive alerts |
 | `GOOGLE_SERVICE_ACCOUNT_PATH` | Google Sheets service account |
 | `SHEETS_PRODUCT_QUEUE_ID` | Product queue spreadsheet ID |
 | `NEXT_PUBLIC_GA_MEASUREMENT_ID` | Google Analytics |
@@ -168,7 +184,7 @@ Big Sole Vibes/
 
 - `YOUTUBE_REFRESH_TOKEN` revoked — re-auth needed via `reauth.js`
 - R2 uploads failing with SSL handshake error + Unauthorized — credential or endpoint issue
-- Zoho SMTP rejecting auth — eng-bot email digest not sending
+- Telegram alerts not confirmed — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` may be missing from `.env`; eng-bot silently drops alerts if not set (note: Zoho SMTP was replaced by Telegram — SMTP is no longer used)
 - `mon-pm`, `thu-pm` stuck in `_unknown: pending` — no platform variants emitted
 - Git push in `resize-post.js` failing — public URL fallback pipeline broken
 

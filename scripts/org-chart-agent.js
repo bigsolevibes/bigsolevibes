@@ -6,10 +6,11 @@ require('dotenv').config({ quiet: true })
 const fs   = require('fs')
 const path = require('path')
 
-const ROOT       = path.join(__dirname, '..')
-const STATE_PATH = path.join(ROOT, 'logs', 'org-chart-state.json')
-const OUT_PATH   = path.join(ROOT, 'public', 'org-chart.html')
-const LOG_FILE   = path.join(ROOT, 'logs', 'org-chart-agent.log')
+const ROOT            = path.join(__dirname, '..')
+const STATE_PATH      = path.join(ROOT, 'logs', 'org-chart-state.json')
+const COST_STATE_PATH = path.join(ROOT, 'logs', 'cost-state.json')
+const OUT_PATH        = path.join(ROOT, 'public', 'org-chart.html')
+const LOG_FILE        = path.join(ROOT, 'logs', 'org-chart-agent.log')
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
@@ -79,7 +80,65 @@ function buildAgentCard(name, data) {
     </div>`
 }
 
-function buildHTML(state) {
+function buildCostPanel(cost) {
+  if (!cost) return ''
+
+  const balance    = cost.balance
+  const burn       = cost.avg_daily_burn
+  const runway     = cost.runway_hours
+  const todayCost  = cost.today_cost
+  const costDate   = cost.date || ''
+
+  // Balance color
+  const balColor = balance === null ? '#6B7280'
+    : balance < 5   ? '#EF4444'
+    : balance < 15  ? '#F59E0B'
+    : '#22C55E'
+
+  const balStr = balance !== null ? `$${balance.toFixed(2)}` : '—'
+
+  const burnStr = (burn > 0) ? `$${burn.toFixed(4)}/day` : '$0.0000/day'
+
+  let runwayStr = '—'
+  let runwayColor = '#6B7280'
+  if (runway !== null) {
+    const days = runway / 24
+    runwayStr = days >= 2 ? `${days.toFixed(1)} days` : `${runway.toFixed(0)}h`
+    runwayColor = runway < 24 ? '#EF4444' : runway < 48 ? '#F59E0B' : '#22C55E'
+  }
+
+  const todayStr = todayCost > 0 ? `$${todayCost.toFixed(4)}` : '$0.0000'
+
+  const staleWarning = costDate && costDate < new Date().toISOString().slice(0, 10)
+    ? `<div style="font-size:0.6rem;color:#F59E0B;margin-top:0.5rem;text-align:center;letter-spacing:0.05em;">⚠ cost data from ${costDate} — run cost-report.js to refresh</div>`
+    : ''
+
+  return `
+  <div class="cost-panel">
+    <div class="cost-label">API SPEND</div>
+    <div class="cost-items">
+      <div class="cost-item">
+        <div class="cost-val" style="color:${balColor}">${balStr}</div>
+        <div class="cost-lbl">BALANCE</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val">${burnStr}</div>
+        <div class="cost-lbl">AVG BURN</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val" style="color:${runwayColor}">${runwayStr}</div>
+        <div class="cost-lbl">RUNWAY</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val">${todayStr}</div>
+        <div class="cost-lbl">TODAY</div>
+      </div>
+    </div>
+    ${staleWarning}
+  </div>`
+}
+
+function buildHTML(state, costState) {
   const updatedAt = new Date(state.lastUpdated).toLocaleString('en-US', {
     timeZone: 'America/Chicago',
     weekday: 'short', month: 'short', day: 'numeric',
@@ -164,6 +223,14 @@ function buildHTML(state) {
 
     .agent-msg { font-size: 0.65rem; color: #F59E0B; margin-top: 0.4rem; line-height: 1.4; }
 
+    .cost-panel { padding: 1rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .cost-label { font-size: 0.6rem; letter-spacing: 0.2em; color: ${AMBER}; }
+    .cost-items { display: flex; gap: 3rem; }
+    .cost-item { text-align: center; }
+    .cost-val { font-size: 1.1rem; font-weight: 700; color: ${CREAM}; }
+    .cost-lbl { font-size: 0.6rem; letter-spacing: 0.1em; color: ${MUTED}; margin-top: 0.2rem; }
+
     .page-footer { padding: 2rem; text-align: center; border-top: 1px solid rgba(255,255,255,0.05);
       font-size: 0.7rem; color: #374151; letter-spacing: 0.05em; }
   </style>
@@ -190,6 +257,8 @@ function buildHTML(state) {
     <div class="summary-item"><div class="summary-num error-num">${errorCount}</div><div class="summary-lbl">ERROR</div></div>
   </div>
 
+  ${buildCostPanel(costState)}
+
   <div class="chart">
     ${tiers}
     ${unlistedSection}
@@ -209,7 +278,20 @@ function run() {
   }
 
   const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'))
-  const html  = buildHTML(state)
+
+  let costState = null
+  try {
+    if (fs.existsSync(COST_STATE_PATH)) {
+      costState = JSON.parse(fs.readFileSync(COST_STATE_PATH, 'utf8'))
+      log(`Cost state loaded — balance: ${costState.balance !== null ? '$' + costState.balance : 'unknown'}, runway: ${costState.runway_hours !== null ? costState.runway_hours?.toFixed(1) + 'h' : 'unknown'}`)
+    } else {
+      log('cost-state.json not found — cost panel will be hidden')
+    }
+  } catch (err) {
+    log(`WARN: cost-state.json parse error: ${err.message} — cost panel will be hidden`)
+  }
+
+  const html = buildHTML(state, costState)
   fs.writeFileSync(OUT_PATH, html)
 
   const agentCount = Object.keys(state.agents).length

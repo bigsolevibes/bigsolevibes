@@ -9,7 +9,9 @@ const ROOT                   = path.join(__dirname, '..')
 const LOG_FILE               = path.join(ROOT, 'logs', 'media-director.log')
 const TEMP_DIR               = path.join(os.homedir(), 'tmp', 'bsv-media-director')
 const REMOTE                 = 'big sole vibes:Big Sole Vibes'
-const CULTURAL_CALENDAR_FILE = path.join(ROOT, 'scripts', 'data', 'cultural-calendar.json')
+const CULTURAL_CALENDAR_FILE      = path.join(ROOT, 'scripts', 'data', 'cultural-calendar.json')
+const EDITION_STATE_FILE          = path.join(ROOT, 'logs', 'edition-state.json')
+const EDITION_VIGNETTE_INDEX_FILE = path.join(ROOT, 'logs', 'edition-vignette-index.json')
 
 const { VOICES } = require('../config/bsv-voices')
 const { connect: sheetConnect, readAllRows } = require('./sheets-client')
@@ -20,6 +22,46 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Week strategy ────────────────────────────────────────────────────────────
+// Written by strategist.js on Sunday. Media director reads Content Direction
+// so Sole Report topic selection and slot priorities align with the week's focus.
+
+function loadWeekStrategy() {
+  try {
+    const p = path.join(ROOT, 'logs', 'strategy-active.md')
+    if (!fs.existsSync(p)) return null
+    const md = fs.readFileSync(p, 'utf8')
+    const cd = md.match(/##\s+Content Direction[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    return cd ? cd[1].trim() : md.slice(0, 1000)
+  } catch { return null }
+}
+
+// ─── Running audit log — media-director's self-memory ─────────────────────────
+
+const MEDIA_AUDIT_LOG = path.join(ROOT, 'logs', 'media-director-audit.md')
+
+function loadMediaAuditLog(n = 3) {
+  try {
+    if (!fs.existsSync(MEDIA_AUDIT_LOG)) return null
+    const text = fs.readFileSync(MEDIA_AUDIT_LOG, 'utf8').trim()
+    if (!text) return null
+    const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+    return entries.slice(-n).join('\n\n').trim() || null
+  } catch { return null }
+}
+
+function appendMediaAuditEntry(entry) {
+  try {
+    if (!fs.existsSync(MEDIA_AUDIT_LOG)) {
+      fs.writeFileSync(MEDIA_AUDIT_LOG,
+        '# BSV Media Director Audit Log\n' +
+        'Running record of slot assignments, product rotations, and edition state. ' +
+        'Read back at start of each run.\n\n')
+    }
+    fs.appendFileSync(MEDIA_AUDIT_LOG, entry.trim() + '\n\n')
+  } catch {}
 }
 
 // ─── Theme calendar ───────────────────────────────────────────────────────────
@@ -350,21 +392,70 @@ function getISOWeek(date) {
 }
 
 // ─── Product shelf assignment ─────────────────────────────────────────────────
+// Sequential rotation: each brief generation advances to the next shelf product.
+// Counter persisted in logs/product-rotation-index.json so it survives restarts.
+// Shelf source: scripts/data/shelf-products.json (all live shelf products).
+// Falls back to sheet approved products if shelf JSON is missing or empty.
 
-const SLOT_WEEK_INDEX = {
-  'mon-am':  0, 'mon-pm':  1,
-  'tue-am':  2, 'tue-pm':  3,
-  'wed-am':  4, 'wed-pm':  5,
-  'thu-am':  6, 'thu-pm':  7,
-  'fri-am':  8, 'fri-pm':  9,
-  'sat-am': 10, 'sat-pm': 11,
-  'sun-am': 12, 'sun-pm': 13,
+const ROTATION_INDEX_FILE = path.join(ROOT, 'logs', 'product-rotation-index.json')
+const SHELF_PRODUCTS_FILE = path.join(ROOT, 'scripts', 'data', 'shelf-products.json')
+
+function loadShelfProducts() {
+  try {
+    if (!fs.existsSync(SHELF_PRODUCTS_FILE)) return []
+    return JSON.parse(fs.readFileSync(SHELF_PRODUCTS_FILE, 'utf8'))
+  } catch { return [] }
 }
 
-function assignProductToSlot(products, slot, weekNumber) {
-  if (!products.length) return null
-  const slotIndex = SLOT_WEEK_INDEX[slot] ?? 0
-  return products[(weekNumber * 14 + slotIndex) % products.length]
+function pickNextProduct(pool) {
+  if (!pool.length) return null
+  let state = { index: 0 }
+  try {
+    if (fs.existsSync(ROTATION_INDEX_FILE)) {
+      state = JSON.parse(fs.readFileSync(ROTATION_INDEX_FILE, 'utf8'))
+    }
+  } catch {}
+  const current = state.index ?? 0
+  const product = pool[current % pool.length]
+  const next = { index: (current + 1) % pool.length, lastUpdated: new Date().toISOString() }
+  try { fs.writeFileSync(ROTATION_INDEX_FILE, JSON.stringify(next, null, 2)) } catch {}
+  return product
+}
+
+function assignProductToSlot(sheetProducts) {
+  const shelf = loadShelfProducts()
+  const pool  = shelf.length ? shelf : sheetProducts
+  return pickNextProduct(pool)
+}
+
+// ─── Edition state helpers ────────────────────────────────────────────────────
+// When an approved edition exists, posts draw from edition vignettes instead of
+// the standard shelf rotation. Vignette index cycles through edition.vignettes[].
+
+function loadEditionState() {
+  try {
+    if (!fs.existsSync(EDITION_STATE_FILE)) return null
+    return JSON.parse(fs.readFileSync(EDITION_STATE_FILE, 'utf8'))
+  } catch { return null }
+}
+
+function pickEditionVignette(editionState) {
+  if (!editionState?.approved || !editionState?.vignettes?.length) return null
+  let idx = 0
+  try {
+    if (fs.existsSync(EDITION_VIGNETTE_INDEX_FILE)) {
+      idx = JSON.parse(fs.readFileSync(EDITION_VIGNETTE_INDEX_FILE, 'utf8')).index ?? 0
+    }
+  } catch {}
+  const vignette = editionState.vignettes[idx % editionState.vignettes.length]
+  const next = (idx + 1) % editionState.vignettes.length
+  try {
+    fs.writeFileSync(
+      EDITION_VIGNETTE_INDEX_FILE,
+      JSON.stringify({ index: next, lastUpdated: new Date().toISOString() }, null, 2)
+    )
+  } catch {}
+  return vignette
 }
 
 async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory }) {
@@ -391,7 +482,7 @@ The Sole Report is a weekly editorial article — GQ register, not lifestyle blo
 
 BSV topic universe: men's skincare (face), fragrance, foot care, grooming tools, body care, recovery. Always tied to the head-to-toe standard serious men should hold.
 
-${bsvDirective ? `## BSV Directive\n${bsvDirective.slice(0, 1000)}\n\n` : ''}${bsvMemory ? `## Brand memory\n${bsvMemory.slice(0, 600)}\n\n` : ''}${socialReport ? `## Current social signals\n${socialReport.content.slice(0, 800)}\n\n` : ''}Pick the topic with the highest editorial potential this week — something trending in the social signals that BSV can say something authoritative about, or a gap in the head-to-toe argument that hasn't been named clearly.
+${bsvDirective ? `## BSV Directive\n${bsvDirective.slice(0, 1000)}\n\n` : ''}${bsvMemory ? `## Brand memory\n${bsvMemory.slice(0, 600)}\n\n` : ''}${weekStrategy ? `## This Week's Content Direction\nPrioritize a topic that aligns with this week's strategic focus.\n\n${weekStrategy}\n\n` : ''}${socialReport ? `## Current social signals\n${socialReport.content.slice(0, 800)}\n\n` : ''}Pick the topic with the highest editorial potential this week — something trending in the social signals that BSV can say something authoritative about, or a gap in the head-to-toe argument that hasn't been named clearly.
 
 Return JSON only — no markdown fences:
 {
@@ -453,6 +544,14 @@ Return JSON only — no markdown fences:
   const bsvMemory = await loadMemory()
   log(`Memory: ${bsvMemory ? bsvMemory.length + ' chars' : 'not found'}`)
 
+  log('Loading week strategy...')
+  const weekStrategy = loadWeekStrategy()
+  log(`Week strategy: ${weekStrategy ? weekStrategy.length + ' chars' : 'none — strategist may not have run'}`)
+
+  log('Loading media director audit log...')
+  const mediaAuditLog = loadMediaAuditLog(3)
+  log(`Media audit log: ${mediaAuditLog ? 'history loaded' : 'no history yet'}`)
+
   // Determine target day — explicit --day flag or default to tomorrow
   let targetDay
   const dayArg = process.argv.indexOf('--day')
@@ -483,8 +582,6 @@ Return JSON only — no markdown fences:
   log('Loading chapter state...')
   const chapterState = loadChapterState()
   log(`Chapter state: Chapter ${chapterState.active} — ${chapterState.name}`)
-
-  const weekNumber = getISOWeek(new Date())
 
   log('Loading approved products from sheet...')
   let approvedProducts = []
@@ -583,19 +680,40 @@ Return JSON only — no markdown fences:
       continue // skip creative-agent; chapter brief resumes next slot
     }
 
-    const assignedProduct = assignProductToSlot(approvedProducts, slug, weekNumber)
-    if (assignedProduct) log(`[${slug}] Product: "${assignedProduct['Product Name']}"`)
+    // Edition vignettes take priority over shelf rotation when an approved edition exists
+    const edition = loadEditionState()
+    let assignedProduct   = null
+    let editionVignette   = null
+    if (edition?.approved) {
+      editionVignette = pickEditionVignette(edition)
+      if (editionVignette) {
+        // Attach the Lounge URL if the edition has been published
+        if (edition.loungeUrl) editionVignette = { ...editionVignette, loungeUrl: edition.loungeUrl }
+        assignedProduct = {
+          'Product Name':   editionVignette.productName,
+          'Affiliate Link': editionVignette.affiliateLink,
+          'Category':       editionVignette.category,
+          'Price':          editionVignette.price || '',
+        }
+        log(`[${slug}] Edition #${edition.editionNumber} vignette: "${editionVignette.productName}"${edition.loungeUrl ? ` → ${edition.loungeUrl}` : ''}`)
+      }
+    }
+    if (!assignedProduct) {
+      assignedProduct = assignProductToSlot(approvedProducts)
+      if (assignedProduct) log(`[${slug}] Product (shelf rotation): "${assignedProduct['Product Name']}"`)
+    }
 
     const result = spawnSync(
       process.execPath,
       [
         path.join(__dirname, 'creative-agent.js'),
-        '--slot',            slug,
-        '--theme',           effectiveTheme,
-        '--voice',           voice,
-        '--voice-def',       JSON.stringify(voiceDef),
-        '--persona-context', JSON.stringify(personaContext),
-        '--product',         JSON.stringify(assignedProduct ?? null),
+        '--slot',             slug,
+        '--theme',            effectiveTheme,
+        '--voice',            voice,
+        '--voice-def',        JSON.stringify(voiceDef),
+        '--persona-context',  JSON.stringify(personaContext),
+        '--product',          JSON.stringify(assignedProduct ?? null),
+        '--edition-vignette', JSON.stringify(editionVignette ?? null),
       ],
       { stdio: 'inherit', env: process.env }
     )
@@ -605,6 +723,22 @@ Return JSON only — no markdown fences:
   // Persist chapter state — media-director owns this write
   saveChapterState(chapterState)
   log(`Chapter state saved: Chapter ${chapterState.active} — ${chapterState.name}`)
+
+  // ── Append to running audit log ───────────────────────────────────────────
+  try {
+    const dateStr = new Date().toISOString().slice(0, 10)
+    const edition = loadEditionState()
+    const auditEntry = [
+      `## ${dateStr} — ${targetDay}`,
+      `**Chapter:** ${chapterState.active} — ${chapterState.name}`,
+      `**Strategy loaded:** ${weekStrategy ? 'yes' : 'no'}`,
+      `**Edition:** ${edition?.approved ? `#${edition.editionNumber} approved — vignettes active` : edition ? `#${edition.editionNumber} pending approval` : 'none'}`,
+      `**Slots assigned:** ${['am','pm'].map(p => `${targetDay}-${p}`).join(', ')}`,
+    ].join('\n')
+    appendMediaAuditEntry(auditEntry)
+  } catch (err) {
+    log(`WARNING: media audit log append failed — ${err.message}`)
+  }
 
   // Saturday: generate Sole Report brief for Sunday night's blog-agent --sole-report run
   if (targetDay === 'sat') {

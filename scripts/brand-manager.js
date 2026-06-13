@@ -187,6 +187,22 @@ function buildVoiceBriefBlock(briefs) {
   return lines.join('\n')
 }
 
+// ─── Denial log reader ───────────────────────────────────────────────────────
+// Reads logs/denial-log.json — written by deny_slot in mcp-server.js.
+// Returns a summary of recent denials for brand-manager's pattern analysis.
+
+function loadDenialPatterns(days = 30) {
+  try {
+    const p = path.join(ROOT, 'logs', 'denial-log.json')
+    if (!fs.existsSync(p)) return null
+    const all = JSON.parse(fs.readFileSync(p, 'utf8'))
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return all.filter(e => e.date >= cutoffStr)
+  } catch { return null }
+}
+
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
 function getPostedLastNDays(n = 7) {
@@ -238,6 +254,50 @@ function loadDirective() {
     const p = path.join(TEMP_DIR, 'BSV-Directive.md')
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
   } catch { return null }
+}
+
+// Week strategy — written by strategist.js on Sunday. Brand manager reads this to
+// evaluate whether content this week was on-strategy, not just on-brand.
+function loadWeekStrategy() {
+  try {
+    const p = path.join(ROOT, 'logs', 'strategy-active.md')
+    if (!fs.existsSync(p)) return null
+    const md = fs.readFileSync(p, 'utf8')
+    // Extract Content Direction + Chief Directive sections — the actionable parts
+    const parts = []
+    const cd = md.match(/##\s+Content Direction[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    if (cd) parts.push(`### Content Direction\n${cd[1].trim()}`)
+    const ch = md.match(/##\s+Chief Directive[^\n]*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    if (ch) parts.push(`### Chief Directive\n${ch[1].trim()}`)
+    return parts.length ? parts.join('\n\n') : md.slice(0, 1500)
+  } catch { return null }
+}
+
+// ─── Running audit log — brand-manager's self-memory ─────────────────────────
+// Appended after each Sunday run so next week's brand-manager can say
+// "last week I flagged X — is it still happening?" instead of starting blank.
+
+const BRAND_AUDIT_LOG = path.join(ROOT, 'logs', 'brand-manager-audit.md')
+
+function loadBrandAuditLog(n = 3) {
+  try {
+    if (!fs.existsSync(BRAND_AUDIT_LOG)) return null
+    const text = fs.readFileSync(BRAND_AUDIT_LOG, 'utf8').trim()
+    if (!text) return null
+    const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+    return entries.slice(-n).join('\n\n').trim() || null
+  } catch { return null }
+}
+
+function appendBrandAuditEntry(entry) {
+  try {
+    if (!fs.existsSync(BRAND_AUDIT_LOG)) {
+      fs.writeFileSync(BRAND_AUDIT_LOG,
+        '# BSV Brand Manager Audit Log\n' +
+        'Running weekly record. Read back (last 3) at start of each run.\n\n')
+    }
+    fs.appendFileSync(BRAND_AUDIT_LOG, entry.trim() + '\n\n')
+  } catch {}
 }
 
 async function loadMemory() {
@@ -348,6 +408,18 @@ function buildVoiceReferenceBlock() {
   const voiceBriefBlock = buildVoiceBriefBlock(recentBriefs)
   log(`Briefs read: ${recentBriefs.length}`)
 
+  log('Loading week strategy...')
+  const weekStrategy = loadWeekStrategy()
+  log(`Week strategy: ${weekStrategy ? weekStrategy.length + ' chars' : 'none — strategist may not have run yet'}`)
+
+  log('Loading brand manager audit log...')
+  const brandAuditLog = loadBrandAuditLog(3)
+  log(`Brand audit log: ${brandAuditLog ? 'last 3 entries loaded' : 'no history yet'}`)
+
+  log('Loading denial patterns...')
+  const denialPatterns = loadDenialPatterns(30)
+  log(`Denial patterns: ${denialPatterns ? denialPatterns.length + ' in last 30 days' : 'none'}`)
+
   log('Loading social intelligence for voice signals...')
   const socialReport = loadLatestSocialReport()
   log(`Social report: ${socialReport ? socialReport.filename : 'none'}`)
@@ -355,6 +427,14 @@ function buildVoiceReferenceBlock() {
   const voiceRefBlock = buildVoiceReferenceBlock()
 
   const bmRoleInstructions = `You are the Brand Manager for Big Sole Vibes (BSV). Everything you review must be measured against the Proprietor's Directive above.
+
+## The Discovery Standard — your primary filter
+
+BSV's identity is discovery. The Proprietor stocks what has earned its place — not what already has a famous name. He finds it before anyone is talking about it and brings it to the man who should know.
+
+Before you score anything else, ask this: **Could this content have come from any men's grooming account?** If yes, it failed — regardless of whether the voice was correct and the hashtags were clean. "The usual" is a brand failure, not a brand-compliant post. Your job is to catch it.
+
+Content that passes the discovery standard: specific product, specific man, specific moment the reader didn't know he was missing. Content that fails: generic lifestyle, product-as-hero, "take care of yourself" energy, anything that blends into the feed instead of stopping it.
 
 Your role is quality control. You review everything that has gone out under the BSV name and hold it to a single standard: does this make a serious man respect the brand, or does it make him scroll past?
 
@@ -394,13 +474,34 @@ ${voiceBriefBlock}
 
 ${socialReport ? `## Social Intelligence (${socialReport.filename})\nUse voice-tagged observations where present.\n${socialReport.content.slice(0, 2000)}${socialReport.content.length > 2000 ? '\n[truncated]' : ''}` : ''}
 
+${weekStrategy ? `## This Week's Strategy (from strategist.js — Sunday brief)\nEvaluate content against these directions. "On-brand" is necessary but not sufficient — content should also be on-strategy for the week.\n\n${weekStrategy}` : ''}
+
+${brandAuditLog ? `## Brand Manager Running History (your own log — last 3 weeks)\nUse this to track continuity: is a pattern you flagged before improving or repeating? Don't re-flag something you already addressed unless it's still happening.\n${brandAuditLog}` : ''}
+
 ${handoff ? `## Brand strategy context\n${handoff.slice(0, 1000)}` : ''}
+
+${denialPatterns?.length
+  ? `## Content Big D Denied — last 30 days (${denialPatterns.length} slot${denialPatterns.length !== 1 ? 's' : ''})
+These were reviewed and rejected directly. Look for patterns — common image types, caption styles, voice drift, missing product mentions. This is your strongest quality signal.
+
+${denialPatterns.map(d => {
+    const parts = [`[${d.date}] ${d.slot}`]
+    if (d.reason) parts.push(`reason: "${d.reason}"`)
+    if (d.instagram) parts.push(`caption: "${d.instagram.slice(0, 120)}"`)
+    if (d.imageBrief) parts.push(`image: "${d.imageBrief.slice(0, 100)}"`)
+    return parts.join(' | ')
+  }).join('\n')}`
+  : `## Content Big D Denied\n(No denials logged in last 30 days.)`
+}
 
 ---
 
 Structure your report as follows:
 
 # BSV Brand Health Report — ${today}
+
+## Discovery Score
+Answer this first, every report: **Could this week's content have come from any men's grooming account?** Rate: **Distinctive / Acceptable / Generic / Invisible**. One sentence. This is separate from brand compliance — content can be brand-compliant and still be generic. Generic is a failure.
 
 ## Overall Score
 Rate overall brand health this week: **Strong / Acceptable / Needs Work / Off-Brand**. One sentence explaining the rating.
@@ -435,8 +536,11 @@ Was each piece matched to the right platform with appropriate tone adjustment?
 ## Top 3 This Week
 The three strongest pieces and why they worked — include which voice they ran.
 
+## Denial Patterns
+What patterns appear across the denied content? Name the recurring failure — stock-photo image briefs, missing product names, wrong voice register, captions that could run for any brand. Be specific. If there are no denials yet, write "(No denials logged — patterns will emerge over time)". These patterns become rules creative-agent enforces on every future brief.
+
 ## Fix List
-Specific, actionable changes for next week. Not suggestions — directives. Include at least one voice-specific directive if drift was detected.`
+Specific, actionable changes for next week. Not suggestions — directives. Include at least one voice-specific directive if drift was detected. If denial patterns exist, the first directive must address the most common one.`
 
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
@@ -494,6 +598,86 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
   } catch (err) {
     log(`ERROR: upload failed: ${err.stderr?.toString().trim() || err.message}`)
     process.exit(1)
+  }
+
+  // ── Extract Fix List + score → creative-directives.json ───────────────────
+  // creative-agent reads this file before every brief — corrections land
+  // on the next run, no Sunday strategist lag required.
+  try {
+    const scoreMatch = fullText.match(/##\s+Overall Score[\s\S]*?\*\*(Strong|Acceptable|Needs Work|Off-Brand)\*\*/i)
+    const score      = scoreMatch ? scoreMatch[1] : 'Unknown'
+
+    const fixMatch   = fullText.match(/##\s+Fix List\s*([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    const fixRaw     = fixMatch ? fixMatch[1].trim() : ''
+
+    // Parse bullet lines into a clean string array
+    const directives = fixRaw
+      .split('\n')
+      .map(l => l.replace(/^[-*\d.)\s]+/, '').trim())
+      .filter(l => l.length > 10)
+
+    // Also extract Denial Patterns section and fold it into directives
+    const denialPatternMatch = fullText.match(/##\s+Denial Patterns\s*([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    const denialPatternRaw   = denialPatternMatch ? denialPatternMatch[1].trim() : ''
+    const denialDirectives   = denialPatternRaw
+      .split('\n')
+      .map(l => l.replace(/^[-*\d.)\s]+/, '').trim())
+      .filter(l => l.length > 10 && !l.startsWith('(No denials'))
+    const allDirectives = [...directives, ...denialDirectives]
+
+    const DIRECTIVES_FILE = path.join(ROOT, 'logs', 'creative-directives.json')
+    let existing = {}
+    try { existing = JSON.parse(fs.readFileSync(DIRECTIVES_FILE, 'utf8')) } catch {}
+
+    existing.brand_manager = {
+      updatedAt:   new Date().toISOString(),
+      reportDate:  today,
+      score,
+      directives:  allDirectives,
+    }
+    fs.mkdirSync(path.dirname(DIRECTIVES_FILE), { recursive: true })
+    fs.writeFileSync(DIRECTIVES_FILE, JSON.stringify(existing, null, 2))
+    log(`creative-directives.json updated — score: ${score}, ${directives.length} Fix List items`)
+
+    // ── Emergency strategist trigger ─────────────────────────────────────────
+    // Don't wait for Sunday — if brand is off, course-correct now.
+    if (score === 'Needs Work' || score === 'Off-Brand') {
+      log(`Score is "${score}" — triggering strategist immediately (not waiting for Sunday)`)
+      try {
+        const { spawnSync } = require('child_process')
+        const result = spawnSync(process.execPath, [path.join(__dirname, 'strategist.js')], {
+          stdio: 'inherit', env: process.env, timeout: 120000,
+        })
+        if (result.status !== 0) log(`WARNING: strategist exited ${result.status}`)
+      } catch (err) {
+        log(`WARNING: strategist spawn failed — ${err.message}`)
+      }
+    }
+  } catch (err) {
+    log(`WARNING: creative-directives update failed — ${err.message}`)
+  }
+
+  // ── Append to running audit log ───────────────────────────────────────────
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const scoreMatch     = fullText.match(/##\s+Overall Score[^\n]*\n+\*?\*?(Strong|Acceptable|Needs Work|Off-Brand)\*?\*?/i)
+    const scoreStr       = scoreMatch ? scoreMatch[1] : 'unknown'
+    const fixListMatch   = fullText.match(/##\s+Fix List([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    const fixListSnippet = fixListMatch ? fixListMatch[1].trim().slice(0, 500) : '(no fix list)'
+    const denialSummary  = denialPatterns?.length
+      ? `${denialPatterns.length} denial(s) reviewed`
+      : 'no denials this period'
+    const auditEntry = [
+      `## ${today}`,
+      `**Score:** ${scoreStr}`,
+      `**Denials:** ${denialSummary}`,
+      weekStrategy ? `**Strategy loaded:** yes` : `**Strategy loaded:** no — strategist had not run`,
+      `**Fix List (top directives):**\n${fixListSnippet}`,
+    ].join('\n')
+    appendBrandAuditEntry(auditEntry)
+    log(`Brand audit log updated — score: ${scoreStr}`)
+  } catch (err) {
+    log(`WARNING: brand audit log append failed — ${err.message}`)
   }
 
   log('━━━ brand-manager complete ━━━\n')

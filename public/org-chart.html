@@ -6,91 +6,66 @@
   <title>BSV Operations — Agent Org Chart</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0D1B2A; color: #F5ECD7; font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }
 
-    body {
-      background: #0B1120;
-      color: #F5ECD7;
-      font-family: system-ui, -apple-system, sans-serif;
-      min-height: 100vh;
-    }
-
-    /* ── Nav ── */
-    .nav {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: rgba(11,17,32,0.95);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid rgba(193,125,46,0.2);
-      padding: 0 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 56px;
-    }
-    .nav-brand {
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.15em;
-      color: #C17D2E;
-      text-decoration: none;
-    }
+    .nav { position: sticky; top: 0; z-index: 100; background: rgba(13,27,42,0.95); backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(193,125,46,0.2); padding: 0 2rem; display: flex; align-items: center;
+      justify-content: space-between; height: 56px; }
+    .nav-brand { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.15em; color: #C17D2E; text-decoration: none; }
     .nav-links { display: flex; gap: 2rem; list-style: none; }
-    .nav-links a {
-      font-size: 0.75rem;
-      letter-spacing: 0.08em;
-      color: #9CA3AF;
-      text-decoration: none;
-      transition: color 0.15s;
-    }
+    .nav-links a { font-size: 0.75rem; letter-spacing: 0.08em; color: #4A6380; text-decoration: none; }
     .nav-links a:hover { color: #F5ECD7; }
 
-    /* ── Header ── */
-    .page-header {
-      padding: 3rem 2rem 2rem;
-      text-align: center;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-    .page-header h1 {
-      font-size: 0.7rem;
-      letter-spacing: 0.2em;
-      color: #C17D2E;
-      text-transform: uppercase;
-      margin-bottom: 0.5rem;
-    }
-    .page-header p {
-      font-size: 0.75rem;
-      color: #6B7280;
-      letter-spacing: 0.05em;
-    }
+    .page-header { padding: 3rem 2rem 1.5rem; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .page-header h1 { font-size: 0.7rem; letter-spacing: 0.2em; color: #C17D2E; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .page-header p { font-size: 0.75rem; color: #4A6380; letter-spacing: 0.05em; }
 
-    /* ── Chart wrapper ── */
-    .chart-wrap {
-      padding: 2rem;
-      display: flex;
-      justify-content: center;
-      overflow-x: auto;
-    }
-    .chart-wrap svg {
-      max-width: 100%;
-      height: auto;
-      border: 1px solid rgba(193,125,46,0.15);
-      border-radius: 4px;
-    }
+    .summary { display: flex; justify-content: center; gap: 2rem; padding: 1.5rem 2rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .summary-item { text-align: center; }
+    .summary-num { font-size: 1.5rem; font-weight: 700; }
+    .summary-lbl { font-size: 0.65rem; letter-spacing: 0.1em; color: #4A6380; margin-top: 0.2rem; }
+    .ok-num { color: #22C55E; }
+    .warn-num { color: #F59E0B; }
+    .error-num { color: #EF4444; }
 
-    /* ── Footer ── */
-    .page-footer {
-      padding: 2rem;
-      text-align: center;
-      border-top: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.7rem;
-      color: #374151;
-      letter-spacing: 0.05em;
-    }
+    .chart { padding: 2rem; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem; }
+
+    .tier-label { font-size: 0.65rem; letter-spacing: 0.15em; color: #C17D2E; margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem; border-bottom: 1px solid rgba(193,125,46,0.2); }
+    .tier-agents { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+    .agent-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; padding: 0.75rem 1rem; min-width: 180px; flex: 0 0 auto; }
+    .agent-card.status-error { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.05); }
+    .agent-card.status-warning { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.05); }
+    .agent-card.status-ok { border-color: rgba(34,197,94,0.2); }
+
+    .agent-header { display: flex; align-items: center; gap: 0.5rem; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .agent-name { font-size: 0.75rem; font-weight: 600; flex: 1; }
+    .status-label { font-size: 0.6rem; letter-spacing: 0.08em; font-weight: 700; }
+
+    .badge { display: inline-block; font-size: 0.55rem; letter-spacing: 0.08em; padding: 0.15rem 0.4rem;
+      border-radius: 3px; margin-top: 0.4rem; }
+    .badge.essential { background: rgba(193,125,46,0.15); color: #C17D2E; }
+    .badge.weekly { background: rgba(99,102,241,0.15); color: #818CF8; }
+
+    .agent-msg { font-size: 0.65rem; color: #F59E0B; margin-top: 0.4rem; line-height: 1.4; }
+
+    .cost-panel { padding: 1rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .cost-label { font-size: 0.6rem; letter-spacing: 0.2em; color: #C17D2E; }
+    .cost-items { display: flex; gap: 3rem; }
+    .cost-item { text-align: center; }
+    .cost-val { font-size: 1.1rem; font-weight: 700; color: #F5ECD7; }
+    .cost-lbl { font-size: 0.6rem; letter-spacing: 0.1em; color: #4A6380; margin-top: 0.2rem; }
+
+    .page-footer { padding: 2rem; text-align: center; border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.7rem; color: #374151; letter-spacing: 0.05em; }
   </style>
 </head>
 <body>
-
   <nav class="nav">
     <a href="/" class="nav-brand">BIG SOLE VIBES</a>
     <ul class="nav-links">
@@ -100,400 +75,305 @@
     </ul>
   </nav>
 
-  <header class="page-header">
-    <h1>Operations</h1>
-    <p>Agent org chart &amp; tech stack — updated automatically</p>
-  </header>
-
-  <div class="chart-wrap">
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1800" viewBox="0 0 1360 1800">
-  <defs>
-    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#4B5563"/>
-    </marker>
-    <marker id="arr-gold" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#C17D2E"/>
-    </marker>
-    <marker id="arr-teal" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#0D9488"/>
-    </marker>
-    <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#3B82F6"/>
-    </marker>
-    <marker id="arr-purple" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#7F77DD"/>
-    </marker>
-    <marker id="arr-amber" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#BA7517"/>
-    </marker>
-    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-      <polygon points="0 0, 8 3, 0 6" fill="#3B6D11"/>
-    </marker>
-  </defs>
-
-  <!-- Background -->
-  <rect width="1360" height="1800" fill="#0B1120"/>
-
-  <!-- ═══════════════════════════════════════════════════════
-       TITLE
-  ═══════════════════════════════════════════════════════ -->
-  <text x="680" y="44" text-anchor="middle" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#C17D2E" letter-spacing="2">BIG SOLE VIBES</text>
-  <text x="680" y="68" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#4B5563" letter-spacing="2">AGENT ORG CHART + TECH STACK · 2026-05-20</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       ROW 1 — BIG D
-  ═══════════════════════════════════════════════════════ -->
-  <rect x="580" y="84" width="200" height="56" rx="10" fill="#C17D2E"/>
-  <rect x="580" y="84" width="200" height="56" rx="10" fill="none" stroke="#E8A44A" stroke-width="1.5"/>
-  <text x="680" y="106" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="700" fill="white" letter-spacing="1">BIG D</text>
-  <text x="680" y="125" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FDE8C8" letter-spacing="1">THE PROPRIETOR</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       ROW 2 — COMMAND
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="162" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">COMMAND</text>
-  <line x1="36" y1="168" x2="1324" y2="168" stroke="#1E293B" stroke-width="1"/>
-
-  <line x1="680" y1="140" x2="680" y2="178" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arr)"/>
-
-  <!-- chief-of-staff.js -->
-  <rect x="570" y="178" width="220" height="50" rx="8" fill="#1E3A5C"/>
-  <rect x="570" y="178" width="220" height="50" rx="8" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
-  <text x="680" y="198" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">chief-of-staff.js</text>
-  <text x="680" y="216" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#93C5FD">Daily 8:00AM · stand-up · handoff · Telegram</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       ROW 3 — INTELLIGENCE
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="252" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">INTELLIGENCE</text>
-  <line x1="36" y1="258" x2="1324" y2="258" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- social-listening.js -->
-  <rect x="60" y="268" width="180" height="44" rx="8" fill="#0F766E"/>
-  <text x="150" y="287" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">social-listening.js</text>
-  <text x="150" y="303" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#99F6E4">Nightly 11:00PM</text>
-
-  <!-- brand-manager.js -->
-  <rect x="280" y="268" width="180" height="44" rx="8" fill="#0F766E"/>
-  <text x="370" y="287" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">brand-manager.js</text>
-  <text x="370" y="303" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#99F6E4">Weekly</text>
-
-  <!-- marketing-manager.js -->
-  <rect x="500" y="268" width="180" height="44" rx="8" fill="#0F766E"/>
-  <text x="590" y="287" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">marketing-manager.js</text>
-  <text x="590" y="303" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#99F6E4">Weekly</text>
-
-  <!-- change-agent.js -->
-  <rect x="720" y="268" width="180" height="44" rx="8" fill="#5B21B6"/>
-  <rect x="720" y="268" width="180" height="44" rx="8" fill="none" stroke="#7C3AED" stroke-width="1"/>
-  <text x="810" y="287" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">change-agent.js</text>
-  <text x="810" y="303" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#DDD6FE">Daily 8:30AM · GitHub Issues</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       ROW 4 — CONTENT + PRODUCT
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="338" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">CONTENT + PRODUCT</text>
-  <line x1="36" y1="344" x2="1324" y2="344" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- media-director.js -->
-  <rect x="60" y="354" width="180" height="44" rx="8" fill="#92400E"/>
-  <text x="150" y="373" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">media-director.js</text>
-  <text x="150" y="389" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FDE68A">Nightly 11:30PM</text>
-
-  <!-- creative-agent.js -->
-  <rect x="280" y="354" width="180" height="44" rx="8" fill="#92400E"/>
-  <text x="370" y="373" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">creative-agent.js</text>
-  <text x="370" y="389" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FDE68A">Per slot · captions</text>
-
-  <!-- gemini-bridge.js -->
-  <rect x="500" y="354" width="180" height="44" rx="8" fill="#92400E"/>
-  <text x="590" y="373" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">gemini-bridge.js</text>
-  <text x="590" y="389" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FDE68A">Prompts → Drive</text>
-
-  <!-- product-research.js -->
-  <rect x="720" y="354" width="180" height="44" rx="8" fill="#166534"/>
-  <text x="810" y="373" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">product-research.js</text>
-  <text x="810" y="389" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#BBF7D0">Weekly</text>
-
-  <!-- product-development.js -->
-  <rect x="940" y="354" width="200" height="44" rx="8" fill="#166534"/>
-  <text x="1040" y="373" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">product-development.js</text>
-  <text x="1040" y="389" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#BBF7D0">Sunday 10:00PM</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       ROW 5 — DISTRIBUTION + OPS
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="424" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">DISTRIBUTION + OPS</text>
-  <line x1="36" y1="430" x2="1324" y2="430" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- watch-drive.js -->
-  <rect x="60" y="440" width="180" height="44" rx="8" fill="#1E3A5C"/>
-  <rect x="60" y="440" width="180" height="44" rx="8" fill="none" stroke="#3B82F6" stroke-width="1"/>
-  <text x="150" y="459" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">watch-drive.js</text>
-  <text x="150" y="475" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#93C5FD">Every 15 min poll</text>
-
-  <!-- distribute.js -->
-  <rect x="280" y="440" width="180" height="44" rx="8" fill="#1E3A5C"/>
-  <rect x="280" y="440" width="180" height="44" rx="8" fill="none" stroke="#3B82F6" stroke-width="1"/>
-  <text x="370" y="459" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">distribute.js</text>
-  <text x="370" y="475" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#93C5FD">Instagram · Bluesky</text>
-
-  <!-- eng-bot.js -->
-  <rect x="500" y="440" width="180" height="44" rx="8" fill="#1F2937"/>
-  <rect x="500" y="440" width="180" height="44" rx="8" fill="none" stroke="#374151" stroke-width="1"/>
-  <text x="590" y="459" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">eng-bot.js</text>
-  <text x="590" y="475" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#9CA3AF">Triage · digest · alerts</text>
-
-  <!-- update-handoff.js -->
-  <rect x="720" y="440" width="180" height="44" rx="8" fill="#1F2937"/>
-  <rect x="720" y="440" width="180" height="44" rx="8" fill="none" stroke="#374151" stroke-width="1"/>
-  <text x="810" y="459" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">update-handoff.js</text>
-  <text x="810" y="475" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#9CA3AF">Nightly 4:00AM</text>
-
-  <!-- sync-shop.js -->
-  <rect x="940" y="440" width="180" height="44" rx="8" fill="#1F2937"/>
-  <rect x="940" y="440" width="180" height="44" rx="8" fill="none" stroke="#374151" stroke-width="1"/>
-  <text x="1030" y="459" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="white">sync-shop.js</text>
-  <text x="1030" y="475" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#9CA3AF">Locker Room sync</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       DIVIDER — AGENTS → TECH STACK
-  ═══════════════════════════════════════════════════════ -->
-  <line x1="36" y1="516" x2="1324" y2="516" stroke="#C17D2E" stroke-width="0.5" stroke-dasharray="6,4"/>
-  <text x="680" y="534" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#C17D2E" letter-spacing="2">SERVICE DEPENDENCIES</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       TECH STACK — AI SERVICES
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="562" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">AI SERVICES</text>
-  <line x1="36" y1="568" x2="1324" y2="568" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- Claude API -->
-  <rect x="60" y="578" width="200" height="54" rx="8" fill="#26215C"/>
-  <rect x="60" y="578" width="200" height="54" rx="8" fill="none" stroke="#7F77DD" stroke-width="1.5"/>
-  <text x="160" y="599" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Claude API</text>
-  <text x="160" y="617" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#CCCBF6">claude-sonnet-4 · 14 agents</text>
-
-  <!-- Gemini API -->
-  <rect x="300" y="578" width="200" height="54" rx="8" fill="#412402"/>
-  <rect x="300" y="578" width="200" height="54" rx="8" fill="none" stroke="#BA7517" stroke-width="1.5"/>
-  <text x="400" y="599" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Gemini API</text>
-  <text x="400" y="617" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FAC775">Imagen 4 · Veo 3</text>
-
-  <!-- Google Drive -->
-  <rect x="540" y="578" width="200" height="54" rx="8" fill="#042C53"/>
-  <rect x="540" y="578" width="200" height="54" rx="8" fill="none" stroke="#378ADD" stroke-width="1.5"/>
-  <text x="640" y="599" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Google Drive</text>
-  <text x="640" y="617" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B5D4F4">Briefs · media · docs · handoff</text>
-
-  <!-- Google Sheets -->
-  <rect x="780" y="578" width="200" height="54" rx="8" fill="#173404"/>
-  <rect x="780" y="578" width="200" height="54" rx="8" fill="none" stroke="#3B6D11" stroke-width="1.5"/>
-  <text x="880" y="599" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Google Sheets</text>
-  <text x="880" y="617" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#C0DD97">Product queue · scoring</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       TECH STACK — INFRASTRUCTURE
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="660" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">INFRASTRUCTURE</text>
-  <line x1="36" y1="666" x2="1324" y2="666" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- Cloudflare Pages -->
-  <rect x="60" y="676" width="200" height="54" rx="8" fill="#04342C"/>
-  <rect x="60" y="676" width="200" height="54" rx="8" fill="none" stroke="#0F6E56" stroke-width="1.5"/>
-  <text x="160" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Cloudflare Pages</text>
-  <text x="160" y="715" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#5DCAA5">bigsolevibes.com · CI/CD</text>
-
-  <!-- Cloudflare R2 -->
-  <rect x="300" y="676" width="200" height="54" rx="8" fill="#04342C"/>
-  <rect x="300" y="676" width="200" height="54" rx="8" fill="none" stroke="#0F6E56" stroke-width="1.5"/>
-  <text x="400" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Cloudflare R2</text>
-  <text x="400" y="715" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#5DCAA5">Media CDN · Instagram URLs</text>
-
-  <!-- Next.js 14 -->
-  <rect x="540" y="676" width="200" height="54" rx="8" fill="#2C2C2A"/>
-  <rect x="540" y="676" width="200" height="54" rx="8" fill="none" stroke="#5F5E5A" stroke-width="1.5"/>
-  <text x="640" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Next.js 14</text>
-  <text x="640" y="715" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B4B2A9">App router · React</text>
-
-  <!-- Node.js + launchd -->
-  <rect x="780" y="676" width="200" height="54" rx="8" fill="#2C2C2A"/>
-  <rect x="780" y="676" width="200" height="54" rx="8" fill="none" stroke="#5F5E5A" stroke-width="1.5"/>
-  <text x="880" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Node.js · launchd</text>
-  <text x="880" y="715" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B4B2A9">macOS · 24/7 scheduler</text>
-
-  <!-- GitHub -->
-  <rect x="1020" y="676" width="200" height="54" rx="8" fill="#2C2C2A"/>
-  <rect x="1020" y="676" width="200" height="54" rx="8" fill="none" stroke="#5F5E5A" stroke-width="1.5"/>
-  <text x="1120" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">GitHub</text>
-  <text x="1120" y="715" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B4B2A9">Repo · change-agent issues</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       TECH STACK — COMMS + DATA
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="758" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">COMMS · DATA</text>
-  <line x1="36" y1="764" x2="1324" y2="764" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- Telegram -->
-  <rect x="60" y="774" width="200" height="54" rx="8" fill="#042C53"/>
-  <rect x="60" y="774" width="200" height="54" rx="8" fill="none" stroke="#378ADD" stroke-width="1.5"/>
-  <text x="160" y="795" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Telegram</text>
-  <text x="160" y="813" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B5D4F4">Chief daily brief · Big D alerts</text>
-
-  <!-- Klaviyo -->
-  <rect x="300" y="774" width="200" height="54" rx="8" fill="#4A1B0C"/>
-  <rect x="300" y="774" width="200" height="54" rx="8" fill="none" stroke="#993C1D" stroke-width="1.5"/>
-  <text x="400" y="795" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Klaviyo</text>
-  <text x="400" y="813" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#F0997B">Lounge · Drop · 2 segments</text>
-
-  <!-- Zoho SMTP -->
-  <rect x="540" y="774" width="200" height="54" rx="8" fill="#2C2C2A"/>
-  <rect x="540" y="774" width="200" height="54" rx="8" fill="none" stroke="#5F5E5A" stroke-width="1.5"/>
-  <text x="640" y="795" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Zoho SMTP</text>
-  <text x="640" y="813" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#B4B2A9">Eng-bot email digest</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       TECH STACK — REVENUE + AFFILIATE
-  ═══════════════════════════════════════════════════════ -->
-  <text x="36" y="856" font-family="system-ui,sans-serif" font-size="9" font-weight="600" fill="#333" letter-spacing="2">REVENUE · AFFILIATE</text>
-  <line x1="36" y1="862" x2="1324" y2="862" stroke="#1E293B" stroke-width="1"/>
-
-  <!-- Amazon Associates -->
-  <rect x="60" y="872" width="200" height="54" rx="8" fill="#412402"/>
-  <rect x="60" y="872" width="200" height="54" rx="8" fill="none" stroke="#BA7517" stroke-width="1.5"/>
-  <text x="160" y="893" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Amazon Associates</text>
-  <text x="160" y="911" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FAC775">Locker Room · live</text>
-
-  <!-- FlexOffers -->
-  <rect x="300" y="872" width="200" height="54" rx="8" fill="#412402"/>
-  <rect x="300" y="872" width="200" height="54" rx="8" fill="none" stroke="#BA7517" stroke-width="1.5"/>
-  <text x="400" y="893" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">FlexOffers</text>
-  <text x="400" y="911" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FAC775">Lab Series · ELEMIS · pending</text>
-
-  <!-- CJ Affiliate -->
-  <rect x="540" y="872" width="200" height="54" rx="8" fill="#412402"/>
-  <rect x="540" y="872" width="200" height="54" rx="8" fill="none" stroke="#BA7517" stroke-width="1.5"/>
-  <text x="640" y="893" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">CJ Affiliate</text>
-  <text x="640" y="911" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#FAC775">Grooming Lounge · pending</text>
-
-  <!-- Impact.com -->
-  <rect x="780" y="872" width="200" height="54" rx="8" fill="#173404"/>
-  <rect x="780" y="872" width="200" height="54" rx="8" fill="none" stroke="#3B6D11" stroke-width="1.5"/>
-  <text x="880" y="893" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="white">Impact.com</text>
-  <text x="880" y="911" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10" fill="#C0DD97">Manscaped · roadmap</text>
-
-  <!-- ═══════════════════════════════════════════════════════
-       FLOW LINES — agents to tech stack
-  ═══════════════════════════════════════════════════════ -->
-
-  <!-- chief-of-staff → Claude API -->
-  <line x1="640" y1="228" x2="200" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- chief-of-staff → Google Drive -->
-  <line x1="680" y1="228" x2="640" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-  <!-- chief-of-staff → Telegram -->
-  <line x1="720" y1="228" x2="160" y2="774" stroke="#378ADD" stroke-width="1" opacity="0.45" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- social-listening → Claude API -->
-  <line x1="110" y1="312" x2="140" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- social-listening → Google Drive -->
-  <line x1="150" y1="312" x2="600" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- brand-manager → Claude API -->
-  <line x1="330" y1="312" x2="180" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- brand-manager → Google Drive -->
-  <line x1="370" y1="312" x2="620" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- marketing-manager → Claude API -->
-  <line x1="550" y1="312" x2="160" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.35" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- marketing-manager → Google Drive -->
-  <line x1="590" y1="312" x2="640" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.35" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- change-agent → GitHub -->
-  <line x1="810" y1="312" x2="1120" y2="676" stroke="#5F5E5A" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
-
-  <!-- media-director → Claude API -->
-  <line x1="110" y1="398" x2="130" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- media-director → Google Drive -->
-  <line x1="150" y1="398" x2="580" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- creative-agent → Claude API -->
-  <line x1="330" y1="398" x2="170" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- creative-agent → Google Drive -->
-  <line x1="370" y1="398" x2="610" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- gemini-bridge → Gemini API -->
-  <line x1="550" y1="398" x2="380" y2="578" stroke="#BA7517" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-amber)"/>
-  <!-- gemini-bridge → Google Drive -->
-  <line x1="590" y1="398" x2="650" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- product-research → Claude API -->
-  <line x1="770" y1="398" x2="190" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.35" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- product-research → Google Sheets -->
-  <line x1="810" y1="398" x2="880" y2="578" stroke="#3B6D11" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-green)"/>
-  <!-- product-research → Amazon Associates -->
-  <line x1="840" y1="398" x2="160" y2="872" stroke="#BA7517" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-amber)"/>
-
-  <!-- product-development → Claude API -->
-  <line x1="1000" y1="398" x2="200" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.3" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- product-development → Google Drive -->
-  <line x1="1040" y1="398" x2="680" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.3" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- watch-drive → Google Drive -->
-  <line x1="110" y1="484" x2="580" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.45" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-  <!-- watch-drive → Cloudflare R2 -->
-  <line x1="140" y1="484" x2="360" y2="676" stroke="#0F6E56" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-teal)"/>
-  <!-- watch-drive → Cloudflare Pages -->
-  <line x1="100" y1="484" x2="120" y2="676" stroke="#0F6E56" stroke-width="1" opacity="0.45" stroke-dasharray="4,3" marker-end="url(#arr-teal)"/>
-
-  <!-- distribute → Cloudflare R2 -->
-  <line x1="340" y1="484" x2="380" y2="676" stroke="#0F6E56" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-teal)"/>
-  <!-- distribute → Cloudflare Pages -->
-  <line x1="310" y1="484" x2="140" y2="676" stroke="#0F6E56" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-teal)"/>
-
-  <!-- eng-bot → Claude API -->
-  <line x1="550" y1="484" x2="190" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- eng-bot → Zoho SMTP -->
-  <line x1="590" y1="484" x2="620" y2="774" stroke="#5F5E5A" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
-  <!-- eng-bot → Telegram -->
-  <line x1="560" y1="484" x2="180" y2="774" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- update-handoff → Claude API -->
-  <line x1="770" y1="484" x2="200" y2="578" stroke="#7F77DD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
-  <!-- update-handoff → Google Drive -->
-  <line x1="810" y1="484" x2="670" y2="578" stroke="#378ADD" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
-
-  <!-- sync-shop → Google Sheets -->
-  <line x1="1000" y1="484" x2="900" y2="578" stroke="#3B6D11" stroke-width="1" opacity="0.5" stroke-dasharray="4,3" marker-end="url(#arr-green)"/>
-  <!-- sync-shop → Cloudflare Pages -->
-  <line x1="1020" y1="484" x2="180" y2="676" stroke="#0F6E56" stroke-width="1" opacity="0.4" stroke-dasharray="4,3" marker-end="url(#arr-teal)"/>
-  <!-- sync-shop → GitHub -->
-  <line x1="1060" y1="484" x2="1100" y2="676" stroke="#5F5E5A" stroke-width="1" opacity="0.45" stroke-dasharray="4,3" marker-end="url(#arr)"/>
-
-  <!-- ═══════════════════════════════════════════════════════
-       LEGEND
-  ═══════════════════════════════════════════════════════ -->
-  <text x="680" y="960" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#4B5563" letter-spacing="2">LEGEND</text>
-  <line x1="480" y1="975" x2="540" y2="975" stroke="#7F77DD" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="548" y="979" font-family="system-ui,sans-serif" font-size="10" fill="#7F77DD">Claude API</text>
-  <line x1="640" y1="975" x2="700" y2="975" stroke="#378ADD" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="708" y="979" font-family="system-ui,sans-serif" font-size="10" fill="#378ADD">Google Drive</text>
-  <line x1="800" y1="975" x2="860" y2="975" stroke="#BA7517" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="868" y="979" font-family="system-ui,sans-serif" font-size="10" fill="#BA7517">Gemini / Affiliate</text>
-  <line x1="480" y1="995" x2="540" y2="995" stroke="#0F6E56" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="548" y="999" font-family="system-ui,sans-serif" font-size="10" fill="#0F6E56">Cloudflare</text>
-  <line x1="640" y1="995" x2="700" y2="995" stroke="#3B6D11" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="708" y="999" font-family="system-ui,sans-serif" font-size="10" fill="#3B6D11">Google Sheets</text>
-  <line x1="800" y1="995" x2="860" y2="995" stroke="#5F5E5A" stroke-width="1" stroke-dasharray="4,3"/>
-  <text x="868" y="999" font-family="system-ui,sans-serif" font-size="10" fill="#5F5E5A">GitHub / Zoho</text>
-
-  <text x="680" y="1040" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#333">BSV Org Chart + Tech Stack · last updated 2026-05-20</text>
-</svg>
+  <div class="page-header">
+    <h1>Operations — Agent Org Chart</h1>
+    <p>Last updated by chief-of-staff — Sat, Jun 13, 9:30 AM CDT</p>
   </div>
 
-  <footer class="page-footer">
-    <p>BIG SOLE VIBES · INTERNAL OPERATIONS</p>
-  </footer>
+  <div class="summary">
+    <div class="summary-item"><div class="summary-num">23</div><div class="summary-lbl">TOTAL AGENTS</div></div>
+    <div class="summary-item"><div class="summary-num ok-num">20</div><div class="summary-lbl">OK</div></div>
+    <div class="summary-item"><div class="summary-num warn-num">3</div><div class="summary-lbl">WARNING</div></div>
+    <div class="summary-item"><div class="summary-num error-num">0</div><div class="summary-lbl">ERROR</div></div>
+  </div>
 
+  
+  <div class="cost-panel">
+    <div class="cost-label">API SPEND</div>
+    <div class="cost-items">
+      <div class="cost-item">
+        <div class="cost-val" style="color:#22C55E">$25.00</div>
+        <div class="cost-lbl">BALANCE</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val">$0.0000/day</div>
+        <div class="cost-lbl">AVG BURN</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val" style="color:#6B7280">—</div>
+        <div class="cost-lbl">RUNWAY</div>
+      </div>
+      <div class="cost-item">
+        <div class="cost-val">$0.0000</div>
+        <div class="cost-lbl">TODAY</div>
+      </div>
+    </div>
+    <div style="font-size:0.6rem;color:#F59E0B;margin-top:0.5rem;text-align:center;letter-spacing:0.05em;">⚠ cost data from 2026-06-02 — run cost-report.js to refresh</div>
+  </div>
+
+  <div class="chart">
+    
+      <div class="tier">
+        <div class="tier-label">COMMAND</div>
+        <div class="tier-agents">
+    <div class="agent-card status-unknown">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#6B7280"></div>
+        <span class="agent-name">chief-of-staff</span>
+        <span class="status-label" style="color:#6B7280">UNKNOWN</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">strategist</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div></div>
+      </div>
+      <div class="tier">
+        <div class="tier-label">CORE PIPELINE</div>
+        <div class="tier-agents">
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">watch-drive</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      
+    </div>
+    <div class="agent-card status-warning">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#F59E0B"></div>
+        <span class="agent-name">media-director</span>
+        <span class="status-label" style="color:#F59E0B">WARN</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      <div class="agent-msg">stale — 6h since last activity</div>
+    </div>
+    <div class="agent-card status-warning">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#F59E0B"></div>
+        <span class="agent-name">creative-agent</span>
+        <span class="status-label" style="color:#F59E0B">WARN</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      <div class="agent-msg">stale — 6h since last activity</div>
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">distribute</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">eng-bot</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">change-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      
+    </div></div>
+      </div>
+      <div class="tier">
+        <div class="tier-label">CONTENT & PUBLISHING</div>
+        <div class="tier-agents">
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">blog-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-warning">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#F59E0B"></div>
+        <span class="agent-name">update-handoff</span>
+        <span class="status-label" style="color:#F59E0B">WARN</span>
+      </div>
+      <span class="badge essential">ESSENTIAL</span>
+      <div class="agent-msg">stale — 5h since last activity</div>
+    </div>
+    <div class="agent-card status-unknown">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#6B7280"></div>
+        <span class="agent-name">sync-shop</span>
+        <span class="status-label" style="color:#6B7280">UNKNOWN</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-unknown">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#6B7280"></div>
+        <span class="agent-name">promote-sole-report</span>
+        <span class="status-label" style="color:#6B7280">UNKNOWN</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">reddit-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">sole-report-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div></div>
+      </div>
+      <div class="tier">
+        <div class="tier-label">INTELLIGENCE</div>
+        <div class="tier-agents">
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">social-listening</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">marketing-manager</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">brand-manager</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">product-research</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">product-development</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      <span class="badge weekly">WEEKLY</span>
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">accounting-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div></div>
+      </div>
+      <div class="tier">
+        <div class="tier-label">INFRASTRUCTURE</div>
+        <div class="tier-agents">
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">drive-sync</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">gemini-bridge</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">image-gen</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">video-gen</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div>
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">cost-report</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div></div>
+      </div>
+    
+    <div class="tier">
+      <div class="tier-label">UNLISTED</div>
+      <div class="tier-agents">
+    <div class="agent-card status-ok">
+      <div class="agent-header">
+        <div class="status-dot" style="background:#22C55E"></div>
+        <span class="agent-name">org-chart-agent</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
+      </div>
+      
+      
+    </div></div>
+    </div>
+  </div>
+
+  <div class="page-footer">OWNED BY CHIEF-OF-STAFF · REGENERATED EVERY MORNING AT 9:30AM CDT</div>
 </body>
 </html>

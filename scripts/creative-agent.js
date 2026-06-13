@@ -5,11 +5,12 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 
-const ROOT       = path.join(__dirname, '..')
-const BRIEFS_DIR = path.join(ROOT, 'posts', 'briefs')
-const LOG_FILE   = path.join(ROOT, 'logs', 'creative-agent.log')
-const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-creative-agent')
-const REMOTE     = 'big sole vibes:Big Sole Vibes'
+const ROOT             = path.join(__dirname, '..')
+const BRIEFS_DIR       = path.join(ROOT, 'posts', 'briefs')
+const LOG_FILE         = path.join(ROOT, 'logs', 'creative-agent.log')
+const TEMP_DIR         = path.join(os.homedir(), 'tmp', 'bsv-creative-agent')
+const REMOTE           = 'big sole vibes:Big Sole Vibes'
+const DIRECTIVES_FILE  = path.join(ROOT, 'logs', 'creative-directives.json')
 
 const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
 const { connect: sheetConnect, readAllRows } = require('./sheets-client')
@@ -117,10 +118,10 @@ function buildChapterBlock(cs, isWedPm) {
     `## Chapter Mandate — Active Arc: Chapter ${cs.active} — ${cs.name}`,
     '',
     `CHAPTER CONTEXT: Chapter ${cs.active} — ${cs.name}. ${cs.productTease}`,
-    `BRIEF MANDATE: Every post this cycle is a breadcrumb, not a standalone. The scene teases the chapter. The chapter lives at ${cs.loungeUrl}. The product is already on the shelf when he gets there. Do not name the product in the post. Do not link the product in the post. The bio link does the work.`,
+    `BRIEF MANDATE: Every post this cycle is a breadcrumb, not a standalone. The scene teases the chapter. The chapter lives at ${cs.loungeUrl}. When a Featured Product is assigned (see below), name it — tell its story, the moment it earns its place, and end with a direct CTA to the shelf URL. When no product is assigned, drive to the bio link. Product posts are the primary revenue path — they take priority over abstract chapter teasing.`,
   ]
   if (isWedPm) {
-    lines.push(`WEDNESDAY PM: Campfire retelling — ${cs.campfireFormat}. Distill the active chapter beat into the ${cs.campfireFormat} format as defined in BSV-Memory.md. This is not a product post — it is a story post that ends at the shelf.`)
+    lines.push(`WEDNESDAY PM: Campfire retelling — ${cs.campfireFormat}. Distill the active chapter beat into the ${cs.campfireFormat} format as defined in BSV-Memory.md. If a Featured Product is assigned, the retelling ends at that product on the shelf.`)
   }
   lines.push('')
   lines.push(`QUALITY GATE: Every caption must be a scene that could only exist inside Chapter ${cs.active}'s world. If the caption could run without this chapter existing, it has failed — reject it and rewrite.`)
@@ -174,6 +175,82 @@ function buildProductBlock(product) {
   return lines.join('\n')
 }
 
+// ─── Edition vignette block ───────────────────────────────────────────────────
+
+function buildEditionVignetteBlock(ev) {
+  if (!ev) return ''
+  return [
+    '## This Month\'s Edition — Pre-Written Scene',
+    '',
+    'The story engine wrote this scene specifically for this product this month.',
+    'Use it. Do not discard it. Do not paraphrase it into lifestyle copy.',
+    '',
+    '**Social Hook — open the Instagram caption with this exact line (or a variation of it in the same rhythm):**',
+    `"${ev.socialHook}"`,
+    '',
+    '**Scene Vignette — the 3-sentence setup. Expand from this in the caption body:**',
+    ev.vignette,
+    '',
+    '**Image Brief — USE THIS INSTEAD of the four canonical scenes. This is the Gemini Imagen 4 prompt:**',
+    ev.imageBrief,
+    '',
+    `The caption structure: Social Hook → 2–3 sentence vignette expansion → CTA to ${ev.loungeUrl ? `the full edition story at ${ev.loungeUrl}` : `the affiliate link at ${ev.affiliateLink}`} → hashtags.`,
+    'The image: execute the brief above exactly as written.',
+  ].join('\n')
+}
+
+// ─── Creative directives (feedback loop) ─────────────────────────────────────
+// Loaded from logs/creative-directives.json — written by brand-manager (weekly Fix List)
+// and learn.js (immediate Big D corrections). Applied to every brief so course
+// corrections propagate on the next run, not after a Sunday strategist cycle.
+
+function loadCreativeDirectives() {
+  try {
+    if (!fs.existsSync(DIRECTIVES_FILE)) return null
+    return JSON.parse(fs.readFileSync(DIRECTIVES_FILE, 'utf8'))
+  } catch { return null }
+}
+
+function buildDirectivesBlock(directives) {
+  if (!directives) return ''
+  const lines = ['## Active Corrections — Apply to This Brief']
+  lines.push('These come from quality review, direct feedback, and content Big D has already rejected. They override your defaults.')
+  lines.push('')
+
+  const bm = directives.brand_manager
+  if (bm?.directives?.length) {
+    lines.push(`### From Brand Review (${bm.reportDate}, score: ${bm.score})`)
+    bm.directives.forEach(d => lines.push(`- ${d}`))
+    lines.push('')
+  }
+
+  const bd = directives.big_d
+  if (bd?.corrections?.length) {
+    lines.push('### From Big D (direct — non-negotiable)')
+    bd.corrections.forEach(c => lines.push(`- [${c.date}] ${c.note}`))
+    lines.push('')
+  }
+
+  // Recent denials — what Big D actually rejected from the dashboard
+  const denials = directives.denials
+  if (denials?.length) {
+    const recent = denials.slice(0, 8) // last 8 denials
+    lines.push('### Recently Denied Content — Do Not Repeat These Patterns')
+    lines.push('Big D rejected these directly. Study the patterns — avoid them.')
+    recent.forEach(d => {
+      const reasonStr = d.reason ? ` (reason: ${d.reason})` : ''
+      lines.push(`- [${d.date}] slot ${d.slot}${reasonStr}`)
+      if (d.instagram) lines.push(`  Caption was: "${d.instagram.slice(0, 120)}..."`)
+      if (d.imageBrief) lines.push(`  Image was: "${d.imageBrief.slice(0, 120)}..."`)
+    })
+    lines.push('')
+  }
+
+  if (lines.length <= 3) return '' // nothing substantive
+  lines.push('ENFORCE THESE. They exist because something slipped. Do not repeat it.')
+  return lines.join('\n')
+}
+
 // ─── Four confirmed visual scenes ─────────────────────────────────────────────
 
 const SCENE_BLOCK = `FOUR CANONICAL SCENES — pick ONE and write the full scene description in IMAGE BRIEF. Do not name all four. Do not list options. Choose the one that fits this slot's theme and persona, then write it in full as a single cinematic shot.
@@ -195,12 +272,13 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
   fs.mkdirSync(BRIEFS_DIR, { recursive: true })
 
   // Parse args
-  const slotArg        = process.argv.indexOf('--slot')
-  const themeArg       = process.argv.indexOf('--theme')
-  const voiceArg       = process.argv.indexOf('--voice')
-  const voiceDefArg    = process.argv.indexOf('--voice-def')
-  const personaCtxArg  = process.argv.indexOf('--persona-context')
-  const productArg     = process.argv.indexOf('--product')
+  const slotArg             = process.argv.indexOf('--slot')
+  const themeArg            = process.argv.indexOf('--theme')
+  const voiceArg            = process.argv.indexOf('--voice')
+  const voiceDefArg         = process.argv.indexOf('--voice-def')
+  const personaCtxArg       = process.argv.indexOf('--persona-context')
+  const productArg          = process.argv.indexOf('--product')
+  const editionVignetteArg  = process.argv.indexOf('--edition-vignette')
 
   const slot      = slotArg  !== -1 ? process.argv[slotArg  + 1] : null
   const theme     = themeArg !== -1 ? process.argv[themeArg + 1] : null
@@ -212,6 +290,12 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
 
   const product = productArg !== -1
     ? (() => { try { return JSON.parse(process.argv[productArg + 1]) } catch { return null } })()
+    : null
+
+  // Edition vignette — pre-written scene from this month's edition-agent run.
+  // When present: social hook opens the caption, vignette is the scene, imageBrief replaces SCENE_BLOCK.
+  const editionVignette = editionVignetteArg !== -1
+    ? (() => { try { return JSON.parse(process.argv[editionVignetteArg + 1]) } catch { return null } })()
     : null
 
   if (!slot || !theme) {
@@ -308,18 +392,46 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
   const personaBlock = buildPersonaBlock(personaContext)
   const productBlock = buildProductBlock(product)
   if (product) log(`Product context: "${product['Product Name']}"`)
+  const editionVignetteBlock = buildEditionVignetteBlock(editionVignette)
+  if (editionVignette) log(`Edition vignette: "${editionVignette.productName}" — social hook loaded`)
 
+  const creativeDirectives = loadCreativeDirectives()
+  const directivesBlock    = buildDirectivesBlock(creativeDirectives)
+  if (creativeDirectives?.brand_manager?.directives?.length || creativeDirectives?.big_d?.corrections?.length) {
+    const bmCount = creativeDirectives.brand_manager?.directives?.length ?? 0
+    const bdCount = creativeDirectives.big_d?.corrections?.length ?? 0
+    log(`Active corrections: ${bmCount} from brand-manager, ${bdCount} from Big D`)
+  }
 
   // Caption hashtag guidance — use persona-matched tags when available
   const personaHashtags = personaContext?.hashtags?.length
     ? personaContext.hashtags.slice(0, 3).join(' ') + ' #BigSoleVibes'
     : '#BigSoleVibes'
-  const igGuidance = product
-    ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to https://bigsolevibes.com/shop/ — not "link in bio". Hashtags: ${personaHashtags}`
-    : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
+  // CTA hierarchy: Lounge edition page > affiliate link > shelf
+  const ctaUrl = editionVignette?.loungeUrl || editionVignette?.affiliateLink || 'https://bigsolevibes.com/shop/'
+  const ctaLabel = editionVignette?.loungeUrl ? 'the full edition story' : 'the shelf'
+  const igGuidance = editionVignette
+    ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. Open with the Social Hook from the edition scene block (exact line or same rhythm). 2–4 more sentences expanding the vignette. End with a BSV-voice CTA driving to ${ctaLabel}: ${ctaUrl}. Hashtags: ${personaHashtags}`
+    : product
+      ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to https://bigsolevibes.com/shop/ — not "link in bio". Hashtags: ${personaHashtags}`
+      : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
+  const imageBriefInstruction = editionVignette
+    ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. The product appears naturally as a prop — not the hero of the shot. Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench — not the hero of the shot.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.`
 
-  const roleInstructions = `## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
+  const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
+
+BSV stocks what has earned its place — not what already has a famous name. The Proprietor finds it before anyone is talking about it, and brings it to the man who should know.
+
+Before you write this brief, ask: **Is this something BSV's man doesn't know about yet?** If the product is already famous, the angle must be the discovery — not the product. If the content could run on any men's grooming account, it fails. "The usual" is disqualified before it starts.
+
+A brief that passes: specific product, specific man, specific moment. Something the reader didn't know he was missing until he read it.
+A brief that fails: generic lifestyle imagery, product-as-hero, "take care of yourself" messaging that earns no one's attention.
+
+---
+
+## ASSIGNED VOICE FOR THIS POST: ${voiceDef.name}
 THIS OVERRIDES EVERYTHING BELOW. If any prior document describes a different default voice, ignore it for this post.
 
 ${voiceBlock}
@@ -358,7 +470,7 @@ VOICE_USED: ${voiceDef.name}
 POST_TIME: [post time]
 VOICE_GUIDANCE: ${voiceDef.name} — ${voiceDef.description} Hard guardrails active.
 ---
-IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench — not the hero of the shot.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.]
+IMAGE BRIEF: [${imageBriefInstruction}]
 VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood as image. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 ON-IMAGE COPY:
   Line 1 (Cream, Playfair Display): [short declarative statement — 4–8 words, no punctuation]
@@ -393,14 +505,14 @@ VOICE: ${voiceDef.name}
 POST TIME: ${postTime}
 DAY ENERGY: ${dayEnergy}
 
-${personaBlock ? `${personaBlock}\n\n` : ''}${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialFallback}
+${personaBlock ? `${personaBlock}\n\n` : ''}${editionVignetteBlock ? `${editionVignetteBlock}\n\n` : ''}${narrativeBlock}${contentDirection ? `## This Week's Content Direction\nFrom the Sunday Strategy Brief — the three angles for this week. Match your brief to one of them:\n\n${contentDirection}\n\n` : ''}${socialFallback}
 
 Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above are not suggestions. The image brief should make a creative director say yes. The captions should make a man stop scrolling and send it to someone who gets it.`
 
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({
-    model:      'claude-sonnet-4-6',
+    model:      'claude-fable-5', // trial through June 22 — revert to claude-sonnet-4-6 after
     max_tokens: 2048,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
@@ -424,6 +536,53 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   const briefPath = path.join(BRIEFS_DIR, `${slot}-brief.txt`)
   fs.writeFileSync(briefPath, brief)
   log(`Saved → ${briefPath}`)
+
+  // ── Pre-post quality gate ──────────────────────────────────────────────────
+  // Fast Haiku check: does this brief violate any active creative directive?
+  // Never blocks — flags to Telegram so Big D can deny before it posts.
+  ;(async () => {
+    try {
+      const { sendTelegram } = require('./telegram')
+      const activeDirectives = loadCreativeDirectives()
+      const bmDirectives = activeDirectives?.brand_manager?.directives ?? []
+      const bdCorrections = activeDirectives?.big_d?.corrections ?? []
+      const allRules = [...bmDirectives, ...bdCorrections]
+      if (!allRules.length) return  // nothing to check against
+
+      const qaClient = new Anthropic({ apiKey })
+      const qaMsg = await qaClient.messages.create({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages:   [{
+          role: 'user',
+          content: `You are a strict QA reviewer for Big Sole Vibes (BSV) social content.
+
+Active directives (things that must NOT appear):
+${allRules.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+Content brief to check:
+${brief.slice(0, 1200)}
+
+Does this brief violate any of the directives above? Reply with:
+- PASS — if no violations
+- CONCERN: [specific directive violated] — [which part of the brief triggers it]
+
+One line only. No explanation unless it's a CONCERN.`,
+        }],
+      })
+
+      const qaResult = (qaMsg.content[0]?.text ?? '').trim()
+      log(`Brief QA: ${qaResult}`)
+
+      if (qaResult.startsWith('CONCERN')) {
+        const tgMsg = `⚠️ BSV — Brief QA flag\n*Slot:* ${slot}\n*Voice:* ${voiceDef.name}\n${qaResult}\n\nPost proceeds on schedule unless you deny it in the dashboard.`
+        await sendTelegram(tgMsg)
+        log(`Brief QA concern sent to Telegram`)
+      }
+    } catch (err) {
+      log(`WARNING: brief QA check failed — ${err.message}`)
+    }
+  })()
 
   // Save to Drive for editorial record
   const dateStamp   = new Date().toISOString().slice(0, 10)
