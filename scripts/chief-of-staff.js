@@ -808,6 +808,37 @@ async function watchBlogAgent() {
   const memory        = loadDriveFile(`${REMOTE}/BSV-Memory.md`, TEMP_DIR)
   const orgChart      = loadDriveFile(`${REMOTE}/BSV-Org.md`, TEMP_DIR)
   const handoff       = loadLatestHandoff()
+
+  // Sub-agent running logs — Chief reads these to surface structural patterns
+  // that individual agents can't see from their own perspective.
+  const brandAuditLog = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'brand-manager-audit.md')
+      if (!fs.existsSync(p)) return null
+      const text = fs.readFileSync(p, 'utf8').trim()
+      const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+      return entries.slice(-3).join('\n\n').trim() || null
+    } catch { return null }
+  })()
+  const mediaDirAuditLog = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'media-director-audit.md')
+      if (!fs.existsSync(p)) return null
+      const text = fs.readFileSync(p, 'utf8').trim()
+      const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+      return entries.slice(-3).join('\n\n').trim() || null
+    } catch { return null }
+  })()
+  const denialCount = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'denial-log.json')
+      if (!fs.existsSync(p)) return 0
+      const entries = JSON.parse(fs.readFileSync(p, 'utf8'))
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+      return entries.filter(e => new Date(e.date).getTime() > cutoff).length
+    } catch { return 0 }
+  })()
+
   const watchLog      = getRecentLog('watch-drive.log', 80)
   const engBotLog     = getRecentLog('eng-bot.log', 30)
   const mediaLog      = getRecentLog('media-director.log', 30)
@@ -817,6 +848,9 @@ async function watchBlogAgent() {
   const postedLast24h = getPostedLast24h()
   const socialReport  = loadLatestReport('social-report')
   const mktReport     = loadLatestReport('marketing')
+  const latestResearch = (() => {
+    try { return loadLatestReport('research', 'Product Research') } catch { return null }
+  })()
   const productDevState = (() => {
     try {
       const p = path.join(ROOT, 'logs', 'product-development-state.json')
@@ -832,6 +866,12 @@ async function watchBlogAgent() {
   const costState = (() => {
     try {
       const p = path.join(ROOT, 'logs', 'cost-state.json')
+      return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+    } catch { return null }
+  })()
+  const editionState = (() => {
+    try {
+      const p = path.join(ROOT, 'logs', 'edition-state.json')
       return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
     } catch { return null }
   })()
@@ -931,21 +971,55 @@ async function watchBlogAgent() {
   // Weekly agent efficiency audit — Sunday only, no API call
   const efficiencyAudit = DAY_OF_WEEK === 0 ? buildAgentEfficiencyAudit() : null
   const standupSystem = [directive, memory, orgChart].filter(Boolean).join('\n\n---\n\n')
-    + `\n\nYou are the BSV Chief of Staff. You know every agent in your org, their role, and their status. Revenue first. Direct. No padding. No filler sections.
+    + `\n\nYou are the BSV Chief of Staff — the operating brain of a one-man premium brand with a full AI agent team.
 
-REQUIRED FORMAT — every brief must start with these two sections before anything else:
+## Your job is not to report. It is to run the org.
 
-## BIG D — DO THIS TODAY
-(3 bullets max. Specific actions only. What Big D personally needs to decide, approve, or do. No vague suggestions.)
+Big D is the Proprietor. His job is vision, brand authority, and final decisions. Your job is everything else. That means:
 
-## BIG C — DO THIS TODAY
-(3 bullets max. What Big C (the AI creative/strategy partner) should build, fix, or write in today's session. Specific enough to act on immediately.)
+- You notice when the org is producing below its capability and you say so — with a specific cause and a specific fix.
+- You track whether your own recommendations from prior standups were acted on. If they weren't, you escalate — not repeat.
+- You do not wait for Big D to identify systemic problems. You surface them first, with a recommendation.
+- You distinguish between what's broken today (tactical) and what's holding the org back structurally (strategic).
 
-After those two sections, write the full operational brief. The action lists must come FIRST — Big D reads them before coffee.`
+BSV is at stage 1: building an audience and proving affiliate revenue before the private-label Proprietor's Foot Balm launches. Every structural decision you make should serve: more consistent content, higher quality briefs, faster feedback loops between what's posted and what generates revenue.
+
+## The brief structure — required, in this order
+
+### BIG D — DECISIONS NEEDED
+(2–3 items max. Strategic choices that only Big D can make — approvals, direction calls, go/no-go decisions. Not tasks he can delegate. If there are no genuine decisions, write "None today.")
+
+### BIG D — DO THIS TODAY
+(2–3 items max. Tactical actions Big D personally needs to take. Specific. No vague suggestions.)
+
+### BIG C — DO THIS TODAY
+(2–3 items max. What Big C should build, fix, or improve in today's session. Specific enough to act on immediately. If you see a structural gap in how the agents are operating, put it here.)
+
+Then write the full operational brief — Revenue, Posts, Agents, Growth, Tonight, Budget.
+
+### Org Recommendations
+(This section is mandatory every single day — not just when something is broken.)
+
+Start with this question every single time, no exceptions: **Is the content we produced this week something only BSV could have made — or could it have come from any men's grooming account?**
+
+BSV's identity is discovery. The Proprietor stocks what has earned its place, not what already has a famous name. He finds it before anyone is talking about it and brings it to the man who should know. When the content pipeline drifts to "the usual" — generic grooming lifestyle, product-as-hero, safe and predictable — BSV stops existing as a brand and becomes background noise. That is the failure you are here to prevent.
+
+Answer the discovery question honestly. Then give 1–3 structural observations or recommendations. Look at your running history, brand-manager's log, denial count, agent efficiency. What is this org doing that it could do better? What pattern have you seen for more than one cycle? What would you build or fix if Big C had 2 hours today?
+
+### Decisions Needed (Backlog)
+Any open strategic decisions from prior standups that haven't been acted on yet. Track them here until they're resolved. If something has been in the backlog for more than 3 standups without movement, flag it explicitly.`
 
   const standupUser = `${weekStrategy ? `## This Week's Strategy (from strategist.js — Sunday brief)\n${weekStrategy}\n\n---\n\n` : chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
 
-${auditLog ? `## Recent History (your own running log — last ~7 days)\nUse this to track continuity: is something you flagged before still unresolved? Did an action you recommended actually happen? Don't repeat a flag verbatim if it's already being tracked — note whether it's improving, stuck, or worse.\n${auditLog}\n\n---\n` : ''}
+${auditLog ? `## Your Running History (last ~7 standups)\nThis is your own record. Use it like a manager reviewing last week's notes — what did you flag? Was it fixed? If you recommended something and it hasn't happened, escalate it in Decisions Needed Backlog. If a pattern keeps appearing, it means something structural is wrong and you should name it.\n${auditLog}\n\n---\n` : ''}
+
+${brandAuditLog ? `## Brand Manager Running Log (last 3 weeks)\nWhat brand-manager has been flagging. Look for repeating patterns — if the same fix list item appears 2+ weeks in a row, the pipeline isn't incorporating feedback fast enough. That is a structural problem to surface in Org Recommendations.\n${brandAuditLog}\n\n---\n` : ''}
+
+${mediaDirAuditLog ? `## Media Director Running Log (last 3 runs)\nWhat media-director has been tracking — slot assignments, edition state, strategy alignment.\n${mediaDirAuditLog}\n\n---\n` : ''}
+
+${latestResearch ? `## Latest Product Research (${latestResearch.filename})\nSurface shelf-ready picks, pending approvals, and any trending signals the curator flagged. If the shelf has picks that haven't been published in the Locker Room yet, flag that in Agent Briefings. If the research flagged a trending product with a time-sensitive signal, escalate it to BIG D — DO THIS TODAY.\n${latestResearch.content.slice(0, 2000)}\n\n---\n` : ''}
+
+${denialCount > 0 ? `## Content Denials (last 7 days): ${denialCount} slot(s) denied by Big D\nDenials are the strongest quality signal. If denials are rising or repeating, brief quality is not improving — surface this in Org Recommendations.\n\n---\n` : ''}
 ## Revenue
 Yesterday: ${revenueYd}${revenueWk}
 Affiliate links deployed: ${revenue.linksDeployed ? `YES — ${revenue.shopLinkCount} product(s) in shop` : 'NO — shop has no affiliate links'}
@@ -1001,6 +1075,11 @@ ${mktReport ? mktReport.content.slice(0, 800) : '(not available)'}
 ${changeState ? JSON.stringify(changeState, null, 2) : '(not available)'}
 \`\`\`
 
+## Edition State
+${editionState
+  ? `Edition #${editionState.editionNumber} — ${editionState.month} | Theme: ${editionState.theme || 'TBD'} | Products: ${editionState.products?.join(', ') || 'unknown'} | Approved: ${editionState.approved ? 'YES' : 'NO — PENDING APPROVAL'} | Created: ${editionState.createdAt?.slice(0,10) || 'unknown'}`
+  : 'No edition generated yet — run node scripts/edition-agent.js to generate Edition #1'}
+
 ## Token Budget
 ${tokenSection}
 
@@ -1014,31 +1093,46 @@ Produce this exact format:
 
 # BSV Daily Brief — ${DAY_NAME}, ${DATE_STAMP}
 
+## BIG D — DECISIONS NEEDED
+Strategic choices only Big D can make. If none: "None today."
+
+## BIG D — DO THIS TODAY
+Tactical actions. 2–3 max. Specific.
+
+## BIG C — DO THIS TODAY
+What to build or fix in today's session. 2–3 max. If you see a structural gap, put it here.
+
 ## The One Question
-Did BSV make money yesterday? One sentence answer — amount if yes, exact reason if no, what changes today.
+Did BSV make money yesterday? One sentence.
 
 ## Revenue
-CJ status, link deployment, action. If zero: root cause and specific fix.
+CJ status, link deployment, action. Root cause if zero.
 
 ## Posts
-Yesterday's slots — confirmed vs expected. Cause of any gap.
+Confirmed vs expected. Cause of any gap.
+
+## Agent Briefings
+What each agent reported last run — not a status light, a one-line summary of what they actually did or flagged. Required entries: Brand Manager (last score, top fix, denials reviewed), Media Director (chapter planned, strategy aligned), Eng-Bot (triage summary, any P0/P1 escalations), Research (shelf picks waiting, trending signals flagged, affiliate paths identified). If an agent hasn't run recently, say so — that's a signal too.
 
 ## Agents
-Issues with fix commands — one line each. Healthy: [comma list]. If no issues: "All essential agents healthy."
+Issues with fix commands. Healthy: [comma list].
 
 ## Growth
-Numbers and trend. Recommendation if flat or declining.
+Numbers, trend, recommendation.
 
 ## Tonight
-What runs when. Which slots generate for tomorrow. What to watch.
+What runs when. What to watch.
 
-## Blockers
-Anything needing Big D. Specific. "Clear" if none.
+## Org Recommendations
+(Mandatory — every standup. 1–3 structural observations or recommendations. Look at your running history, brand-manager's log, denial count, agent efficiency. What is this org doing that it could do better? What pattern have you seen for more than one cycle? What would you build or fix if Big C had 2 hours today?)
 
+## Decisions Needed (Backlog)
+Open strategic decisions from prior standups. Track until resolved. Flag anything that has been here 3+ standups without movement.
 
-${efficiencyAudit ? "## Agent Efficiency\nReview the table. Call out any flags. If none: Agent pipeline efficient." : ""}
 ## Budget
-${tokenSection}`
+${tokenSection}
+
+${efficiencyAudit ? "## Agent Efficiency\n(Review table. Call out flags.)" : ""}`
 
   log('Calling Claude for standup doc...')
   let standupText = ''
@@ -1184,6 +1278,12 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
   // Factual, scannable record — not prose — so tomorrow's run (and Big D) can
   // see at a glance what was found, flagged, and actioned without re-deriving it.
   try {
+    // Also extract Org Recommendations from the standup so they appear in tomorrow's history
+    const orgRecsMatch = standupText.match(/##\s+Org Recommendations([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    const orgRecsSnippet = orgRecsMatch ? orgRecsMatch[1].trim().slice(0, 400) : null
+    const decisionsMatch = standupText.match(/##\s+Decisions Needed \(Backlog\)([\s\S]*?)(?=\n##\s|\n#\s|$)/i)
+    const decisionsSnippet = decisionsMatch ? decisionsMatch[1].trim().slice(0, 300) : null
+
     const lines = [
       `## ${DATE_STAMP} — ${DAY_NAME}`,
       `**Revenue:** ${revenueYd}${revenueWk ? ` | week: ${revenueWk.replace(/^\s*\|\s*/, '')}` : ''}${revenue.error ? ` — CJ error: ${revenue.error}` : ''}`,
@@ -1191,7 +1291,10 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
       `**Posts (${posts.dayAbbr}):** confirmed [${posts.confirmed.join(', ') || 'none'}] · gaps [${posts.gaps.join(', ') || 'none'}]${posts.stuckMediaSlots.length ? ` · stuck media [${posts.stuckMediaSlots.join(', ')}]` : ''}`,
       `**Agent issues:** ${agents.issues.length ? agents.issues.map(i => `${i.name} [${i.severity}]: ${i.msg}`).join('; ') : 'none'}`,
       `**Growth:** total ${growth.total ?? 'unknown'} (Lounge ${growth.lounge ?? '?'} / Drop ${growth.drop ?? '?'}) — ${growth.trend}${growth.recommendation ? ` — ${growth.recommendation}` : ''}`,
-    ]
+      `**Denials this week:** ${denialCount}`,
+      orgRecsSnippet ? `**Org Recommendations:**\n${orgRecsSnippet}` : null,
+      decisionsSnippet ? `**Open Decisions:**\n${decisionsSnippet}` : null,
+    ].filter(Boolean)
     appendAuditEntry(lines.join('\n'))
   } catch (err) {
     log(`WARNING: could not build audit log entry — ${err.message}`)

@@ -818,7 +818,39 @@ ${socialReport ? `\n## Social intelligence — market signals this week (${socia
 
     const userPrompt = `You are the BSV Product Curator. Your job is to find products that belong on the BSV shelf — not products that are easy to find, but products that a man who takes himself seriously would find if he actually went looking.
 
-This is a three-phase process. Run all three in order. Do not skip phases. Do not score a product before it passes the brand alignment gates.
+This is a four-phase process. Run all four in order. Do not skip phases. Do not score a product before it passes the brand alignment gates.
+
+---
+
+## PHASE 0 — Trending Signal Hunt
+
+Before touching the approved source list, find what is gaining momentum right now. This is BSV's discovery edge — the window between a product gaining organic traction and it showing up on GQ or MR PORTER. That window is where BSV lives.
+
+Run these searches. You are hunting for products that are being talked about, crossing demographic lines, or showing market momentum before the curated world has caught up.
+
+**Community-driven crossover (highest-value signal):**
+1. site:reddit.com "foot care" OR "foot balm" OR "foot cream" men 2025 OR 2026
+2. site:reddit.com "wife uses" OR "girlfriend uses" OR "stole from" foot OR "foot care" OR "foot balm"
+3. site:reddit.com/r/malegrooming OR /r/BuyItForLife OR /r/everymanshouldknow "foot" OR "foot care"
+4. site:reddit.com/r/SkincareAddiction OR /r/30PlusSkinCare "foot" men OR husband OR boyfriend
+
+**Broadcast and press (validated social proof):**
+5. "Today Show" OR "GMA" OR "Today" "foot care" OR "foot balm" 2025 OR 2026
+6. "Oprah" OR "gift guide" "foot care" OR "foot balm" 2025 OR 2026
+7. "seen on TV" OR "as seen on" foot care OR foot balm men 2025
+
+**Organic viral signals:**
+8. foot care OR "foot balm" "going viral" OR trending 2025 OR 2026
+9. foot care OR men grooming TikTok trending OR viral 2025
+
+**Market momentum (brands growing before they're famous):**
+10. foot care brand "launched" OR "raised" OR "funding" 2024 OR 2025 men grooming
+
+From these searches, build a list of products with documented signal. Note: signal type (community crossover, broadcast, viral, brand momentum), where the signal came from, and how strong it is. These are your priority Track 2 candidates — evaluate them alongside Phase 1 sources.
+
+If searches return nothing notable, note that Phase 0 was dry and move to Phase 1. A dry Phase 0 is information — it means no new organic signals this cycle.
+
+---
 
 ---
 
@@ -909,7 +941,9 @@ ${previous ? `## Previous research (do not re-recommend anything already in the 
 # BSV Product Curation Report — ${today}
 
 ## The Shelf (shortlist, scored and ranked)
-For each product: Name, source where discovered (Phase 1), gate results (G1/G2/G3 pass, G4 flag if applicable), Amazon ASIN (confirmed in stock, not sponsored), price, score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), Proprietor's Audit (one paragraph — not a product description, not an Amazon review; written as if the Proprietor picked it up and decided it belonged), and Brand Story (2–3 sentences: who makes this, what their heritage is, why it has provenance — this is what the Sole Report uses to write editorial around the link).
+For each product: Name, source where discovered (Phase 0 or Phase 1 — specify which), signal type if Phase 0 (community crossover / broadcast / viral / brand momentum), gate results (G0/G1/G2/G3 pass, G4 flag if applicable), Amazon ASIN (confirmed in stock, not sponsored), price, **Affiliate Path** (one of: "Amazon Associates — ~1–3%" | "Brand Direct: [signup URL] — [commission rate if findable]" | "Network: [CJ/Impact/Rakuten/ShareASale] — [commission rate]" | "None confirmed — verify before publishing"), score breakdown (ritual fit / discovery depth / quality / story / availability = total/100), Proprietor's Audit (one paragraph — not a product description, not an Amazon review; written as if the Proprietor picked it up and decided it belonged), and Brand Story (2–3 sentences: who makes this, what their heritage is, why it has provenance — this is what the Sole Report uses to write editorial around the link).
+
+For Affiliate Path: check the brand's website footer for "Affiliates" or "Partners" links. Check CJ.com, Impact.com, and ShareASale for the brand. A brand with its own affiliate program often pays 5–20% vs Amazon's 1–3%. If found, that's the preferred path.
 
 ## Gate Rejections
 Products from Phase 1 that failed a brand alignment gate — which gate, and why.
