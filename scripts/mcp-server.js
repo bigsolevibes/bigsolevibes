@@ -672,14 +672,21 @@ server.tool(
 // ── commit_changes ────────────────────────────────────────────────────────────
 server.tool(
   'commit_changes',
-  'Stage files and commit to the current branch (preview/full-site) on the local machine. Clears any stale git lock files first so sandbox-written commits never leave orphaned locks. Optionally pushes after committing.',
+  'Stage files and commit to the current branch (preview/full-site) on the local machine. Clears any stale git lock files first so sandbox-written commits never leave orphaned locks. Optionally pushes after committing. Use force_push to rewrite history on preview/full-site (never use on main).',
   {
-    files:   z.array(z.string()).describe('File paths to stage, relative to repo root (e.g. ["scripts/foo.js", "scripts/bar.js"]). Pass ["--all"] to stage all tracked changes.'),
-    message: z.string().describe('Commit message'),
-    push:    z.boolean().default(false).describe('Push to origin after committing (default false)'),
+    files:       z.array(z.string()).describe('File paths to stage, relative to repo root (e.g. ["scripts/foo.js", "scripts/bar.js"]). Pass ["--all"] to stage all tracked changes.'),
+    message:     z.string().describe('Commit message'),
+    push:        z.boolean().default(false).describe('Push to origin after committing (default false)'),
+    force_push:  z.boolean().default(false).describe('Force-push with --force-with-lease after committing. Safe on preview/full-site — NEVER use on main.'),
   },
-  async ({ files, message, push }) => {
+  async ({ files, message, push, force_push }) => {
     const msgs = []
+
+    // Guard: refuse force-push on main
+    const branch = sh('git rev-parse --abbrev-ref HEAD').trim()
+    if (force_push && branch === 'main') {
+      return { content: [{ type: 'text', text: '❌ force_push is blocked on main. Promote to main manually.' }] }
+    }
 
     // Clear stale lock files left by sandbox git processes
     for (const lock of ['HEAD.lock', 'index.lock']) {
@@ -709,13 +716,51 @@ server.tool(
     }
     msgs.push(`Committed: ${(commitResult.stdout || '').split('\n')[0].trim()}`)
 
-    // Optional push
-    if (push) {
+    // Push (normal or force)
+    if (force_push) {
+      const pushResult = sh(`git push --force-with-lease origin ${branch}`)
+      msgs.push(`Force-pushed (--force-with-lease): ${pushResult.trim() || 'ok'}`)
+    } else if (push) {
       const pushResult = sh('git push')
       msgs.push(`Push: ${pushResult.split('\n')[0]}`)
     }
 
     return { content: [{ type: 'text', text: msgs.join('\n') }] }
+  }
+)
+
+// ── drop_last_commit ─────────────────────────────────────────────────────────
+// Drops the most recent commit from preview/full-site and force-pushes.
+// Use to remove no-op or accidental commits that are already on origin.
+// Blocked on main — always.
+server.tool(
+  'drop_last_commit',
+  'Drop the most recent commit from preview/full-site with git reset --soft HEAD~1 then force-push. Use to clean up no-op or accidental commits already pushed to origin. Blocked on main.',
+  {
+    confirm: z.literal('yes').describe('Must be "yes" to proceed — prevents accidental calls'),
+  },
+  async ({ confirm }) => {
+    if (confirm !== 'yes') return { content: [{ type: 'text', text: '❌ confirm must be "yes".' }] }
+
+    const branch = sh('git rev-parse --abbrev-ref HEAD').trim()
+    if (branch === 'main') return { content: [{ type: 'text', text: '❌ Blocked on main. Never.' }] }
+
+    const before = sh('git log --oneline -2').trim()
+    sh('git reset --soft HEAD~1')
+    const result = sh(`git push --force-with-lease origin ${branch}`)
+    const after  = sh('git log --oneline -1').trim()
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Dropped last commit and force-pushed to ${branch}`,
+          `Before:\n${before}`,
+          `After HEAD: ${after}`,
+          result.trim() ? `Push output: ${result.trim()}` : null,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
   }
 )
 
