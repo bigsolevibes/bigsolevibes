@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.bigsolevibes.cost-report</string>
+  <string>com.bsv.cost-report</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -23,15 +23,20 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/cost-report.log</string>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/cost-report-error.log</string>
   <key>StandardErrorPath</key>
   <string>/Users/davidgeer/claude/bigsolevibes-web/logs/cost-report-error.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/davidgeer</string>
   </dict>
+
+  <key>KeepAlive</key>
+  <false/>
 
   <key>RunAtLoad</key>
   <false/>

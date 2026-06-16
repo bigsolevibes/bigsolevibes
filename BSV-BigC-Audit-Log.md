@@ -359,3 +359,50 @@ Big D says X is wrong → Big C runs learn.js → creative-directives.json + BSV
 - Telegram tokens: still open.
 - YouTube reauth: still open.
 - R2 SSL/auth issue: still open.
+
+---
+
+## 2026-06-16 — Anthropic credit balance depleted; cost-report.js found dead since 2026-06-02
+
+**What happened:**
+
+Big D reported running out of tokens with no warning from cost-report or chief. Investigated — found two separate, compounding failures.
+
+**1. Real Anthropic account credit balance hit $0.** First observed in chief-of-staff.log at 14:40 today: standup, handoff, and memory-update calls all bounced with `400: Your credit balance is too low to access the Anthropic API.` Still recurring in eng-bot.log as of 20:20 — every Claude-dependent agent (chief-of-staff, eng-bot, social-listening, and presumably media-director/creative-agent/brand-manager) is currently down. This is the actual Anthropic Console billing balance, not a context-window/session limit.
+
+**2. The monitoring that should have caught this was already dead.** `cost-report.log` is empty. Drive has no `cost-report-2026-06-*.md` past 2026-06-02 — the script hasn't produced a report in two weeks. The live `get_cost_state` MCP tool returns a frozen snapshot dated 2026-06-02 ($25 balance, $0 burn) because nothing has updated it since. Separately, chief's own pre-call estimate logged `Token budget: est $0.0000 (0.0% of $2)` *seconds before* all three of its own calls failed on insufficient credit — its internal tracker and the real account balance are two disconnected numbers. Neither system had anything real to alert on.
+
+**3. Likely accelerant — never fixed.** The 2026-06-14 standup flagged eng-bot by name: "hit max_tokens 28 times this week... weekly cost drain," scanning 65 log files and calling Claude for diagnosis on every poll with no dedup on the API call itself (only the resulting Telegram alert is deduped). Tonight's log shows it firing the identical diagnosis request for the same 3 unresolved recurring failures five times in 20 minutes (20:01, 20:02, 20:14, 20:17, 20:20) — including, now, diagnosing the fact that it can't reach the API. That fix was assigned to Big C on 6/14 and does not appear to have landed.
+
+**Note on a separate discrepancy found in passing:** standup-2026-06-15.md still lists "Révérence de Bastien tier assignment" as an open decision ("five standups without answer"), but this audit log's 2026-06-13 entry records Big D already closed it ("CLOSED... Big D confirmed hold... Chief will no longer surface it"). Chief is re-surfacing a decision that was already made — same class of bug as the cost-tracking disconnect (state not propagating into the next generated report). Not yet root-caused.
+
+**Today's standup (2026-06-16) never generated** — chief hit the credit wall before it could write it. Brief given to Big D this session used 6/15's standup + live MCP state instead.
+
+**Open / follow-up:**
+- Big D: add credits in Anthropic Console (Plans & Billing) — nothing Claude-dependent runs again until this happens.
+- Fix cost-report.js — dead since 2026-06-02, no visibility until it runs again.
+- Fix eng-bot's diagnosis-call dedup (assigned 6/14, still open) — most likely driver of the fast burn.
+- Investigate why Révérence de Bastien reappeared as open after being closed 6/13.
+
+---
+
+## 2026-06-16 (follow-up) — Both fixes landed: cost-report.js was orphaned, not crashing; eng-bot dedup added
+
+Big D said "lets fix both." Root-caused further and fixed.
+
+**cost-report.js — real root cause was deeper than it looked.** Running it directly produces a full clean log and a fresh `cost-state.json` — the script itself was never broken. The actual bug: it was never running at all on Big D's Mac. `launchd/com.bigsolevibes.cost-report.plist` (old naming convention, `/usr/local/bin/node` — stale path, Big D's Mac only has node at `/opt/homebrew/bin/node`) doesn't appear anywhere in `launchctl list` — it was never loaded under the newer `com.bsv.*` convention that `chief-of-staff`, `watch-drive`, `accounting-agent`, etc. all migrated to. Somewhere in that migration, cost-report.js fell through the cracks — no `config/com.bsv.cost-report.plist` was ever created. That's why the log files were 0 bytes daily: `log-rotate.js` rotates every file in `logs/` on a fixed schedule regardless of whether the underlying script ran, so the empty file got "refreshed" daily and looked like activity that wasn't there.
+
+(Side note: `accounting-agent.js` — daily P&L builder, uploads to Drive `Accounting/` — is a separate, real, currently-working script that reads `cost-state.json` as an input. It isn't in CLAUDE.md's Key Scripts table. Not touched this session, flagging for a docs pass.)
+
+**Fix applied:**
+- Created `config/com.bsv.cost-report.plist` matching the live `com.bsv.*` template (node path, env, log redirect) other working jobs use, same 11pm schedule as the original.
+- Old `launchd/com.bigsolevibes.cost-report.plist` left in place (not deleted — Big D's call) but also corrected its node path in case it's ever loaded by hand.
+- **Big D still needs to run this once** (launchd runs on the real Mac, not reachable from this session): `cp config/com.bsv.cost-report.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.bsv.cost-report.plist`
+
+**eng-bot.js — added call-level diagnosis dedup.** Previously `dedupForDiagnosis()` only collapsed the failure list *within* one API call — every poll still fired a fresh Claude call even when the failure set was identical to the last one (proven: 5 identical calls in 20 minutes tonight). Added `logs/eng-diagnosis-state.json`: hashes the exact deduped failure set sent to Claude, and if that hash matches the last successful diagnosis within a 24h window, reuses the cached diagnosis text instead of calling the API again. New failures (different hash) still trigger an immediate fresh call. On API failure, falls back to the last good cached diagnosis instead of `null`. Verified the hash/freshness/expiry logic in isolation (4 scenarios: first-run miss, same-set-different-digits hit, genuinely-different-set miss, expired-cache miss) — all behaved as expected. `node -c` syntax-checked clean.
+
+**Open / follow-up:**
+- Big D: run the `cp` + `launchctl load` command above once.
+- Big D: add credits in Anthropic Console — still blocking, unrelated to either fix.
+- CLAUDE.md Key Scripts table missing `accounting-agent.js` — docs drift, low priority.
+- Révérence de Bastien re-surfacing — still not root-caused, unrelated to this incident.

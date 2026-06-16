@@ -15,6 +15,8 @@ const LOGS_DIR              = path.join(ROOT, 'logs')
 const SEEN_FILE             = path.join(ROOT, 'logs', 'eng-seen.json')
 const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json')
 const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
+const DIAGNOSIS_STATE_FILE      = path.join(ROOT, 'logs', 'eng-diagnosis-state.json')
+const DIAGNOSIS_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 const MAX_ATTEMPTS          = 3
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
@@ -335,6 +337,31 @@ function pruneAlertState(state) {
   for (const [key, ts] of Object.entries(state)) {
     if (new Date(ts).getTime() < cutoff) delete state[key]
   }
+}
+
+// ─── Claude diagnosis-call deduplication ──────────────────────────────────────
+// dedupForDiagnosis() already collapses the failure list for ONE api call, but
+// every poll cycle was still calling Claude fresh even when that collapsed set
+// was identical to the last call. This caches the diagnosis keyed by a hash of
+// the exact (deduped) input sent to Claude, so an unchanged recurring-failure
+// set reuses the prior diagnosis instead of paying for another API call.
+
+function diagnosisInputHash(failures) {
+  const deduped = dedupForDiagnosis(failures, 10)
+  const key = deduped
+    .map(f => `${f.platform}::${normalizeMessage(f.message)}`)
+    .sort()
+    .join('|')
+  return crypto.createHash('md5').update(key).digest('hex')
+}
+
+function loadDiagnosisState() {
+  try { return JSON.parse(fs.readFileSync(DIAGNOSIS_STATE_FILE, 'utf8')) }
+  catch { return null }
+}
+
+function saveDiagnosisState(state) {
+  fs.writeFileSync(DIAGNOSIS_STATE_FILE, JSON.stringify(state, null, 2))
 }
 
 // ─── OMG Protocol — Missed Post First Responder ───────────────────────────────
@@ -1070,7 +1097,6 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
   if (actionableExhausted.length) log(`${actionableExhausted.length} actionable exhausted slot(s) to include in report`)
 
   // Diagnose with Claude — include actionable exhausted slots in the prompt
-  log('Calling Claude API for diagnosis...')
   const client = new Anthropic({ apiKey })
   let diagnosis
   const diagnosisInput = [
@@ -1083,12 +1109,29 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
       source:    e.source,
     })),
   ]
-  try {
-    diagnosis = await diagnose(client, diagnosisInput, directive, memory)
-    log(`Diagnosis complete (${diagnosis.length} chars)`)
-  } catch (err) {
-    log(`ERROR: Claude diagnosis failed: ${err.message}`)
-    diagnosis = null
+
+  // Skip the paid Claude call entirely if this exact (deduped) failure set was
+  // already diagnosed within the dedup window — reuse the cached diagnosis.
+  const diagHash       = diagnosisInputHash(diagnosisInput)
+  const diagnosisState = loadDiagnosisState()
+  const cacheIsFresh    = diagnosisState
+    && diagnosisState.hash === diagHash
+    && (Date.now() - new Date(diagnosisState.diagnosedAt).getTime()) < DIAGNOSIS_DEDUP_WINDOW_MS
+
+  if (cacheIsFresh) {
+    diagnosis = diagnosisState.diagnosis
+    log(`Diagnosis call skipped — failure set unchanged since ${diagnosisState.diagnosedAt} (within ${DIAGNOSIS_DEDUP_WINDOW_MS / 3600000}h dedup window); reusing cached diagnosis (${diagnosis.length} chars)`)
+  } else {
+    log('Calling Claude API for diagnosis...')
+    try {
+      diagnosis = await diagnose(client, diagnosisInput, directive, memory)
+      log(`Diagnosis complete (${diagnosis.length} chars)`)
+      saveDiagnosisState({ hash: diagHash, diagnosedAt: new Date().toISOString(), diagnosis })
+    } catch (err) {
+      log(`ERROR: Claude diagnosis failed: ${err.message}`)
+      diagnosis = (diagnosisState && diagnosisState.diagnosis) || null
+      if (diagnosis) log('Falling back to last cached diagnosis after API error')
+    }
   }
 
   // Write report to Google Drive
