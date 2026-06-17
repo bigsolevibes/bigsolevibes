@@ -406,3 +406,25 @@ Big D said "lets fix both." Root-caused further and fixed.
 - Big D: add credits in Anthropic Console — still blocking, unrelated to either fix.
 - CLAUDE.md Key Scripts table missing `accounting-agent.js` — docs drift, low priority.
 - Révérence de Bastien re-surfacing — still not root-caused, unrelated to this incident.
+
+## 2026-06-17 — eng-bot no longer tries to diagnose its own billing outage
+
+Big D confirmed credits were back, but the live eng-bot log still showed the same `400 credit balance is too low` error minutes later. Big D's call: "eng cant fix and shouldnt try to use api to fix this error" — cost-report.js owns balance/runway alerting, eng-bot shouldn't be in this business at all.
+
+**Root cause of the noise:** `extractFailures()` scans every log file for `ERROR:`/`fail`/`fatal` lines with no awareness of *why* the line failed. Anthropic billing errors show up in multiple logs under different prefixes — `chief-of-staff.log` ("standup API call failed", "handoff API", "memory API") and eng-bot's own log ("Claude diagnosis failed") — all containing the literal substring "credit balance is too low". Each one got swept into the normal failure pipeline: bundled into the Claude diagnosis call (which then failed for the same reason, every time), and eligible for chief/Big-D escalation. Circular and wasteful exactly as Big D described — using the (currently down) API to "diagnose" that the API is down.
+
+**Fix applied (`scripts/eng-bot.js`):**
+- Added `BILLING_ERROR_PATTERN = /credit balance is too low/i` and `isBillingFailure(f)`, matching against both the failure message and surrounding log context.
+- Failures are filtered into `billingFailures` / `failures` immediately after collection, before classification, before the diagnosis call, before chief/Big-D escalation. Billing failures never reach any of those — one log line (`Excluded N Anthropic billing failure(s)...`) is all that's recorded.
+- Real, unrelated failures are unaffected and still flow through diagnosis/escalation normally.
+
+**Verified:**
+- `node -c` clean.
+- Isolated filter test against the actual log lines (3 samples: 2 billing-pattern variants + 1 real watch-drive failure) — correctly excluded both billing lines, kept the real one.
+- Ran the live script against current logs: `Excluded 7 Anthropic billing failure(s)... — not eng-bot's to fix; see cost-report.js`, then proceeded to diagnose only the 2 real recurring watch-drive failures. Confirmed a cost-report.log line containing "Credit balance API error: fetch failed" (an unrelated network message, not the billing-exhausted pattern) was correctly *not* filtered — no false positives.
+
+**Side finding (not fixed, flagging only):** `logs/telegram-pending.json` has been accumulating one "Big D Decision Required" entry per script per day since 2026-06-03 with no sign of being drained — looks like the `telegram-webhook.js` reply-poll ("Poll error: fetch failed", recurring in nearly every entry's own paired failure) has never successfully come back up, so Big D's FIX/SKIP replies have nowhere to land. Worth a dedicated look — separate issue from today's fix, surfaced while inspecting the queue this session's verification run touched.
+
+**Open / follow-up:**
+- Big D: add credits — still the live blocker for any real diagnosis call until resolved on Anthropic's side.
+- Telegram decision queue backlog (above) — needs investigation, not addressed this session.

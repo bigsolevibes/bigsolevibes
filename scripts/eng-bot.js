@@ -17,6 +17,11 @@ const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json'
 const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 const DIAGNOSIS_STATE_FILE      = path.join(ROOT, 'logs', 'eng-diagnosis-state.json')
 const DIAGNOSIS_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
+// Anthropic billing failures (exhausted credit balance) are cost-report.js's domain, not
+// eng-bot's. eng-bot can't fix a billing problem, and calling Claude to diagnose "the
+// Claude API is unreachable" is circular and burns a call that will just fail the same way.
+// Matched and excluded before classification/diagnosis/escalation — see isBillingFailure().
+const BILLING_ERROR_PATTERN = /credit balance is too low/i
 const MAX_ATTEMPTS          = 3
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
@@ -282,6 +287,11 @@ function extractFailures(logContent, source) {
     seen.add(key)
     return true
   })
+}
+
+// Anthropic credit-balance-exhausted errors — see BILLING_ERROR_PATTERN above.
+function isBillingFailure(f) {
+  return BILLING_ERROR_PATTERN.test(f.message) || BILLING_ERROR_PATTERN.test(f.context || '')
 }
 
 // ─── Seen-failure deduplication (hash-based, persists across restarts) ───────
@@ -1017,7 +1027,7 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
   }
 
   // Extract failures and exhausted entries from the tail of every log file
-  const failures        = []
+  const rawFailures      = []
   const exhaustedAll    = []
   for (const logPath of logFiles) {
     const source = path.basename(logPath)
@@ -1031,11 +1041,21 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
       const exhausted = extractExhaustedEntries(content, source)
       if (found.length)    log(`  ${source}: ${found.length} failure(s)`)
       if (exhausted.length) log(`  ${source}: ${exhausted.length} EXHAUSTED entr${exhausted.length === 1 ? 'y' : 'ies'} (${exhausted.filter(e => !e.known).length} actionable)`)
-      failures.push(...found)
+      rawFailures.push(...found)
       exhaustedAll.push(...exhausted)
     } catch (err) {
       log(`WARNING: could not read ${path.basename(logPath)} — ${err.message}`)
     }
+  }
+
+  // Strip Anthropic credit-balance failures before they ever reach classification,
+  // diagnosis, or escalation. eng-bot can't fix billing, and routing these through
+  // the Claude diagnosis call is circular (the call would fail for the same reason
+  // it's trying to diagnose). cost-report.js owns balance/runway alerting.
+  const billingFailures = rawFailures.filter(isBillingFailure)
+  const failures         = rawFailures.filter(f => !isBillingFailure(f))
+  if (billingFailures.length) {
+    log(`Excluded ${billingFailures.length} Anthropic billing failure(s) (credit balance too low) from diagnosis/escalation — not eng-bot's to fix; see cost-report.js`)
   }
 
   const actionableExhausted = exhaustedAll.filter(e => !e.known)
