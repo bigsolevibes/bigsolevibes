@@ -428,3 +428,20 @@ Big D confirmed credits were back, but the live eng-bot log still showed the sam
 **Open / follow-up:**
 - Big D: add credits — still the live blocker for any real diagnosis call until resolved on Anthropic's side.
 - Telegram decision queue backlog (above) — needs investigation, not addressed this session.
+
+## 2026-06-17 — Telegram backlog follow-up: poller is alive, original "broken" flag was wrong
+
+Big D said "fix it" re: the telegram-pending.json backlog flagged above. Investigated for real this time instead of just re-flagging.
+
+**Corrected finding:** `telegram-webhook.js`'s long-poll loop is NOT broken. Proved this empirically: triggered `run_diagnostic('telegram-webhook')`, which spawned a second instance against the same bot token — it immediately got `getUpdates HTTP 409` (Telegram's "another consumer is already long-polling" error), which is only possible if a real, currently-running instance already held the poll. Checked `logs/telegram-webhook-state.json` afterward — offset unchanged (407841760), so no corruption from the conflict window; the spawned diagnostic instance self-terminated cleanly via its 60s timeout and the real process kept going. `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are both set in `.env` (confirmed presence, not values) — the CLAUDE.md Known Issues line calling these "may be missing" is stale; outbound has clearly been working (89 live pending items, newest from minutes before this check).
+
+**What's actually true:** `logs/telegram-inbox.log` and all three rotated backups (`.1`/`.2`/`.3`, covering 2026-06-13 through 2026-06-16) are completely empty — zero bytes. `logInbox()` writes a line for *any* incoming message regardless of sender, before the chat-ID filter. So no message has reached this bot from anyone in 4+ days. That's the real explanation for the 89-item backlog (72 eng, 16 content-gate, 1 blog; oldest 2026-06-03) — it's not a delivery failure, it's that nothing has been sent in reply. Historical "Poll error: fetch failed" lines in the log are ordinary transient network blips already handled by the existing retry/backoff — confirmed zero historical `409`s before today's diagnostic-induced ones (9, all from my own test, current log only).
+
+**Side discovery, not touched:** `chief-of-staff.js` defines a second, fully parallel Telegram inbox path — `processTelegramInbox()` / `fetchUpdates()` / `parseInboxKeyword()` (imported from `telegram.js`) — with its own offset file (`telegram-inbox-state.json`, untouched since May 21) and a different keyword scheme (approved/denied/hold vs. telegram-webhook.js's FIX/APPROVE/REJECT/SKIP/LATER/EDIT). `processTelegramInbox` is defined but **never called anywhere** — dead code. Its comment claims "Big D's phone is the approval interface," which is misleading since `telegram-webhook.js` is the one actually doing that job. Did not wire it up or remove it: if someone "fixes" it by calling it on a schedule, it would create exactly the dual-consumer 409 conflict I reproduced above, since it'd then compete with the live long-poller. Flagging so nobody accidentally turns this on thinking it's an improvement.
+
+**Not fixed (needs Big D, not code):** Send any message to the bot (e.g. `PENDING` or `STATUS`) to confirm round-trip receipt — `logInbox()` will write a line within seconds if it arrives. If a test message still doesn't show up in `telegram-inbox.log`, that's a real, distinct bug (wrong chat, wrong bot) worth a follow-up session.
+
+**Open / follow-up:**
+- Big D: send a test Telegram message to confirm receipt end-to-end.
+- If confirmed working: 89-item backlog is just unanswered alerts — reply FIX/APPROVE/REJECT/SKIP/LATER/EDIT to work through them, oldest-first.
+- `chief-of-staff.js`'s dead two-way-inbox code (above) — leave disabled; don't wire it up without redesigning the offset-sharing first.
