@@ -22,6 +22,7 @@ Both slots are open. Until both are filled with approved products scoring 70+, f
 ### What Is Not on the Shelf
 
 - Reverence de Bastien: DECIDED — HOLD. This is CLOSED, not pending. Big D decided 2026-06-13, reconfirmed 2026-06-18. Do not research, evaluate, score, or list this as an open decision in any standup, strategy brief, or backlog. Only Big D reopening it in chat changes this.
+- Hyperice Normatec 3 Legs: DECIDED — PASS. Big D decision 2026-06-18. Not going on the shelf. Remove/mark denied in the product queue. Do not re-surface.
 - Camillen 60: REMOVED. Do not re-add.
 - Any medicated, antifungal, or problem-positioned product: permanent exclusion.
 - First-page Google results for "foot cream men": not a discovery. Go deeper.
