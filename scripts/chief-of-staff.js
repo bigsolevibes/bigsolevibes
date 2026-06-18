@@ -1008,7 +1008,11 @@ BSV's identity is discovery. The Proprietor stocks what has earned its place, no
 Answer the discovery question honestly. Then give 1–3 structural observations or recommendations. Look at your running history, brand-manager's log, denial count, agent efficiency. What is this org doing that it could do better? What pattern have you seen for more than one cycle? What would you build or fix if Big C had 2 hours today?
 
 ### Decisions Needed (Backlog)
-Any open strategic decisions from prior standups that haven't been acted on yet. Track them here until they're resolved. If something has been in the backlog for more than 3 standups without movement, flag it explicitly.`
+Any open strategic decisions from prior standups that haven't been acted on yet. Track them here until they're resolved. If something has been in the backlog for more than 3 standups without movement, flag it explicitly.
+
+## Before you list ANYTHING as a decision needed — check resolution first
+
+BSV-Directive.md is the resolution ledger. Before adding an item to "BIG D — DECISIONS NEEDED" or "Decisions Needed (Backlog)", check whether the directive (loaded above) already marks it DECIDED, CLOSED, or WAIT. If it does, that decision is resolved — do NOT re-list it, no matter how many prior standups asked about it. Prior recurrence in your own running history is not evidence a decision is still open; it is usually evidence of this exact bug. Only treat something as open if the directive is silent on it, or if Big D has reopened it directly in chat since the date the directive shows it was closed.`
 
   const standupUser = `${weekStrategy ? `## This Week's Strategy (from strategist.js — Sunday brief)\n${weekStrategy}\n\n---\n\n` : chiefDirective ? `## Chief Directive — from Sunday Strategy Brief\n${chiefDirective}\n\n---\n\n` : ''}Today is ${DAY_NAME} ${DATE_STAMP}. Write the BSV operational brief.
 

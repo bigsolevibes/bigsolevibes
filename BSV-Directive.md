@@ -21,10 +21,18 @@ Both slots are open. Until both are filled with approved products scoring 70+, f
 
 ### What Is Not on the Shelf
 
-- Reverence de Bastien: HOLD. Do not research, evaluate, or score. Big D decision 2026-06-13.
+- Reverence de Bastien: DECIDED — HOLD. This is CLOSED, not pending. Big D decided 2026-06-13, reconfirmed 2026-06-18. Do not research, evaluate, score, or list this as an open decision in any standup, strategy brief, or backlog. Only Big D reopening it in chat changes this.
 - Camillen 60: REMOVED. Do not re-add.
 - Any medicated, antifungal, or problem-positioned product: permanent exclusion.
 - First-page Google results for "foot cream men": not a discovery. Go deeper.
+
+### Decision Status Key — read before listing anything as "needs decision"
+
+Any line in this document marked DECIDED, CLOSED, or WAIT is resolved. Do not surface it again in a "Decisions Needed," "Chief Directive," or backlog section, no matter how many times it appeared in prior standups or strategy briefs — prior recurrence is not evidence it's still open. Re-raise a resolved item only if Big D personally reopens it in chat.
+
+### Product Development Status
+
+- Proprietor's Foot Balm (private label): WAIT. Decided 2026-06-18 — audience and affiliate revenue are not yet at the launch threshold (see Phase 2 below). Not an open decision; do not escalate. Re-raise only when the launch condition is met or Big D brings it up.
 
 ### The Dual-Track Mandate
 
