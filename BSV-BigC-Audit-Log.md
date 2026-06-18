@@ -445,3 +445,92 @@ Big D said "fix it" re: the telegram-pending.json backlog flagged above. Investi
 - Big D: send a test Telegram message to confirm receipt end-to-end.
 - If confirmed working: 89-item backlog is just unanswered alerts — reply FIX/APPROVE/REJECT/SKIP/LATER/EDIT to work through them, oldest-first.
 - `chief-of-staff.js`'s dead two-way-inbox code (above) — leave disabled; don't wire it up without redesigning the offset-sharing first.
+
+## 2026-06-17 — Spongelle Aspiration-tier flag resolved: keep both, reclassify Standard
+
+Standup's "BIG C — DO THIS TODAY" #1 flagged two Spongelle SKUs ($14–28) as "incorrectly classified as Aspiration tier," decision required same day. Traced the actual rows in the live Product Queue sheet: **Spongelle Men's Essentials Body Buffer Tobacco Leaf** (ASIN B0G1N5417Z, ~$14–18, 76/100, Body Care, Pending) and **Spongelle Men's Ultimate Buffer Amber Absolute** (ASIN B0GSCVLHY4, ~$22–28, 76/100, Body Care, Pending).
+
+**Root cause, confirmed:** there is no "Tier" column anywhere in the sheet schema — the flag was a narrative judgment from brand-manager.js's LLM read, not a literal data error. The mismatch is that each row's `Reasoning` text (the internal scoring rationale, not customer-facing copy — neither row has Narrative/Brand Story drafted yet since both are still Pending) is written in an aspiration-style voice ("he reaches for it because it belongs in the room") despite a $14–28 price point that `strategist.js`'s own price bands would compute as Entry, not Aspiration. Three tier definitions exist in the codebase (`strategist.js` price bands, `BSV-Directive.md` foot-care-specific bands, `BSV-Memory.md` narrative framing) and none of them, read literally, would call a $14–28 Body Care item "Aspiration" — this is a standing inconsistency, not unique to Spongelle.
+
+**Decision (Big D, 2026-06-17) — corrected:** keep both in the queue — do not remove, and do NOT downgrade the copy to a plainer "honest/affordable" voice either. Big D's correction: the actual BSV value prop is making an accessible product *feel* wealthy — same treatment as the toenail clippers / Niegeloh pedicure set / nail kit, which are inexpensive but written with full head-to-toe ritual, inventive, premium-feel copy. Price tier (Entry/Standard $14–28 by `strategist.js`'s own bands) and emotional tone are independent — every product gets the aspirational voice regardless of price. My first pass at this (see below, corrected) had it backwards.
+
+**Executed:** wrote `scripts/resolve-spongelle-tier.js` (same pattern as `update-spongelle-link.js`). Direct run from this Cowork sandbox failed (`Connection blocked by network allowlist` — same Google-API network block already documented for Gemini), but `run_diagnostic('resolve-spongelle-tier')` via the `mcp__bsv__*` server ran it successfully against the live sheet (that server runs on a host with real network access, not this sandbox). Confirmed: row 75 (Tobacco Leaf, B0G1N5417Z) and row 76 (Amber Absolute, B0GSCVLHY4) both stamped with the corrected resolution note in `Proprietor's Notes`.
+
+**Open / follow-up:**
+- When either SKU moves from Pending → Approved and gets Narrative/Brand Story copy drafted, write full aspirational/ritual-voice copy — same register as the rest of the shelf, price-independent.
+- The three-way tier-definition inconsistency (`strategist.js` vs `BSV-Directive.md` vs `BSV-Memory.md`) is unresolved and will keep generating false "miscategorized" flags until reconciled into one definition. Whatever that reconciliation looks like, it should NOT tie emotional tone to price band — see correction above.
+
+## 2026-06-17 — Diagnosed why content feels generic / disconnected from the shelf
+
+Big D: "we are still stuck on content creation... the pictures and stories are not aligned to the products on the shelf... still creating generic content that doesn't bring the brand together." Traced this end to end through the live sheet, the rotation files, and the last 6 actual briefs.
+
+**What happened:**
+- Pulled every foot/nail-related row in the Product Queue sheet regardless of status (35 rows). Status breakdown across all 75 rows: 18 Approved, 23 Pending, 29 Rejected, 5 Archived.
+- **Zero foot-care products are Approved.** Every single foot product researched (foot creams, foot files, foot soaks, callus removers, pedicure tools) is sitting Rejected, Archived, or stuck Pending. The 18 Approved rows are Skincare (4), Body Care (4), Recovery (4), Grooming Tools (5), plus one duplicate (`Buffway Slim Leather Front Pocket Wallet` x2) and one blank row.
+- Checked the Pending foot items Big D specifically praised last session as the "right" model (Niegeloh Solingen Pedicure Set, Margaret Dabbs Foot File, Edjy nail clipper). All three already have strong, on-brand Proprietor-voice Reasoning written — Edjy even has a full [DRAFT] Narrative in the exact aspirational ritual voice Big D wants. None of them ever got promoted to Approved, so none of them are reachable by the content engine.
+- Checked `scripts/data/shelf-products.json` (the static pool `media-director.js` rotates through for every post): last written 2026-06-09, 15 products, no foot-care category at all, and missing the one foot-adjacent item that did get Approved since then (Spongelle Men Super Buffer).
+- Checked the last 6 actual generated briefs (Mon–Wed, both slots): "Spongelle Men Super Buffer" was the featured product in 3 of 6 (mon-am, tue-am, tue-pm) — same product back to back. The other 3 (mon-pm, wed-am, wed-pm) got no product assigned at all and fell back to generic abstract copy ("your feet carried every rep and you handed them a gas station..." with no shelf link, no specific item). That's the literal symptom Big D is describing.
+
+**Decided / concluded:**
+- Root cause is upstream of content generation. Foot-care research is working and producing good copy — the bottleneck is that almost nothing ever clears the Approved gate, so the shelf (and therefore every social post, since the rotation pool only draws from Approved) is built almost entirely from non-foot grooming products. A foot-care brand is currently posting about face wash, cologne, recovery rollers, and wallets because that's all that's actually live.
+- Secondary, smaller issue: even within the thin Approved pool, the rotation file is a stale manual snapshot rather than synced live off the sheet — causing repeats (Spongelle 3x in a week) and gaps (3 of 6 slots with no product, falling back to generic chapter-teasing copy).
+- The fix has two parts: (1) a creative-direction call — which Pending foot products to promote now, since several already have the right voice written and are just sitting idle; (2) a pipeline/sync fix — keeping the rotation pool current against live Approved status automatically instead of a manually-refreshed snapshot. Part 2 is implementation work (Code's lane) — flagged, not built, this session.
+
+**Files / artifacts touched:**
+- Added two throwaway diagnostic scripts to `scripts/`: `_audit-foot-care-coverage.js`, `_audit-pending-foot-narratives.js` (read-only sheet queries, run via `run_diagnostic`). Left in place per the no-delete-without-asking rule — fine to remove if Big D doesn't want them kept.
+
+**Open / follow-up:**
+- Recommended to Big D: promote Niegeloh Solingen Pedicure Set and Margaret Dabbs Foot File to Approved now (Reasoning already on-brand); finalize the Edjy nail clipper's [DRAFT] Narrative so it's usable. Awaiting Big D's go-ahead.
+- Recommended: a dedicated triage pass through the 23 Pending + 29 Rejected foot-tagged rows to find more salvageable products, rather than letting research keep piling up unreviewed items.
+- Flagged for Code: sync `shelf-products.json` automatically from live Approved rows (or drop the static file and read the sheet directly) so the rotation pool can't drift stale again; clean up the duplicate wallet row and blank Approved row.
+
+**CORRECTION (same day):** Big D clarified the product/Approved-list framing above was not what he meant — "the products on the shelf are all verified," shelf curation is fine as-is. His actual complaint is about media content specifically: posts should tell a specific product's story, and should tie back to The Lounge — instead the system is still generating generic "shoeless men" template images with no Lounge connection. Re-diagnosed below; the section above stays for the record but is not the live issue.
+
+## 2026-06-17 — Re-diagnosed: media content stuck on generic scene templates, no Lounge callback
+
+**What happened:**
+- Re-read `creative-agent.js` with the corrected question in mind: why do images default to generic "shoeless man" scenes instead of telling the featured product's story, and why doesn't content drive back to The Lounge.
+- Confirmed in code: `SCENE_BLOCK` (the default image-brief instruction used on every post unless an edition vignette overrides it) is four fixed templates — suit/one shoe off, athlete/cleats off, chef/shoes on floor, couple/shoes coming off. Every one of them is a man removing or having removed his shoes. This fires regardless of which product is assigned.
+- Confirmed `buildProductBlock()` explicitly tells the model to treat the assigned product as background dressing, not the subject: "The product appears naturally in the scene as a prop... Not the hero of the shot." So even on a post with a real product assigned, the image is still one of the four generic templates with the product tucked into a corner — never a shot built around the product itself.
+- Confirmed the CTA logic in `buildChapterBlock()`: product posts end with a link to the shop; non-product posts end with a link to bio. Only the Wednesday PM "campfire retelling" slot links back to The Lounge. That's 1 of 14 weekly slots with any Lounge callback.
+- The system that actually does what Big D wants already exists: `edition-agent.js` writes a monthly themed story, generates a specific image brief + vignette per product (`buildEditionVignetteBlock` overrides the four canonical scenes entirely and points the CTA at the Lounge edition page), and only activates after Big D approves a draft via `--approve`. Checked `logs/edition-state.json` — it doesn't exist. No edition has ever been approved/activated. So the product-story-plus-Lounge mechanism is built but has never been switched on; every post has been running on the generic fallback path instead.
+
+**Decided / concluded:**
+- The fallback path (no active edition) is the actual default state of the whole pipeline, not an edge case — meaning 100% of content to date has been running on generic scene templates with weak-to-no product centering and almost no Lounge connection.
+- Two ways to close the gap: (1) get an edition approved and active, which switches every post over to product-specific vignettes + Lounge CTAs automatically; (2) independently fix the non-edition fallback (replace the four generic shoe-removal templates with product-centered scene-writing, and add a Lounge callback to more than just Wednesday) so quality doesn't depend on an edition being active.
+
+**Open / follow-up:**
+- Awaiting Big D's direction: run `edition-agent.js` now to get a draft edition in front of him, fix the fallback defaults, or both.
+
+**UPDATE (same day):** Big D pushed back — "i feel like we keep doing that." Checked the log: he's right. The 2026-06-12 entries ("Edition engine built + content pipeline rewired" and "Denial logging + edition publish path wired") already documented this exact fix, fully wired, with explicit next steps: run `edition-agent.js`, review the Drive draft, approve. That step was never taken. Five days of sitting idle, not a missing fix. Stopped proposing and ran it instead — see new entry below.
+
+## 2026-06-17 — Ran Edition #1 (the thing that was sitting idle since 06-12)
+- Called `run_edition_agent` (full run, not dry-run). Completed in ~62s.
+- **Edition #1 — June 2026.** 6 products selected from `shelf-products.json` rotation (index 0→6): Brickell Clarifying Gel Face Wash, Brickell Daily Essential Face Moisturizer, Brickell Daily Essential Face Care Routine I, Baxter of California Super Shape Skin Recharge Cream, Dior Sauvage EDP 3.4oz, Dior Sauvage EDP Shower Gel Travel Set. All Face Care + Fragrance — no Foot Care, because none exists in the shelf rotation file yet (separate from the live sheet issue logged above, and not in scope per Big D — shelf list "is fine as it is").
+- Story (4954 chars) + all 6 vignettes parsed clean (image brief, social hook, vignette each populated — no missing fields).
+- Draft uploaded to Drive: `edition-1-2026-06-draft.md`. `logs/edition-state.json` now exists for the first time, `approved: false`. Telegram alert sent.
+- **Waiting on Big D:** review the draft in Drive `Editions/`, then approve via `approve_edition` MCP tool (or Telegram reply). Once approved: Lounge page auto-publishes, `loungeUrl` gets saved, and every post this month switches from generic scene templates + shop/bio CTA → product-specific vignette + Lounge CTA automatically. That's the actual fix to the original complaint — it just needed this edition to exist.
+
+## 2026-06-18 — Root-caused why closed decisions keep resurfacing; closed Bastien + Foot Balm
+
+**What happened:**
+- Big D: "there is a lot of back and forth with stuff we already decided... these are not making it through day to day... bastien was a hard pass... we aren't there yet for the foot balm... what is hyperice normatec?" — i.e. Bastien=HOLD (closed once already, 2026-06-13) had resurfaced as an open "Decisions Needed" item in nearly every standup since.
+- Confirmed `BSV-Directive.md` already correctly stated Bastien=HOLD since 2026-06-13 — the directive itself was not stale, so the bug was downstream.
+- Traced `chief-of-staff.js`'s standup generation: it pulls `logs/strategy-active.md` (written weekly by `strategist.js`, run Sundays) and feeds its "Chief Directive" / "Shelf Gap" sections verbatim into the daily standup prompt.
+- Found the actual root cause: `logs/strategy-active.md` was last generated **2026-06-14 — one day after** the 2026-06-13 closure — and still framed Bastien as an open binary ("make the Révérence de Bastien tier call... Aspiration tier or hold"). `strategist.js` had read the directive but its prompt never instructed it to check for already-resolved items, so it re-asked the question the very next cycle. That stale file then sat unchanged for 4 days (next regen isn't until Sunday 6/21), poisoning every daily standup in between regardless of what the directive said elsewhere.
+
+**Decided / concluded:**
+- Révérence de Bastien: reconfirmed CLOSED — HOLD. Not reopened, just propagation that needed fixing.
+- Proprietor's Foot Balm (private label): **WAIT** — audience/revenue not yet at launch threshold. New decision, not previously closed.
+- Hyperice Normatec 3 Legs ($399, Aspiration tier, scored 80/100, currently Pending): explained to Big D — dynamic air-compression leg recovery system, 7 compression levels, patented Pulse/ZoneBoost tech, used by elite athletes for circulation/swelling/recovery. Note: live market price is ~$899–$900, not the $399 carried in the sheet/strategy doc — flagged for Big D to verify before approving as the Aspiration anchor.
+
+**Files / artifacts touched:**
+- `logs/strategy-active.md` — removed stale Bastien-reopening language from Shelf Gap + Chief Directive sections.
+- `BSV-Directive.md` (local repo) — unambiguous DECIDED/CLOSED wording for Bastien, added Foot Balm=WAIT entry, added a "Decision Status Key" section instructing readers (human or LLM) to treat DECIDED/CLOSED/WAIT as resolved and never re-list them regardless of standup history.
+- `scripts/chief-of-staff.js` + `scripts/strategist.js` — added explicit prompt instructions to check the directive's resolution status before listing anything as an open decision. Structural fix so this bug class doesn't recur after Sunday's regen.
+- Committed to `preview/full-site` as `4188ea44` via `commit_changes` (pushed).
+
+**Open / follow-up:**
+- **BSV-Directive.md on Drive** (the copy `strategist.js`/`chief-of-staff.js`/`product-research.js`/`creative-agent.js`/`media-director.js` actually pull live via rclone) was NOT updated — only the local repo copy was. Big D needs to run `node scripts/learn.js --note "..."` himself (no Drive-write tool available to Big C) to push the same closure language to the live copy. Two notes queued for him, see session reply.
+- Hyperice Normatec price discrepancy ($399 in our docs vs. ~$899-900 live market) unresolved — needs Big D to confirm before any approval decision.
+- This is the second time Bastien's closure needed re-fixing (first attempt 2026-06-13 only touched `logs/strategy-active.md`'s pending-action note, not the weekly strategist regen path) — worth a spot-check in ~1 week (after the 6/21 Sunday regen) to confirm the new prompt instructions actually held.
