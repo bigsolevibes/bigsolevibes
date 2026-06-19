@@ -27,6 +27,25 @@
 
 ---
 
+## 2026-06-19 — Dashboard already had the product queue; made it run persistently
+
+**What happened:**
+- Big D asked to add the product queue to the dashboard, "im not running any scripts." Checked first — the dashboard (local-only, gitignored, never deployed to bigsolevibes.com by design) already has a Shelf page with Active + Pending product lists and working Approve/Deny buttons that write straight to the product Google Sheet. No code gap. The actual gap: nothing was running it (no process, no launchd job) and `NEXTAUTH_SECRET`/`NEXTAUTH_URL` were never added to `.env` after a partial `dashboard-setup.js` run.
+- Did not do a multi-file investigation — confirmed the gap was infra/config, not code, and stopped there.
+
+**Decided / concluded:**
+- Built `config/com.bsv.dashboard.plist` (matches existing plist pattern, runs `next dev`, KeepAlive+RunAtLoad) so the dashboard survives reboots — committed and pushed to `preview/full-site` (`93116e63`).
+- Could not write `.env` or run `launchctl` myself (no shell access to Big D's real Mac). Gave Big D a one-time, 3-step setup (add 2 env lines, copy + load the plist, open the URL) — after that he never touches a terminal for this again.
+
+**Files / artifacts touched:**
+- `config/com.bsv.dashboard.plist` (new, committed)
+
+**Open / follow-up:**
+- Big D still needs to run the one-time setup steps for the dashboard to actually come up.
+- Have not yet checked the `queue` page (content-slot approvals, separate from product shelf) — only confirmed `shelf`.
+
+---
+
 ## 2026-06-07 — Built BSV-Start-Here.md to fix session-orientation drift
 
 **What happened:**
