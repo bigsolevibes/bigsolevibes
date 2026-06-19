@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bsv.dashboard</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/davidgeer/claude/bigsolevibes-web/node_modules/.bin/next</string>
+    <string>dev</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/dashboard.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/dashboard.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/davidgeer</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
