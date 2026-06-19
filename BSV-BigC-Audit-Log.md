@@ -27,6 +27,24 @@
 
 ---
 
+## 2026-06-19 — Added a dedicated Product Queue view (separate from Shelf)
+
+**What happened:**
+- Big D: "i do not see the product queue in the dashboard?" The `Queue` nav tab is post/content slots, not products — products only ever surfaced under `Shelf`, and only the curated Active (Approved) + Pending subset, not the full sheet. Confirmed Sheets credentials/connectivity were fine (`check-sheet-dupes` diagnostic matched known counts) — this was a naming/scope gap, not a bug. Big D's call: "add a dedicated view" rather than rename Shelf.
+- Built it: `StateAdapter.fetchAllProductRows()` (extracted from the old `getShelf` body), `StateAdapter.normalizeStatus()` (buckets free-text statuses — blank/Scored → Pending, Rejected*/Archived* → their bucket), and a new `StateAdapter.getProductQueue()` returning every row plus status counts and two data-quality flags (duplicate name+ASIN, blank-name rows — both have bitten this sheet before, see 2026-06-17 entry). `getShelf()` now calls the same shared fetch, so its Active/Pending behavior is unchanged.
+- New `ProductQueue.tsx` (status filter tabs, search by name/category/ASIN, inline Approve/Deny on Pending rows reusing the existing `/api/dashboard/shelf/approve|deny` routes, a banner for duplicates/blank rows) and a new page at `/dashboard/product-queue`, linked from the nav next to Shelf.
+
+**Decided / concluded:**
+- `npx tsc --noEmit` clean. Did not attempt `mcp__bsv__commit_changes` for the dashboard files — confirmed (again) the whole dashboard tree (`app/dashboard/`, `app/api/dashboard/`, `lib/dashboard/`, `components/dashboard/`) is gitignored by design (per the 2026-06-19 entry below), so there's nothing to push to `preview/full-site` for this; saving to disk is the deploy — the `next dev` launchd job (PID confirmed alive, log shows clean `Ready in 1413ms`, no errors) hot-reloads it.
+
+**Files / artifacts touched:**
+- `lib/dashboard/state-adapter.ts`, `lib/dashboard/types.ts`, `components/dashboard/ProductQueue.tsx` (new), `app/dashboard/(protected)/product-queue/page.tsx` (new), `components/dashboard/DashboardNav.tsx` — all local-only, not committed (see above).
+
+**Open / follow-up:**
+- Big D hasn't loaded `/dashboard/product-queue` yet — first real hit will be the actual test.
+
+---
+
 ## 2026-06-19 — Dashboard already had the product queue; made it run persistently
 
 **What happened:**
