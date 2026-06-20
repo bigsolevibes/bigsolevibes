@@ -8,6 +8,16 @@
 
 TikTok account is now authorized. `config/tiktok-token.json` has a valid `access_token` (24h) and `refresh_token` (1yr), scope `user.info.basic,video.upload`. `getValidAccessToken()` in `tiktok-auth.js` will auto-refresh going forward.
 
+## 2026-06-19 — YouTube: existing token verified still valid, stale docs fixed; no re-auth needed
+
+Big D asked to get YouTube posting working "now that we have our DBA." Investigated before touching anything:
+
+- CLAUDE.md referenced `reauth.js` (port 3456) for YouTube re-auth — **that file doesn't exist**. Only `youtube-auth.js` exists (port 3000, different flow: auto-opens browser, auto-catches the localhost callback itself, no code paste needed — unlike TikTok). Corrected the doc.
+- Added a `--check`/`--dry-run` path to `youtube-auth.js` that tests the existing `.env` refresh token against Google's OAuth endpoint without opening a browser or printing any secret value. This runs through the already-live `run_diagnostic` MCP tool immediately, no mcp-server.js restart required.
+- Ran it: **the existing `YOUTUBE_REFRESH_TOKEN` is still valid.** CLAUDE.md's "Known Issues" line claiming it was revoked was stale — corrected.
+- Also added `youtube_token_check` and `youtube_reauth` tools to `mcp-server.js` for whenever it actually does expire — `youtube_reauth` runs the full flow with one browser click from Big D, writes new credentials to a gitignored local file (`config/.youtube-new-credentials.txt`) instead of printing them through chat, since `.env` must never be written by Claude. These two tools were committed but hadn't shown up as live yet by end of session (auto-restart via `fs.watch` didn't pick them up within this session — worth confirming next session that they're live).
+- Net finding: **YouTube credentials were never actually the blocker.** The real blocker is that zero video files exist anywhere in the pipeline (`posts/output/` has no `.mp4`s) — confirmed earlier this session. Video production needs to actually resume (Veo/Gemini generation or manual upload) before YouTube or the TikTok draft flow have anything to post.
+
 Getting here took three failed attempts, all shell-quoting related: TikTok authorization codes contain `!` and `*`. zsh treats `!` as history expansion even inside double quotes, so the code never reached the network the first time (`zsh: no such event: ...`). Switching to single quotes fixed the shell parsing but burned enough time that the next two codes expired/were rejected before Big D could react.
 
 Root fix: added a new MCP tool, `tiktok_token_exchange` (scripts/mcp-server.js), that runs `node scripts/tiktok-auth.js --code <code>` via `spawnSync` with the code as a real argv element — never built into a shell string — so no quoting issue can occur regardless of what characters TikTok puts in the code. Big D now just pastes the code in chat; Big C runs the exchange directly on his machine. Also fixed the callback page's displayed command to use single quotes (`app/api/auth/tiktok/callback/page.tsx`, commit `5c9fb4c2` on preview/full-site, not yet on main) and added debug logging to `exchangeCode()` for any future failures (commit `f2ff1149`).
