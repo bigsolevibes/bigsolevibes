@@ -473,7 +473,7 @@ POST_TIME: [post time]
 VOICE_GUIDANCE: ${voiceDef.name} — ${voiceDef.description} Hard guardrails active.
 ---
 IMAGE BRIEF: [${imageBriefInstruction}]
-VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood as image. End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
+VIDEO BRIEF: [Veo 3.1 motion prompt. 7–8 seconds, 9:16 vertical. Describe what moves and how. Same mood and same scene as the image brief.${product ? ` The assigned product (${product['Product Name']}) must stay visible and identifiable across the motion — not just present in a static first frame. Describe how it's seen: held, set down, light catching it, etc. REJECTED without appeal if the product is absent or unrecognizable in the described motion.` : ''} End with: "Ensure the final frame matches the first frame in lighting and position exactly, creating a seamless infinite loop."]
 ON-IMAGE COPY:
   Line 1 (Cream, Playfair Display): [short declarative statement — 4–8 words, no punctuation]
   Line 2 (Bourbon, Bebas Neue italic): [secondary line — 3–6 words, no punctuation]
@@ -514,7 +514,7 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({
-    model:      'claude-fable-5', // trial through June 22 — revert to claude-sonnet-4-6 after
+    model:      'claude-sonnet-4-6', // reverted early — claude-fable-5 trial was crashing Saturday slot generation
     max_tokens: 2048,
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
