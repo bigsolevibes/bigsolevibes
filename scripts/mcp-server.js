@@ -488,6 +488,29 @@ server.tool(
   }
 )
 
+// ── run_video_gen ─────────────────────────────────────────────────────────────
+server.tool(
+  'run_video_gen',
+  "Generates real Veo videos from any *-flow-prompt.txt files currently sitting in Drive's Ready to Post folder. This spends real money (Veo 3.1 Fast ≈ $0.15/sec of generated clip) — check get_cost_state for current balance before running if cost matters. Output is staged to Drive's Video Review folder and is NEVER auto-posted; a Telegram alert fires asking Big D to reply approve/deny. Fires video-gen.js in the background and returns immediately — check progress with read_log (agent: 'video-gen') after a minute or two, since each clip takes roughly 1-3 minutes to render.",
+  {},
+  async () => {
+    const script = path.join(ROOT, 'scripts', 'video-gen.js')
+    const child = spawn(process.execPath, [script], {
+      cwd: ROOT,
+      env: { ...process.env },
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ video-gen started — generating real Veo video(s) now (~1-3 min per clip).\nOutput lands in Drive's Video Review folder, gated behind Big D's approval — never auto-posted.\nCheck back shortly with read_log agent="video-gen".`,
+      }],
+    }
+  }
+)
+
 // ── run_edition_agent ─────────────────────────────────────────────────────────
 server.tool(
   'run_edition_agent',
