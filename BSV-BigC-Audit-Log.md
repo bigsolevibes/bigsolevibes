@@ -637,3 +637,27 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 - **Commit blocked:** `.git/index.lock` exists and could not be removed from the sandboxed shell (`EPERM`, both via `rm` and via `scripts/clear-git-lock.js`) — likely a sandbox/mount permission restriction rather than a genuinely stale lock from another process, but can't be confirmed in here. Big D needs to either run `node scripts/clear-git-lock.js` himself or check whether another git process (e.g. a `watch-drive.js` cycle) is mid-commit, then have these two files committed/pushed to `preview/full-site`.
 - Big D still needs to actually run `node scripts/tiktok-auth.js` once to mint the first token — nothing in `config/tiktok-token.json` yet.
 - If TikTok rejects the `video.upload` scope at the consent screen, it needs to be enabled for the app in the TikTok developer portal first.
+
+## 2026-06-19 — TikTok callback route fixed for static export (route.ts → page.tsx)
+
+**What happened:**
+- Lock from the prior entry got cleared (via `mcp__cowork__allow_cowork_file_delete`, not by Big D — see note below) and the original commit landed as `c0baf068`, pushed to `preview/full-site` by Big D.
+- Big D attempted to promote to `main`; Cloudflare Pages build failed: `Export encountered errors on following paths: /api/auth/tiktok/callback/route`.
+- Root cause: `next.config.js` sets `output: 'export'` whenever `CF_PAGES === '1'`. Production is a pure static export — no Next.js server runs at all. `app/api/auth/tiktok/callback/route.ts` was a dynamic handler reading `req.url`/searchParams per request, which static export cannot prerender. This route was the only API route in the repo that both ships to production (not gitignored, unlike `app/api/dashboard/*` and `app/api/auth/[...nextauth]/`) and is genuinely dynamic — so it was the only one that could break this way.
+- Fix: replaced `route.ts` with `app/api/auth/tiktok/callback/page.tsx` — same URL, but a client component (`'use client'`) that reads `code`/`state`/`error` out of `window.location` inside a `useEffect` after the static HTML loads in the browser. No server logic, no secrets (same as the old route's own comment), and the redirect URI already registered in the TikTok developer portal didn't need to change.
+- Could not verify the fix with a local `next build` in the sandbox — missing the linux-arm64 SWC binary and no network path to `registry.npmjs.org` to fetch it. Confirmed correctness by code/architecture reasoning instead; real validation is the next Cloudflare Pages build.
+- Committed as `4ec063dc` via `mcp__bsv__commit_changes` (runs on Big D's machine, real git credentials) with `push: true` — confirmed pushed by fetching `origin/preview/full-site` afterward.
+
+**Decided / concluded:**
+- Static-export incompatibility is now a known constraint for this repo: any future server-side route handler that needs per-request data (not just this TikTok callback) will hit the same build failure under `output: 'export'`. Client-side static pages (page.tsx + window.location) are the pattern to reach for first; a Cloudflare Pages Function (`/functions` dir, bypasses the Next export entirely) is the fallback if real server secrets/logic are ever needed.
+- Process correction (Big D's explicit feedback this session): use `mcp__bsv__commit_changes` instead of sandboxed git from the start — it runs on the real machine with working credentials. Also: call `mcp__cowork__allow_cowork_file_delete` immediately on any sandbox "Operation not permitted" delete error instead of pushing the fix onto Big D.
+
+**Files / artifacts touched:**
+- `app/api/auth/tiktok/callback/route.ts` — deleted (explicit go-ahead from Big D, per hard rule on deletions).
+- `app/api/auth/tiktok/callback/page.tsx` — new, replaces it at the same URL.
+- Committed to `preview/full-site` as `4ec063dc` (pushed).
+
+**Open / follow-up:**
+- Big D still needs to promote `preview/full-site` → `main` himself to get this onto the live Cloudflare build (not done by any script, per hard rule).
+- After that build succeeds, Big D needs to run `node scripts/tiktok-auth.js` to complete consent and mint the first token — still nothing in `config/tiktok-token.json`.
+- Noticed but not touched: untracked `next.config.js.bak` / `next.config.tmp` in the working tree — looks like a prior manual attempt at this same fix. Left alone; flagging in case Big D wants them cleared once this fix is confirmed live.
