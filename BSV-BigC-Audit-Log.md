@@ -716,3 +716,75 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 - `run_video_gen` tool registration was still not visible via tool search after ~7 checks across several minutes in this same session — same registration-lag pattern seen with `youtube_reauth`/`youtube_token_check` and `push_to_main` in prior sessions. Likely resolves itself once the MCP host re-syncs; should confirm live and fire the actual generation at the start of next session if it didn't fire in this one.
 - Telegram inbound listener restart is a one-line terminal command for Big D — not yet done.
 - Still open from before: `creative-agent.js` hardcoded invalid model string ("Claude Fable 5") crashing Saturday slot generation; `weekStrategy is not defined` breaking Sole Report Drive upload; chapter-sequencing stuck on "Chapter 1."
+
+## 2026-06-20 — creative-agent.js: product as visual focus; TikTok API application + demo-video UI gap closed
+
+**What happened:**
+- Big D flagged the same root issue again, live in the feed this time: "still going back to the old smoky leather barefoot man" instead of J. Peterman/Lounge-style, product-forward content. Clarified the bar: feet can stay in frame, but the composition must read head-to-toe with the product as the actual visual focus — not a background prop.
+- Logged an immediate directive via `learn.js` (`creative-directives.json` updated locally; Drive push of `BSV-Directive.md` and the Telegram confirmation both failed — no `rclone`/network in this sandbox, known limitation, not fixed).
+- Fixed at the code level on Big D's explicit go-ahead: `creative-agent.js` — `buildProductBlock()`'s "Not the hero of the shot" line replaced with explicit visual-focus language; full `SCENE_BLOCK` rewritten (kept the four scene settings, sharpened the head-to-toe rule, added a "VISUAL FOCUS — PRODUCT FIRST" rule, reserved the old foot-as-punchline beat for product-free posts only); "THE PROPRIETOR'S TEST" failure example updated; `imageBriefInstruction` ternary (both the edition-vignette and fallback paths) updated to match, plus an explicit head-to-toe instruction and a new REJECTED-without-appeal case for the product being reduced to background dressing.
+- `node --check` passed. Committed `79964fd3` via `commit_changes`, pushed to `preview/full-site`. Not yet verified against a real generated brief (next real post is the actual test).
+- Separately, Big D started TikTok's Content Posting API application. Drafted answers for: organization info, the App ID pointer (told him to copy `TIKTOK_CLIENT_KEY` from `.env` himself — value never printed), the integration goal/benefit (ties to the existing automated multi-platform pipeline; TikTok is the one platform still requiring manual draft-finish), daily publishing users (**1** — single-brand account, not multi-tenant), and which API response fields get stored (`access_token`/`refresh_token`/`open_id`/`scope`/`expires_in`/`refresh_expires_in` in `config/tiktok-token.json`, plus `publish_id`/`status` — confirmed by reading `tiktok-auth.js`/`tiktok-post.js` directly rather than guessing).
+- The application then asked for a screen recording proving: (1) the TikTok auth flow, (2) the flow to an "Export/Post-to-TikTok page" in BSV's own app, (3) what happens after triggering it. Investigated and confirmed no such page existed — TikTok posting has only ever been a CLI script (`tiktok-post.js`), never a UI control. Big D chose to build the real page rather than submit a recording of the manual TikTok-app draft-finish flow (which doesn't satisfy requirement 2 either way, and risks an easy reject).
+- Confirmed the dashboard's actual runtime first, since this matters: `next.config.js`'s `output: 'export'` only applies when Cloudflare's own build sets `CF_PAGES=1` — the dashboard runs as a normal Next server (`next dev`, kept alive by the `com.bsv.dashboard` launchd job), so real `route.ts` handlers with secrets work fine there, unlike the public marketing site.
+- Built `app/dashboard/(protected)/tiktok/page.tsx` (lists any `posts/output/<slot>-youtube.mp4` — the only video variant the pipeline produces, tiktok has no resize variant of its own — with a per-slot "Post to TikTok" button and inline result message) and `app/api/dashboard/tiktok/post/route.ts` (NextAuth session-gated GET/POST; POST shells out to the existing `tiktok-post.js` via `spawnSync`, same pattern `distribute.js` already uses for `youtube-post.js`, rather than re-implementing the upload calls). Added a "TikTok" link to `DashboardNav.tsx`.
+- Verified with `npx tsc --noEmit -p tsconfig.json` (whole-project type check) — zero errors.
+
+**Decided / concluded:**
+- The dashboard tree (`app/dashboard/`, `app/api/dashboard/`, `lib/dashboard/`, `components/dashboard/`) is gitignored by design and never goes through Cloudflare — saving to disk *is* the deploy, the launchd `next dev` job hot-reloads it. No commit was made (or needed) for the TikTok page/route/nav changes.
+- The button currently posts to TikTok's draft/inbox endpoint only (`video.upload` scope, no audit needed) — clicking it does not publish live; Big D still finishes the draft in the TikTok app. That's intentional and matches the existing CLI behavior, just removes the terminal step.
+
+**Files / artifacts touched:**
+- `scripts/creative-agent.js` (preview/full-site, commit `79964fd3`)
+- `logs/creative-directives.json` (local only — Drive copy not updated, see above)
+- `app/dashboard/(protected)/tiktok/page.tsx` — new (gitignored, not committed)
+- `app/api/dashboard/tiktok/post/route.ts` — new (gitignored, not committed)
+- `components/dashboard/DashboardNav.tsx` — added TikTok nav link (gitignored, not committed)
+
+**Open / follow-up:**
+- Real video content needed to actually record the demo: four Veo-generated videos (`fri-am`, `fri-pm`, `sat-am`, `sat-pm`) are sitting in Drive's `Video Review/` folder awaiting Big D's approval — none have run through `resize-post.js`/`brand-video.js` into `posts/output/` yet, so the new TikTok dashboard page currently has nothing to list.
+- Once a video is approved and lands in `posts/output/<slot>-youtube.mp4`, Big D needs to actually click through and record: TikTok's own auth/consent screen, the new `/dashboard/tiktok` page, and the result after clicking "Post to TikTok" — three separate MP4s (≤50MB each) per TikTok's submission requirements. Also still need to check TikTok's Content Sharing Guidelines page for UX compliance details before recording — not yet read.
+- `creative-agent.js` fix is unverified against a real generated brief — confirm on the next real post once a product is assigned.
+- Still open from before: `com.bsv.telegram-webhook` down (blocks Telegram approve/deny replies); fri-am/sat-am pipeline-state hold vs. standup "confirmed" discrepancy; Edition #1 still pending approval with no foot-care products.
+
+## 2026-06-20 (later same day) — creative-agent.js fix verified live; video-gen.js dedup bug found the expensive way
+
+**What happened:**
+- Big D asked for a fresh video generated specifically to validate the `79964fd3` creative-agent.js fix, separate from the four pre-fix videos already sitting in Video Review.
+- Confirmed via `read_log agent=media-director` that `gemini-bridge.js` is auto-chained from `media-director.js` (spawns it directly after brief generation, which in turn spawns `image-gen.js`) — no manual middle step needed, contrary to this session's earlier assumption. `run_media_director({day:'mon'})` was enough to drive the whole brief→prompt chain.
+- Checked `get_pipeline_state` first — `mon`/`tue`/`wed`/`thu` were completely untouched (only fri/sat/sun had any slot history), so `mon` was picked specifically to avoid colliding with the four pending approvals.
+- Ran `run_media_director({day:'mon'})`. Verified via `get_slot_brief` for both `mon-am` and `mon-pm` that the fix is working as intended in real output: full head-to-toe composition, product description explicitly anchored as "where the eye lands first" / "clearly the object of the shot," feet present but called out as incidental ("not competing with the wallet for attention"). This is the first real confirmation the fix holds.
+- Ran `run_video_gen` to generate the actual clips. **Bug found:** it doesn't just pick up the day just generated — it scans every `*-flow-prompt.txt` sitting in Drive's "Ready to Post," and its only dedup guard checks whether `{slot}.mp4` already exists back in *Ready to Post* (not in *Video Review*, which is where it actually stages output pending approval). Since the four pre-fix videos (fri-am, sat-am, sun-am, sun-pm — not fri-pm/sat-pm as an earlier session summary had it; that detail was stale) were already staged to Video Review but never moved back to Ready to Post, their flow-prompts were still sitting there unconsumed. Result: one `run_video_gen` call generated **6** videos, not 2 — fri-am, mon-am, mon-pm, sat-am, sun-am, sun-pm, in that order, each staged to Video Review with its own Telegram approve/deny ping.
+- Cost impact: 6 clips × ~7-8s × $0.15/sec ≈ $6-7 against a $25 balance (per `get_cost_state` at session start) — not damaging, but 4 of those 6 ($4-5) bought nothing useful: fri-am/sat-am/sun-am/sun-pm were already either pre-fix or already-pending content, just re-rendered.
+
+**Decided / concluded:**
+- `mon-am.mp4` (1950KB) and `mon-pm.mp4` (2067KB) are the real validation artifacts — confirmed staged to Video Review successfully.
+- Flagged to Big D: deny the fri-am/sat-am/sun-am/sun-pm re-renders from this batch when their Telegram pings arrive — they're redundant with whatever was already in front of him for those slots, not new signal.
+- **Real bug, not yet fixed:** `video-gen.js`'s dedup check (`alreadyInDrive` in the main loop) should check Video Review for an existing `{slot}.mp4`, not Ready to Post — or the flow-prompt should get deleted/archived from Ready to Post once consumed, win or lose. Either fix prevents this from happening again. Flagging here rather than fixing live mid-session since it touches the paid-generation path — wants Big D's sign-off on the approach first.
+
+**Open / follow-up:**
+- Fix `video-gen.js` dedup logic (check Video Review, or clean up consumed prompts) — not yet done, needs Big D's go-ahead on approach.
+- Big D to deny the 4 redundant re-renders (fri-am, sat-am, sun-am, sun-pm) from this batch via Telegram once pings land.
+- TikTok demo recording (task still open) now has real candidate footage once `mon-am`/`mon-pm` are approved and run through `resize-post.js`/`brand-video.js` into `posts/output/`.
+
+## 2026-06-20 (same day, cont.) — telegram-webhook.js: video-gate approve/reject actually does something now
+
+**What happened:**
+- Tracing the dedup bug above led to a second, more serious finding: replying APPROVE or DENY to a video-gate Telegram alert did nothing useful at all. Root cause, confirmed by reading the code directly (not guessed): `video-gen.js`'s `addPendingItem` call nests the Drive path under `metadata.driveFile`, but every other gate type — and `telegram-webhook.js`'s generic APPROVE/REJECT/SKIP/EDIT handlers — read a top-level `item.driveFile`, which `telegram-queue.js`'s `addPendingItem` sets explicitly from `item.driveFile` (confirmed in `telegram-queue.js:45`). For video-gate items that field was simply `undefined`. `writeDecisionToDrive()` does `path.join(tmpDir, driveFile)` *outside* its own try/catch, so this threw — caught one level up by `processMessage`'s caller, so the bot didn't crash, but Big D got an "Error processing message" reply and the item stayed stuck in the queue.
+- Deeper issue under that: even with the field-name fixed, the generic decision-file flow (`writeDecisionToDrive` → Drive `Inbox/{file}` → some later script's `readDecisionFromDrive`) has no consumer for `video-gate` at all — nothing was ever written to read that decision back and act on the actual mp4 sitting in `Video Review/`. `watch-drive.js` only watches `Ready to Post`, never `Video Review`. So the loop was open at both ends regardless of the field-name bug.
+- Also: `DENY` was never a recognized command — only `FIX, APPROVE, REJECT, SKIP, LATER, EDIT` matched. video-gen.js's own Telegram message text ("Reply `approve` or `deny`") was promising a command the bot didn't understand.
+- Fixed in `scripts/telegram-webhook.js` (no changes needed in `video-gen.js` — its existing `metadata.driveFile` is exactly what's needed): added a `video-gate`-specific branch alongside the existing `content-gate` special case, bypassing the broken/consumer-less decision-file round-trip entirely. APPROVE/FIX now calls a new `approveVideo()` helper that `rclone moveto`s the file straight from `Video Review/` into `Ready to Post/` — so it enters the normal `resize-post.js → brand-video.js → distribute.js` chain on the next 15-min `watch-drive.js` poll. REJECT now calls a new `rejectVideo()` helper that `rclone deletefile`s it from `Video Review/` outright — matching the behavior the Telegram message already promised. Added `DENY` as a recognized synonym for `REJECT`. Both new handlers return a clear error and leave the item in the queue (so Big D can just retry) if the rclone call itself fails, rather than silently dropping it. Also guarded `SKIP`/`EDIT` against the same crash for video-gate items (no decision-file write attempted, since nothing reads it).
+- `node --check scripts/telegram-webhook.js` passed.
+
+**Decided / concluded:**
+- Real behavior change Big D should know before using it: REJECT/DENY on a video now **permanently deletes the mp4 from Drive**, not just dismisses a Telegram notification. This matches what the bot's own prompt text always claimed, but is new actual behavior.
+- Still blocked on the separately-known issue: `com.bsv.telegram-webhook` (the inbound listener) is down, so none of this takes effect until it's restarted (`launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook`, or via Drive drag-and-drop in the meantime).
+- Did not touch the `video-gen.js` dedup bug (logged separately above) in this pass — kept this fix scoped to the approval round-trip only, per what Big D asked to have fixed.
+
+**Files / artifacts touched:**
+- `scripts/telegram-webhook.js` (preview/full-site)
+
+**Open / follow-up:**
+- Restart `com.bsv.telegram-webhook` before this fix has any live effect.
+- `video-gen.js` dedup bug (checks Ready to Post instead of Video Review for already-generated output) still open.
+- Once restarted, confirm live: APPROVE on a real video-gate item actually lands the file in Ready to Post and flows through to `posts/output/`.

@@ -30,6 +30,7 @@ const INBOX_FILE   = path.join(ROOT, 'logs', 'telegram-inbox.log')
 const STATE_FILE   = path.join(ROOT, 'logs', 'telegram-webhook-state.json')
 const LOGS_DIR     = path.join(ROOT, 'logs')
 const POST_STATE   = path.join(ROOT, 'logs', 'post-state.json')
+const DRIVE_ROOT   = 'big sole vibes:Big Sole Vibes' // matches video-gen.js's GDRIVE_REMOTE
 
 const POLL_TIMEOUT = 25   // seconds — long-poll window
 const POLL_INTERVAL = 25  // seconds between poll cycles
@@ -95,6 +96,32 @@ function writeDecisionToDrive(driveFile, decision, notes) {
   } catch (err) {
     log(`WARNING: could not write decision to Drive: ${err.message}`)
   }
+}
+
+// ─── Video-gate file actions ──────────────────────────────────────────────────
+// video-gate items (from video-gen.js) point at a real staged file in Drive's
+// Video Review folder — e.g. metadata.driveFile = "Video Review/mon-am.mp4" —
+// not a decision-marker filename like every other gate type. Nothing polls
+// Drive to read a decision back for this item type, so act on the actual file
+// directly and synchronously here instead of round-tripping through
+// writeDecisionToDrive (which expects a top-level item.driveFile that
+// video-gen.js never sets, and which nothing downstream ever reads anyway).
+
+function approveVideo(driveFile) {
+  const filename = path.basename(driveFile)
+  execSync(
+    `rclone moveto "${DRIVE_ROOT}/${driveFile}" "${DRIVE_ROOT}/Ready to Post/${filename}"`,
+    { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
+  )
+  log(`Video approved — moved ${driveFile} → Ready to Post/${filename}`)
+}
+
+function rejectVideo(driveFile) {
+  execSync(
+    `rclone deletefile "${DRIVE_ROOT}/${driveFile}"`,
+    { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
+  )
+  log(`Video rejected — deleted ${driveFile}`)
 }
 
 // ─── "First active" queue helper ──────────────────────────────────────────────
@@ -197,6 +224,19 @@ async function processMessage(text) {
 
   if (upper === 'APPROVE' || upper === 'FIX') {
     if (!active) return 'Nothing pending right now.'
+
+    if (active.type === 'video-gate') {
+      try {
+        approveVideo(active.metadata.driveFile)
+      } catch (err) {
+        log(`ERROR approving video: ${err.message}`)
+        return `⚠️ Couldn't move the file in Drive — ${err.message}. Still pending, reply APPROVE again to retry.`
+      }
+      const remaining = items.filter(i => i.id !== active.id)
+      savePendingItems(remaining)
+      return `✅ Approved — ${active.metadata.slot} moved to Ready to Post. Goes out on the next pipeline pass.`
+    }
+
     // content-gate items have no driveFile — write directly to approved-slots.json
     if (active.type === 'content-gate') {
       const approvedPath = path.join(ROOT, 'logs', 'approved-slots.json')
@@ -213,8 +253,21 @@ async function processMessage(text) {
     return upper === 'FIX' ? '✅ Got it Big D. Logged.' : '✅ Got it Big D. Logged.'
   }
 
-  if (upper === 'REJECT') {
+  if (upper === 'REJECT' || upper === 'DENY') {
     if (!active) return 'Nothing pending right now.'
+
+    if (active.type === 'video-gate') {
+      try {
+        rejectVideo(active.metadata.driveFile)
+      } catch (err) {
+        log(`ERROR deleting rejected video: ${err.message}`)
+        return `⚠️ Couldn't delete the file in Drive — ${err.message}. Still pending, reply REJECT again to retry.`
+      }
+      const remaining = items.filter(i => i.id !== active.id)
+      savePendingItems(remaining)
+      return `🗑️ Rejected — ${active.metadata.slot} deleted from Video Review.`
+    }
+
     writeDecisionToDrive(active.driveFile, 'REJECT', '')
     const remaining = items.filter(i => i.id !== active.id)
     savePendingItems(remaining)
@@ -223,7 +276,8 @@ async function processMessage(text) {
 
   if (upper === 'SKIP') {
     if (!active) return 'Nothing pending right now.'
-    writeDecisionToDrive(active.driveFile, 'SKIP', '')
+    // video-gate has no decision-file consumer to write to — just clear the nag
+    if (active.type !== 'video-gate') writeDecisionToDrive(active.driveFile, 'SKIP', '')
     const remaining = items.filter(i => i.id !== active.id)
     savePendingItems(remaining)
     return '⏭ Skipped.'
@@ -239,14 +293,14 @@ async function processMessage(text) {
   if (upper.startsWith('EDIT ')) {
     if (!active) return 'Nothing pending right now.'
     const notes = raw.slice(5).trim()
-    writeDecisionToDrive(active.driveFile, 'EDIT', notes)
+    if (active.type !== 'video-gate') writeDecisionToDrive(active.driveFile, 'EDIT', notes)
     const remaining = items.filter(i => i.id !== active.id)
     savePendingItems(remaining)
     return '✏️ Got it Big D. Notes logged.'
   }
 
   // Unknown
-  return 'Got it Big D. Logged.\n\nFor the pending item, reply: FIX, APPROVE, REJECT, SKIP, LATER, or EDIT [notes]'
+  return 'Got it Big D. Logged.\n\nFor the pending item, reply: FIX, APPROVE, REJECT (or DENY), SKIP, LATER, or EDIT [notes]'
 }
 
 // ─── Main loop ────────────────────────────────────────────────────────────────
