@@ -27,6 +27,26 @@
 
 ---
 
+## 2026-06-19 — Root-caused "barefoot guy in a suit" — products weren't visually anchored in the image brief
+
+**What happened:**
+- Big D: posts on Bluesky/Instagram are still just a generic man-in-suit image, not tied to the product. Checked first whether this was actually a new problem: it isn't — Big D corrected this exact thing on 6/13 ("every brief must name the featured product, tell its story"), brand-manager's 6/15 review flagged "the gap below the ankle" as a universal rut, and Big D denied `fri-am` on 6/17 for the identical reason ("wrong direction...need to have story of product"). The directive file (`logs/creative-directives.json`) already had both notes loaded into every brief — they weren't holding.
+- Traced it to the actual mechanism in `creative-agent.js`. A product *is* assigned to nearly every am/pm slot already — `media-director.js`'s `assignProductToSlot()` rotates through `scripts/data/shelf-products.json` (15 products) or the live Approved sheet rows on every run, edition vignettes aside. So the gap wasn't missing product assignment — it was that the image-brief instructions only asked the product to "appear naturally as a prop," a single soft clause sitting next to four very vivid, specific, repeated SCENE_BLOCK archetypes (suit+chair+shoe-off, locker room, chef whites, couch). The model had a precise, emphatic instruction for the man and scene, and a vague one for the product — so the product lost.
+- Asked Big D how to handle it (sharper directive note vs. real template fix vs. both) — he chose the real fix.
+
+**Decided / concluded:**
+- Edited `scripts/creative-agent.js`: added a PRODUCT RULE paragraph to `SCENE_BLOCK` requiring the assigned product be placed visibly and specifically within whichever of the four scenes is chosen (not caption-only); rewrote `buildProductBlock()`'s IMAGE line and the non-edition `imageBriefInstruction` to require the product's actual container/shape/color and a concrete position in frame; added the assigned product's absence/unrecognizability to the existing "REJECTED without appeal if..." list (the same forcing pattern already used elsewhere in this file for other hard constraints — figured matching the existing emphatic style was more likely to land than a softer ask).
+- `node --check` clean. Did not touch SCENE_BLOCK's four scene archetypes themselves or the foot/HEAD TO TOE rule — those weren't the reported problem.
+
+**Files / artifacts touched:**
+- `scripts/creative-agent.js` (committed, `preview/full-site`)
+
+**Open / follow-up:**
+- This only takes effect on the next brief generated, not retroactively. Worth Big D spot-checking the next 2-3 posts' actual image output (not just the brief text) to confirm Imagen is rendering the product, not just that the brief asks for it.
+- Brand-manager's 6/15 report also flagged that visual outputs aren't being reviewed weekly at all ("Surface visual outputs in the next review packet") — that gap is still open and is partly why this recurred unnoticed for a week.
+
+---
+
 ## 2026-06-19 — Added a dedicated Product Queue view (separate from Shelf)
 
 **What happened:**

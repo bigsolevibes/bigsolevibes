@@ -170,7 +170,7 @@ function buildProductBlock(product) {
   lines.push(`**Affiliate Link:** ${product['Affiliate Link']}`)
   lines.push(`**Shelf URL:** ${shelfUrl}`)
   lines.push('')
-  lines.push('IMAGE: The product appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench. Not the hero of the shot.')
+  lines.push('IMAGE: This product must be physically visible and identifiable in the frame — not implied, not abstracted into "a product on the counter." Describe its actual container/shape/color (infer from the Narrative or Category above if not stated) and give it a specific place in the scene: in his hand, open beside the sink, on the counter where the light catches it. Not the hero of the shot — but a viewer must be able to point to it.')
   lines.push('CAPTION: Tell this product\'s story. The man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to the shelf URL above — not "link in bio".')
   return lines.join('\n')
 }
@@ -261,6 +261,8 @@ const SCENE_BLOCK = `FOUR CANONICAL SCENES — pick ONE and write the full scene
 (4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off. Everything about him reads right — except one thing. He knows it. She might know it too. The gap is real. The moment is honest, not embarrassing.
 
 HEAD TO TOE RULE: The full body should be visible or strongly implied in the frame. Head, torso, hands, feet — the whole man. The foot appears somewhere in frame as the quiet punchline — edge of shot, soft focus, corner. Only bring the foot to center frame if foot care is the explicitly featured product.
+
+PRODUCT RULE: If a Featured Product is assigned (see block below), the scene you choose must contain it, visibly and specifically — not as a caption-only mention. Place it somewhere a viewer's eye actually lands: in his hand, open on the counter, beside the sink, on the bench next to the discarded shoes. Describe what it physically looks like. A brief that names the product in the caption but leaves it out of the frame fails this rule.
 
 TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought. Think Monty Python logic applied to a very specific grooming gap — the humor is in the recognition, not the joke.`
 
@@ -418,7 +420,7 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
   const imageBriefInstruction = editionVignette
     ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. The product appears naturally as a prop — not the hero of the shot. Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
-    : `Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} appears naturally in the scene as a prop — on the counter, in his hand, beside him on the bench — not the hero of the shot.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject.`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} must be physically visible and specifically described in the scene — its actual container/shape/color, given a concrete place in frame (in his hand, open on the counter, beside the sink). Not the hero of the shot, but recognizable — not abstracted into "a product."` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys, where the foot appears in frame${product ? ', and exactly where and how the product appears' : ''}. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject${product ? `, or the assigned product (${product['Product Name']}) missing or not visually identifiable in the scene` : ''}.`
 
   const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
 
