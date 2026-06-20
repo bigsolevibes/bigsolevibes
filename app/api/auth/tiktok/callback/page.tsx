@@ -110,7 +110,11 @@ export default function TikTokCallbackPage() {
               Copy the command below and run it on your machine to finish connecting TikTok. The code is single-use
               and expires quickly — run this now.
             </p>
-            <pre style={cmdStyle}>{`node scripts/tiktok-auth.js --code "${params.code}"`}</pre>
+            <pre style={cmdStyle}>{`node scripts/tiktok-auth.js --code '${params.code}'`}</pre>
+            <p style={mutedStyle}>
+              Note: paste the command exactly as shown, with single quotes. TikTok codes can contain{' '}
+              <code>!</code> and <code>*</code>, which zsh/bash mangle inside double quotes.
+            </p>
             <p style={mutedStyle}>state: {params.state ?? '(none)'}</p>
           </>
         )}
