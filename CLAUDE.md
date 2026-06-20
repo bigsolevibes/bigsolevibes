@@ -36,7 +36,8 @@ Do not ask Big D for context that chief already reported or that the audit log a
 - **Never delete files unless Big D explicitly says so.** Big D has complete control over deletions — no exceptions, no "cleanup" judgment calls, no assuming a file is safe to remove because it looks stale, local-only, or redundant. Ask first, every time.
 - **Never modify `.env`** — read credentials from it, never write to it. Tell the user what to add manually.
 - Never commit `.env`, credential JSON files, or `config/youtube-token.json`.
-- Never force-push to `main` without explicit confirmation.
+- **Promoting to `main` requires Big D's explicit, live confirmation every time — no standing approval, no inferring it from an earlier "yes" on a different change.** The sanctioned path is the `mcp__bsv__push_to_main` MCP tool (`scripts/mcp-server.js`) — call it only in direct response to Big D telling you, in the current conversation, to push/promote to main right now. Never call it proactively, never as a default "next step," never from any pipeline/automation script. The tool never force-pushes — git rejects the update if main has diverged from `preview/full-site`, so it can't overwrite history. `scripts/push-to-main.js` remains available for Big D to run by hand too (same operation, same fast-forward-only safety). Added 2026-06-19 after recurring friction over Claude being unable to act on explicit permission — see `BSV-BigC-Audit-Log.md` same date.
+- Never force-push to `main` — no tool or script in this repo does this, under any circumstance.
 
 ---
 
@@ -53,7 +54,7 @@ BSV is a premium men's foot care brand. This repo is a Next.js 14 website (`app/
 |--------|------|
 | `preview/full-site` | Active dev branch. All automated pipeline scripts push here via `git-push-guard.js → safePushToPreview()`. **No Cloudflare deploy triggers from this branch.** |
 | `staging` | Intentional preview branch. When a manual Cloudflare preview is needed before merging to production, push `preview/full-site` → `staging` (`git push origin preview/full-site:staging`). Cloudflare preview deploy triggers from here. |
-| `main` | Production. Triggers the live Cloudflare Pages deploy at bigsolevibes.com. Only Big D promotes to main — never automated scripts. |
+| `main` | Production. Triggers the live Cloudflare Pages deploy at bigsolevibes.com. Promoted only via explicit, live confirmation from Big D in the current session — either Big D runs `scripts/push-to-main.js` himself, or Claude calls the `push_to_main` MCP tool right after Big D explicitly says so. Never automated, never proactive — see Hard Rules above. |
 
 Scripts must not be changed to target `staging` or `main` — `safePushToPreview()` in `git-push-guard.js` enforces the `preview/full-site` target and will alert + abort if anything tries to push to `main`.
 

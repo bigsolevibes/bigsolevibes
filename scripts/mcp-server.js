@@ -764,6 +764,64 @@ server.tool(
   }
 )
 
+// ── push_to_main ───────────────────────────────────────────────────────────────
+// Promotes preview/full-site to main, triggering the live Cloudflare Pages
+// production deploy at bigsolevibes.com. CLAUDE.md reserves this action for
+// Big D — this tool exists so he can direct it through conversation instead
+// of running `node scripts/push-to-main.js` by hand every time, but the gate
+// is the same: only call this when Big D has explicitly said, in the current
+// conversation, to push/promote to main right now. Never call this
+// proactively, speculatively, or as part of any pipeline/automation script.
+//
+// Never force — this pushes origin/preview/full-site straight onto
+// refs/heads/main as a normal (non-force) ref update. No --force flag exists
+// on this tool, intentionally: git itself refuses the update if main has
+// diverged from preview/full-site, so nothing is ever overwritten.
+server.tool(
+  'push_to_main',
+  'Promote preview/full-site to main, triggering the live Cloudflare Pages production deploy. ONLY call when Big D has explicitly told you, in the current conversation, to push/promote to main right now — never proactively or automatically. Never force-pushes; git rejects the update if main has diverged from preview/full-site, so nothing is ever overwritten.',
+  {
+    confirm: z.literal('yes').describe('Must be "yes" — set this only because Big D explicitly said, in this conversation, to push to main now. Not speculative.'),
+  },
+  async ({ confirm }) => {
+    if (confirm !== 'yes') return { content: [{ type: 'text', text: '❌ confirm must be "yes".' }] }
+
+    sh('git fetch origin main preview/full-site')
+
+    const beforeMain = sh('git rev-parse origin/main').trim()
+    const previewTip = sh('git rev-parse origin/preview/full-site').trim()
+
+    if (beforeMain === previewTip) {
+      return { content: [{ type: 'text', text: `ℹ️ main is already up to date with preview/full-site (${beforeMain.slice(0, 8)}). Nothing to push.` }] }
+    }
+
+    const isFastForward = spawnSync('git', ['merge-base', '--is-ancestor', beforeMain, previewTip], { cwd: ROOT }).status === 0
+    if (!isFastForward) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ Refusing: main (${beforeMain.slice(0, 8)}) is not an ancestor of preview/full-site (${previewTip.slice(0, 8)}) — main has commits that aren't on preview/full-site. This would require a force-push, which this tool will never do. Needs manual review.`,
+        }],
+      }
+    }
+
+    const result = sh('git push origin origin/preview/full-site:refs/heads/main')
+    const afterMain = sh('git rev-parse origin/main').trim()
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ main updated — Cloudflare production deploy triggered`,
+          `Before: ${beforeMain.slice(0, 8)}`,
+          `After:  ${afterMain.slice(0, 8)}`,
+          result.trim() ? `Push output: ${result.trim()}` : null,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
+  }
+)
+
 // ── run_product_research ──────────────────────────────────────────────────────
 server.tool(
   'run_product_research',
