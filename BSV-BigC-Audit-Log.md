@@ -4,6 +4,18 @@
 **Written by:** Big C — appended at the end of every session (or when something durable happens)
 **Purpose:** A running, chronological record of what Big D and Big C actually did together — decisions, deliverables, things discovered, things broken, things fixed. Memory holds the *consolidated* understanding; this holds the *play-by-play*, so Big C stops re-deriving (or mis-deriving) things Big D already explained.
 
+## 2026-06-19 — TikTok OAuth connected; tiktok_token_exchange MCP tool added
+
+TikTok account is now authorized. `config/tiktok-token.json` has a valid `access_token` (24h) and `refresh_token` (1yr), scope `user.info.basic,video.upload`. `getValidAccessToken()` in `tiktok-auth.js` will auto-refresh going forward.
+
+Getting here took three failed attempts, all shell-quoting related: TikTok authorization codes contain `!` and `*`. zsh treats `!` as history expansion even inside double quotes, so the code never reached the network the first time (`zsh: no such event: ...`). Switching to single quotes fixed the shell parsing but burned enough time that the next two codes expired/were rejected before Big D could react.
+
+Root fix: added a new MCP tool, `tiktok_token_exchange` (scripts/mcp-server.js), that runs `node scripts/tiktok-auth.js --code <code>` via `spawnSync` with the code as a real argv element — never built into a shell string — so no quoting issue can occur regardless of what characters TikTok puts in the code. Big D now just pastes the code in chat; Big C runs the exchange directly on his machine. Also fixed the callback page's displayed command to use single quotes (`app/api/auth/tiktok/callback/page.tsx`, commit `5c9fb4c2` on preview/full-site, not yet on main) and added debug logging to `exchangeCode()` for any future failures (commit `f2ff1149`).
+
+Also flagged and resolved a false alarm: dotenv's env-injection log line printed `⁁ auth for agents [www.vestauth.com]` — looked like a possible prompt-injection/supply-chain string. Confirmed via npm hash + package source that it's a real, built-in promotional "tip" shipped in dotenv 17.4.2 itself (alongside dotenvx.com tips), not a compromise. No action taken.
+
+**Open follow-ups:** `5c9fb4c2` (callback quoting fix) is on preview/full-site only — main still shows the old double-quoted command on the live callback page. Promote whenever Big D confirms. Next TikTok step is wiring `tiktok-post.js` into the live distribute.js pipeline / doing a real test post, not yet done this session.
+
 ---
 
 ## How to use this file
