@@ -848,6 +848,103 @@ server.tool(
   }
 )
 
+// ── youtube_token_check ───────────────────────────────────────────────────────
+// Read-only diagnostic: tests the existing YOUTUBE_REFRESH_TOKEN with a live
+// refresh grant against Google's OAuth endpoint. Reports only boolean
+// validity + scope/expiry — never echoes back the token, client secret, or
+// access token. Runs on Big D's real machine, which has network access to
+// oauth2.googleapis.com (the sandbox does not — DNS fails there).
+server.tool(
+  'youtube_token_check',
+  "Tests whether the YOUTUBE_REFRESH_TOKEN in .env still works, without ever printing the token value. Use this BEFORE running youtube_reauth — if the existing token is still valid, no re-auth flow (browser consent, new credentials) is needed at all.",
+  {},
+  async () => {
+    const clientId     = process.env.YOUTUBE_CLIENT_ID
+    const clientSecret = process.env.YOUTUBE_CLIENT_SECRET
+    const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      return { content: [{ type: 'text', text: '❌ One or more of YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN is missing from .env.' }] }
+    }
+
+    try {
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }).toString(),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.access_token) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Refresh token is NOT valid — re-auth needed.\nHTTP ${res.status} · ${data.error || 'unknown error'}: ${data.error_description || '(no description)'}`,
+          }],
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: `✓ Refresh token is still valid — no re-auth needed.\nscope: ${data.scope || '(not returned)'}\nnew access_token expires_in: ${data.expires_in}s`,
+        }],
+      }
+    } catch (e) {
+      return { content: [{ type: 'text', text: `❌ Network error reaching Google's OAuth endpoint: ${e.message}` }] }
+    }
+  }
+)
+
+// ── youtube_reauth ─────────────────────────────────────────────────────────────
+// Runs the full YouTube OAuth flow on Big D's real machine. Unlike TikTok,
+// Google supports a localhost redirect, so scripts/youtube-auth.js opens the
+// browser AND auto-catches the callback itself — Big D only has to click
+// "Allow" once, no code to copy/paste. The script prints the resulting
+// YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN to stdout;
+// rather than relay those secret values back through this tool's response
+// (which would put them in chat), this tool captures them and writes them to
+// a local-only gitignored file for Big D to copy into .env himself, since
+// .env must never be written by Claude. Blocks (synchronously) for up to 3
+// minutes while waiting for the browser-consent click.
+server.tool(
+  'youtube_reauth',
+  "Runs the YouTube OAuth re-auth flow on Big D's machine — opens his browser for Google consent automatically and catches the callback locally, no code paste needed. Tell Big D to watch for the browser tab and click Allow; this call blocks until that happens (up to 3 min) or times out. New credentials are written to a local file, never printed back through chat.",
+  {},
+  async () => {
+    const script = path.join(ROOT, 'scripts', 'youtube-auth.js')
+    const result = spawnSync(process.execPath, [script], {
+      cwd: ROOT, encoding: 'utf8', timeout: 180000,
+    })
+    const out = [result.stdout, result.stderr].filter(Boolean).join('\n')
+
+    if (result.status !== 0) {
+      const safeOut = out.replace(/YOUTUBE_(CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN)\s*=.*/g, 'YOUTUBE_$1=<redacted>')
+      return { content: [{ type: 'text', text: `❌ Re-auth failed or timed out before Big D approved:\n${safeOut.slice(-1500)}` }] }
+    }
+
+    const credLines = out.split('\n').filter(l => /YOUTUBE_(CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN)\s*=/.test(l))
+    if (credLines.length === 0) {
+      return { content: [{ type: 'text', text: `⚠ Flow exited cleanly but no credential lines were found in its output — check it manually.` }] }
+    }
+
+    const outFile = path.join(ROOT, 'config', '.youtube-new-credentials.txt')
+    fs.writeFileSync(outFile, credLines.join('\n') + '\n', { mode: 0o600 })
+
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ YouTube re-authorized.\nNew credentials written to config/.youtube-new-credentials.txt (gitignored, not shown here).\nOpen that file yourself, copy the 3 values into .env, then delete the file.`,
+      }],
+    }
+  }
+)
+
 // ── run_product_research ──────────────────────────────────────────────────────
 server.tool(
   'run_product_research',

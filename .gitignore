@@ -34,10 +34,14 @@ logs/
 # Credential and token files — never commit
 config/youtube-credentials.json
 config/youtube-token.json
+config/tiktok-token.json
+config/.youtube-new-credentials.txt
 gen-lang-client*.json
 
 # Dashboard — local only, never deploy to CF Pages
-app/api/auth/
+# Narrowed to the NextAuth catch-all specifically (not all of app/api/auth/)
+# so app/api/auth/tiktok/callback/ can still be tracked and deployed.
+app/api/auth/[...nextauth]/
 app/api/dashboard/
 app/dashboard/
 lib/auth.ts
