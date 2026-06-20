@@ -1,6 +1,23 @@
 require('dotenv').config()
-const fs = require('fs')
+const fs   = require('fs')
 const path = require('path')
+const { getValidAccessToken } = require('./tiktok-auth')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// tiktok-post.js — posts a video to TikTok as a DRAFT via the inbox endpoint.
+//
+// Uses /v2/post/publish/inbox/video/init/ (scope: video.upload), not Direct
+// Post (/v2/post/publish/video/init/, scope: video.publish). Direct Post
+// requires TikTok app audit approval before it'll work for an unaudited app;
+// the inbox/draft flow works today. The tradeoff: TikTok does NOT accept
+// post_info (title/caption/privacy) on this endpoint — the video lands in the
+// TikTok app's inbox as a draft, and Big D has to open the app, paste the
+// caption, set privacy, and tap Post manually.
+//
+// Access token comes from config/tiktok-token.json via tiktok-auth.js,
+// auto-refreshed if expired. Run `node scripts/tiktok-auth.js` first if no
+// token is on file yet.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── CLI args ────────────────────────────────────────────────────────────────
 
@@ -12,10 +29,12 @@ function getArg(flag) {
 }
 
 const videoPath = getArg('--video')
-const caption = getArg('--caption')
+const caption = getArg('--caption') || ''
 
-if (!videoPath || !caption) {
-  console.error('Usage: node scripts/tiktok-post.js --video /path/to/video.mp4 --caption "Your caption #BigSoleVibes"')
+if (!videoPath) {
+  console.error('Usage: node scripts/tiktok-post.js --video /path/to/video.mp4 [--caption "Your caption #BigSoleVibes"]')
+  console.error('  Note: caption is NOT sent to TikTok (the draft/inbox endpoint does not accept it) —')
+  console.error('  it is only echoed back here as a reminder to paste into the app.')
   process.exit(1)
 }
 
@@ -24,37 +43,18 @@ if (!fs.existsSync(videoPath)) {
   process.exit(1)
 }
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Step 1: Initialize Upload (draft/inbox) ─────────────────────────────────
 
-const TIKTOK_ACCESS_TOKEN = process.env.TIKTOK_ACCESS_TOKEN
-const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY
-const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET
+async function initializeUpload(accessToken, fileSizeBytes) {
+  console.log('\nStep 1: Initializing TikTok draft upload...')
 
-if (!TIKTOK_ACCESS_TOKEN) {
-  console.error('✗ Missing TIKTOK_ACCESS_TOKEN in .env')
-  process.exit(1)
-}
-
-// ─── Step 1: Initialize Upload ────────────────────────────────────────────────
-
-async function initializeUpload(fileSizeBytes) {
-  console.log('\nStep 1: Initializing TikTok upload...')
-
-  const res = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
+  const res = await fetch('https://open.tiktokapis.com/v2/post/publish/inbox/video/init/', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${TIKTOK_ACCESS_TOKEN}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json; charset=UTF-8',
     },
     body: JSON.stringify({
-      post_info: {
-        title: caption.slice(0, 150), // TikTok caption limit
-        privacy_level: 'PUBLIC_TO_EVERYONE',
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
-        ai_generated_content: true,
-      },
       source_info: {
         source: 'FILE_UPLOAD',
         video_size: fileSizeBytes,
@@ -70,7 +70,7 @@ async function initializeUpload(fileSizeBytes) {
     throw new Error(`Init failed: ${data.error?.message || JSON.stringify(data)}`)
   }
 
-  console.log(`✓ Upload initialized — publish_id: ${data.data.publish_id}`)
+  console.log(`✓ Draft upload initialized — publish_id: ${data.data.publish_id}`)
   return data.data
 }
 
@@ -98,19 +98,22 @@ async function uploadVideo(uploadUrl, videoPath, fileSizeBytes) {
   console.log('✓ Video uploaded successfully')
 }
 
-// ─── Step 3: Check Publish Status ────────────────────────────────────────────
+// ─── Step 3: Check Status ────────────────────────────────────────────────────
+// The draft/inbox flow ends with the video sitting in TikTok's inbox for Big D
+// to finish (caption, privacy, post) inside the app — it never reaches
+// PUBLISH_COMPLETE on its own. Poll generically: keep waiting while TikTok
+// reports a PROCESSING state, stop on anything else (success-ish unless FAILED).
 
-async function checkStatus(publishId) {
-  console.log('\nStep 3: Checking publish status...')
+async function checkStatus(accessToken, publishId) {
+  console.log('\nStep 3: Checking upload status...')
 
-  // Poll up to 10 times with 3 second intervals
   for (let i = 0; i < 10; i++) {
     await new Promise(r => setTimeout(r, 3000))
 
     const res = await fetch('https://open.tiktokapis.com/v2/post/publish/status/fetch/', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${TIKTOK_ACCESS_TOKEN}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json; charset=UTF-8',
       },
       body: JSON.stringify({ publish_id: publishId }),
@@ -125,40 +128,44 @@ async function checkStatus(publishId) {
     const status = data.data?.status
     console.log(`  Status: ${status}`)
 
-    if (status === 'PUBLISH_COMPLETE') {
-      console.log(`✓ Published! Video ID: ${data.data?.publicaly_available_post_id?.[0] || 'check TikTok'}`)
-      return data.data
+    if (status === 'FAILED') {
+      throw new Error(`Upload failed: ${data.data?.fail_reason || 'unknown reason'}`)
     }
 
-    if (status === 'FAILED') {
-      throw new Error(`Publish failed: ${data.data?.fail_reason || 'unknown reason'}`)
+    if (status && !status.includes('PROCESSING')) {
+      console.log(`✓ Sent to TikTok inbox — finish the draft (caption, privacy, post) in the app.`)
+      return data.data
     }
   }
 
-  console.log('⚠ Timed out waiting for publish confirmation — video may still be processing. Check TikTok.')
+  console.log('⚠ Timed out waiting for a terminal status — video may still be processing. Check the TikTok app inbox.')
 }
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
 ;(async () => {
   try {
-    console.log(`\nPosting to TikTok — ${path.basename(videoPath)}`)
-    console.log(`Caption: "${caption}"\n`)
+    console.log(`\nPosting to TikTok (draft/inbox) — ${path.basename(videoPath)}`)
+    if (caption) console.log(`Caption (paste manually in-app — not sent to TikTok): "${caption}"`)
+    console.log()
+
+    const accessToken = await getValidAccessToken()
 
     const fileSizeBytes = fs.statSync(videoPath).size
     console.log(`File size: ${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB`)
 
     // Step 1: Initialize
-    const { publish_id, upload_url } = await initializeUpload(fileSizeBytes)
+    const { publish_id, upload_url } = await initializeUpload(accessToken, fileSizeBytes)
 
     // Step 2: Upload
     await uploadVideo(upload_url, videoPath, fileSizeBytes)
 
     // Step 3: Check status
-    await checkStatus(publish_id)
+    await checkStatus(accessToken, publish_id)
 
-    console.log('\n─── TikTok Post Complete ───────────────────')
-    console.log('✓ X: check TikTok app to confirm post is live')
+    console.log('\n─── TikTok Draft Upload Complete ──────────')
+    console.log('Open the TikTok app → Inbox → finish the draft to actually publish.')
+    if (caption) console.log(`Caption to paste: "${caption}"`)
     console.log()
 
   } catch (err) {

@@ -613,3 +613,27 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 - **BSV-Directive.md on Drive** (the copy `strategist.js`/`chief-of-staff.js`/`product-research.js`/`creative-agent.js`/`media-director.js` actually pull live via rclone) was NOT updated — only the local repo copy was. Big D needs to run `node scripts/learn.js --note "..."` himself (no Drive-write tool available to Big C) to push the same closure language to the live copy. Two notes queued for him, see session reply.
 - Hyperice Normatec price discrepancy ($399 in our docs vs. ~$899-900 live market) unresolved — needs Big D to confirm before any approval decision.
 - This is the second time Bastien's closure needed re-fixing (first attempt 2026-06-13 only touched `logs/strategy-active.md`'s pending-action note, not the weekly strategist regen path) — worth a spot-check in ~1 week (after the 6/21 Sunday regen) to confirm the new prompt instructions actually held.
+
+## 2026-06-19 — TikTok OAuth flow built; posting switched from Direct Post to draft/inbox
+
+**What happened:**
+- Audited existing TikTok refs and confirmed `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` in `.env` were already correctly named (no `TICTOK_` typo present — that part of the cleanup was already done).
+- Confirmed the TikTok redirect URI is registered: `https://bigsolevibes.com/api/auth/tiktok/callback`, served by `app/api/auth/tiktok/callback/route.ts` (already built — holds no secrets, just surfaces the one-time `code` and the exact follow-up command).
+- Researched TikTok's Content Posting API: Direct Post (`/v2/post/publish/video/init/`, `video.publish` scope) requires app audit approval before it works for an unaudited app. The draft/inbox endpoint (`/v2/post/publish/inbox/video/init/`, `video.upload` scope) works today without audit — tradeoff is it does not accept `post_info` (title/caption/privacy), so the video lands as a draft in the TikTok app inbox and Big D finishes it manually (caption, privacy, tap Post).
+- Built `scripts/tiktok-auth.js`: prints/opens the TikTok authorize URL, exchanges a one-time `code` for `access_token`/`refresh_token` (`--code "..."`), supports forced refresh (`--refresh`), and saves everything to `config/tiktok-token.json` (gitignored). No localhost callback server (unlike `youtube-auth.js`) — TikTok requires a pre-registered HTTPS redirect URI, so the production callback page is the bridge instead. Exports `getValidAccessToken()` for other scripts to consume, auto-refreshing within a 5-minute buffer of expiry.
+- Rewrote `scripts/tiktok-post.js`: switched the init call to the inbox/draft endpoint, dropped `post_info` from the request body (rejected by that endpoint), pulls its token from `tiktok-auth.js#getValidAccessToken()` instead of a static `TIKTOK_ACCESS_TOKEN` env var, and made status polling generic (waits out any `PROCESSING*` status, stops on anything else or `FAILED`) since the draft flow never reaches `PUBLISH_COMPLETE` on its own.
+- `node --check` passed clean on both files.
+
+**Decided / concluded:**
+- Posting flow for now is: run `tiktok-post.js` → video shows up as a draft in the TikTok app inbox → Big D pastes the caption and taps Post. Caption is still accepted as a CLI flag for convenience/logging but is explicitly not transmitted to TikTok.
+- TikTok is still not wired into `watch-drive.js` (`SKIPPED_PLATFORMS` still includes `'tiktok'`) or `distribute.js` — these two scripts are standalone/manual for now, by design, until the draft-finish step is something Big D wants automated too (not possible without Direct Post audit approval).
+
+**Files / artifacts touched:**
+- `scripts/tiktok-auth.js` — new.
+- `scripts/tiktok-post.js` — rewritten (endpoint, token source, status polling).
+- Both untracked/modified in git but **not yet committed** — see Open/follow-up.
+
+**Open / follow-up:**
+- **Commit blocked:** `.git/index.lock` exists and could not be removed from the sandboxed shell (`EPERM`, both via `rm` and via `scripts/clear-git-lock.js`) — likely a sandbox/mount permission restriction rather than a genuinely stale lock from another process, but can't be confirmed in here. Big D needs to either run `node scripts/clear-git-lock.js` himself or check whether another git process (e.g. a `watch-drive.js` cycle) is mid-commit, then have these two files committed/pushed to `preview/full-site`.
+- Big D still needs to actually run `node scripts/tiktok-auth.js` once to mint the first token — nothing in `config/tiktok-token.json` yet.
+- If TikTok rejects the `video.upload` scope at the consent screen, it needs to be enabled for the app in the TikTok developer portal first.
