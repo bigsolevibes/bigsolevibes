@@ -87,6 +87,8 @@ async function exchangeCode(code) {
   })
   const data = await res.json()
   if (!res.ok || data.error) {
+    console.error(`\n[debug] HTTP ${res.status} · redirect_uri sent: ${redirectUri} · code length: ${code.length}`)
+    console.error(`[debug] TikTok response: ${JSON.stringify(data)}`)
     throw new Error(`Token exchange failed: ${data.error_description || data.error || `HTTP ${res.status}`}`)
   }
   return data
