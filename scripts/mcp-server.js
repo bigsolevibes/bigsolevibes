@@ -822,6 +822,32 @@ server.tool(
   }
 )
 
+// ── tiktok_token_exchange ───────────────────────────────────────────────────────
+// Runs the TikTok OAuth code-exchange step on Big D's real machine so he
+// doesn't have to open Terminal and fight shell quoting — TikTok codes
+// contain `!` and `*`, which zsh mangles even inside double quotes. The code
+// is passed as a real argv element via spawnSync (never built into a shell
+// string), so no quoting/escaping issue can occur regardless of what
+// characters the code contains. Runs the same script Big D would run by
+// hand: scripts/tiktok-auth.js --code <code>.
+server.tool(
+  'tiktok_token_exchange',
+  "Exchange a TikTok OAuth authorization code for tokens by running scripts/tiktok-auth.js on Big D's machine, so he doesn't have to paste shell commands himself. Codes are single-use and expire fast — call this immediately once Big D shares the code from the callback page.",
+  {
+    code: z.string().min(1).describe('The raw authorization code from the TikTok callback page — paste exactly as shown, no quoting needed.'),
+  },
+  async ({ code }) => {
+    const result = spawnSync('node', ['scripts/tiktok-auth.js', '--code', code], {
+      cwd: ROOT, encoding: 'utf8', timeout: 30000,
+    })
+    const out = [result.stdout, result.stderr].filter(Boolean).join('\n').trim()
+    if (result.status !== 0) {
+      return { content: [{ type: 'text', text: `❌ Exchange failed:\n${out || '(no output)'}` }] }
+    }
+    return { content: [{ type: 'text', text: `✓ Exchange succeeded:\n${out}` }] }
+  }
+)
+
 // ── run_product_research ──────────────────────────────────────────────────────
 server.tool(
   'run_product_research',
