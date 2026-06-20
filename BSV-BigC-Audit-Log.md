@@ -27,6 +27,28 @@
 
 ---
 
+## 2026-06-19 — Closed the Monty Python / J. Peterman tone gap in daily captions
+
+**What happened:**
+- Big D, right after the product-anchoring fix above: "but even the type is not monty python jpeterman" — the actual caption copy doesn't read like the brand's stated comedic touchstones either.
+- Grepped the whole repo for "Peterman|Monty Python." Found the language is real, but it only lives in two places: the image-mood line in `creative-agent.js`'s SCENE_BLOCK (governs the photo's expression, not the words) and `edition-agent.js`'s monthly long-form story system prompt (a separate, once-a-month system). It was never written into `config/bsv-voices.js` — the Five-Voice Spectrum that actually generates every daily IG/Bluesky caption.
+- Confirmed live with `get_slot_brief fri-am`: `VOICE_USED: STANDARD`. STANDARD's old definition explicitly forbade warmth or humor ("this voice has weight, not friendliness") — so the resulting copy ("The clean sneaker is not the new one... The standard does not start at the collar. It runs all the way to the floor.") was solemn literary aphorism with zero wit, exactly as designed. Not a bug — the voice was never instructed to carry that tone.
+- Asked Big D how to close the gap (rewrite the spectrum vs. bias rotation away from STANDARD vs. log-only correction) — he chose the real rewrite.
+
+**Decided / concluded:**
+- Edited `config/bsv-voices.js`: added a header comment naming the brand's two comedic mechanisms explicitly (Python = total deadpan commitment to treating something small as monumental; Peterman = ornate romantic overstatement turning a mundane object into a small myth), then gave each voice its own version — PROPRIETOR leans Python (decree-like deadpan), BARBER leans Peterman (casual anecdote), CALLOUT leans flat-delivery-of-absurd-contrast, NOD leans Python's abrupt-cut-as-punchline (too short for Peterman's narrative runway — noted explicitly so this isn't mistaken for an oversight later), STANDARD leans ceremonial overcommitment (ratio of seriousness to subject size IS the joke; voice never winks or cracks an actual punchline).
+- Did not touch `AM_VOICE_POOL`/`PM_VOICE_POOL` rotation or any voice's `suitedFor` — only `description`/`tone`/`negative` content. Verified `creative-agent.js` only consumes these as plain strings/arrays (`tone.map`, `.example`, `.negative.map`), so no structural risk.
+- `node --check` clean; confirmed `Object.keys(VOICES)` and both pools unchanged after edit. Committed `10b53f91`, pushed to `preview/full-site`.
+
+**Files / artifacts touched:**
+- `config/bsv-voices.js` (rewritten tone/description/negative for all 5 voices, plus new header comment)
+
+**Open / follow-up:**
+- This is still a prompt-level instruction, not a hard gate — same caveat as the product-anchoring fix. Spot-check the next few STANDARD- and NOD-voice briefs once they generate to confirm the LLM actually picks up the ceremonial/deadpan framing rather than defaulting back to flat seriousness.
+- Didn't investigate whether STANDARD is structurally overrepresented in recent AM slots (it was 1-for-1 across everything checked this session) — flagged but not chased, per scope discipline. Worth a look if the tone issue persists after this fix lands in new briefs.
+
+---
+
 ## 2026-06-19 — Root-caused "barefoot guy in a suit" — products weren't visually anchored in the image brief
 
 **What happened:**
