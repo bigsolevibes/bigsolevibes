@@ -661,3 +661,19 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 - Big D still needs to promote `preview/full-site` → `main` himself to get this onto the live Cloudflare build (not done by any script, per hard rule).
 - After that build succeeds, Big D needs to run `node scripts/tiktok-auth.js` to complete consent and mint the first token — still nothing in `config/tiktok-token.json`.
 - Noticed but not touched: untracked `next.config.js.bak` / `next.config.tmp` in the working tree — looks like a prior manual attempt at this same fix. Left alone; flagging in case Big D wants them cleared once this fix is confirmed live.
+
+## 2026-06-19 — push_to_main MCP tool added (policy change, Big D's direction)
+
+**What happened:**
+- Big D pushed back hard on the previous entry's "you have to run push-to-main.js yourself" answer — pointed out he'd already given explicit permission and that main has been pushed before, "purposely and accidentally," so the standing friction was the problem, not the lack of a path. Direction: build a tool so Claude can do it on his explicit say-so, so this stops being a recurring back-and-forth.
+- Added `push_to_main` to `scripts/mcp-server.js`, following the existing `drop_last_commit` pattern (`confirm: z.literal('yes')` required param, same main-only-as-a-guard style). It runs the identical operation as `scripts/push-to-main.js` (`git push origin origin/preview/full-site:refs/heads/main`) with no force flag exposed at all — git rejects the update if main has diverged, so the tool structurally cannot overwrite history no matter what gets passed to it.
+- Updated `CLAUDE.md` Hard Rules and the branch-strategy table: promoting to main now documented as requiring Big D's explicit, live, per-instance confirmation — satisfied either by him running the script himself or by Claude calling `push_to_main` right after he says so in conversation. Never proactive, never from a pipeline script — that part of the original rule is unchanged, only *who types the command* changed.
+- `node --check` passed on `mcp-server.js`. Committed as `afd171a5`, pushed to `preview/full-site`.
+
+**Decided / concluded:**
+- This is a deliberate, durable policy change, not a one-off workaround — written into `CLAUDE.md` itself specifically so a future session doesn't silently regress to "I can't do that" and recreate the same friction loop.
+- The gate moved from "Big D must personally type a git command" to "Big D must explicitly say so in the live conversation" — the human-in-the-loop requirement is preserved, just relocated.
+
+**Open / follow-up:**
+- **Tool not yet confirmed live.** `scripts/mcp-server.js` has a self-restart watcher (`fs.watch` → `process.exit(0)` 500ms after save, assuming the MCP host auto-relaunches the stdio process), but `push_to_main` did not appear via tool search in the same session that wrote it — likely needs the MCP host (Cowork/Claude Desktop) to reconnect, which may not happen mid-session. Should confirm it's available at the start of the next session before relying on it.
+- The original TikTok-callback-fix promotion to `main` (commit `4ec063dc`/`7ec43235` on `preview/full-site`) is **still not on `main`** — this tool addition didn't get it there yet, since the tool wasn't live to call. Either Big D runs `node scripts/push-to-main.js` once more now, or it happens next session via `push_to_main` once confirmed available.
