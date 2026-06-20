@@ -699,3 +699,20 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 **Open / follow-up:**
 - **Tool not yet confirmed live.** `scripts/mcp-server.js` has a self-restart watcher (`fs.watch` → `process.exit(0)` 500ms after save, assuming the MCP host auto-relaunches the stdio process), but `push_to_main` did not appear via tool search in the same session that wrote it — likely needs the MCP host (Cowork/Claude Desktop) to reconnect, which may not happen mid-session. Should confirm it's available at the start of the next session before relying on it.
 - The original TikTok-callback-fix promotion to `main` (commit `4ec063dc`/`7ec43235` on `preview/full-site`) is **still not on `main`** — this tool addition didn't get it there yet, since the tool wasn't live to call. Either Big D runs `node scripts/push-to-main.js` once more now, or it happens next session via `push_to_main` once confirmed available.
+
+## 2026-06-20 — Video production resumed (TikTok + YouTube both confirmed ready)
+
+**Trigger:** Big D — "we paused it because of the tiktok and youtube waiting game... lets go." Both platforms had been confirmed ready in prior sessions (TikTok OAuth connected `da464edb`; YouTube token re-verified valid `dc462b4e`), so the remaining blocker for video was purely that `video-gen.js` had never actually been run.
+
+**Findings (live machine state, not docs):**
+- `video-gen.js` dry run confirms it's fully wired: GEMINI_API_KEY present, rclone sync works, found 2 staged `*-flow-prompt.txt` files in Drive's Ready to Post (`fri-am`, `sat-am`) ready to generate.
+- Veo 3.1 Fast pricing confirmed via web search: ~$0.15/sec. At default clip length that's roughly $1-2/clip — trivial against the current $25 account balance (`get_cost_state`: $0 spent today, $25 balance).
+- No existing tool could trigger a *live* (non-dry-run) video-gen pass — `run_diagnostic` always forces `--dry-run` by design, and reusing that flag to mean "spend money" would be a dangerous overload. Added a dedicated `run_video_gen` MCP tool (mirrors `run_media_director`'s detached-spawn pattern) to `mcp-server.js`. `node --check` passed. Committed `aafb6df2`, pushed.
+- Also fixed a stale `CLAUDE.md` line claiming Telegram creds "may be missing" — both vars are present and outbound alerts work (confirmed live: eng-bot delivered 5 Telegram messages this session). Committed `61bca705`, pushed.
+
+**Discovered, not yet fixed:** `com.bsv.telegram-webhook` (the inbound APPROVE/DENY listener) is down — `get_launchd_status` shows last exit signal -15, and it's absent from `get_agent_processes` entirely. eng-bot's own recurring-failure detector has already flagged this independently (`eng-telegram-webhook-log-2026-06-20`, suppressed by 24h dedup, escalation delivered to Big D via Telegram). This matters for video specifically because the approval gate (`video-gen.js` stages to Drive's Video Review folder and waits for a Telegram reply) depends on this listener — outbound alerts will fire fine, but Big D's replies won't register until the listener is restarted. No MCP path exists to restart a launchd job remotely yet; one-line fix is `launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook`, or he can just move the file in Drive manually instead of replying.
+
+**Open / follow-up:**
+- `run_video_gen` tool registration was still not visible via tool search after ~7 checks across several minutes in this same session — same registration-lag pattern seen with `youtube_reauth`/`youtube_token_check` and `push_to_main` in prior sessions. Likely resolves itself once the MCP host re-syncs; should confirm live and fire the actual generation at the start of next session if it didn't fire in this one.
+- Telegram inbound listener restart is a one-line terminal command for Big D — not yet done.
+- Still open from before: `creative-agent.js` hardcoded invalid model string ("Claude Fable 5") crashing Saturday slot generation; `weekStrategy is not defined` breaking Sole Report Drive upload; chapter-sequencing stuck on "Chapter 1."
