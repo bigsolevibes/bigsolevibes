@@ -184,7 +184,7 @@ Big Sole Vibes/
 
 - ~~`YOUTUBE_REFRESH_TOKEN` revoked — re-auth needed via `reauth.js`~~ — **stale, corrected 2026-06-19.** `reauth.js` doesn't exist in this repo; only `youtube-auth.js` does (port 3000, auto-catches the localhost callback, no code paste needed). Verified live: the existing token in `.env` still refreshes fine (`node scripts/youtube-auth.js --check`, or `run_diagnostic` with script `youtube-auth`) — no re-auth was actually needed. If it ever does expire, that script (or the `youtube_reauth` MCP tool) handles it with one browser click, zero terminal use.
 - R2 uploads failing with SSL handshake error + Unauthorized — credential or endpoint issue
-- Telegram alerts not confirmed — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` may be missing from `.env`; eng-bot silently drops alerts if not set (note: Zoho SMTP was replaced by Telegram — SMTP is no longer used)
+- ~~Telegram alerts not confirmed — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` may be missing from `.env`~~ — **stale, corrected 2026-06-20.** Both vars are present in `.env`. Outbound alerts (`sendTelegram` in `telegram.js`) work fine. However: the inbound listener (`telegram-webhook.js`, launchd job `com.bsv.telegram-webhook`) was found down — last exit signal -15, not in the live process list — meaning Big D's approve/deny replies aren't currently being picked up. Needs `launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook` to restart (no MCP path to do this remotely yet). (note: Zoho SMTP was replaced by Telegram — SMTP is no longer used)
 - `mon-pm`, `thu-pm` stuck in `_unknown: pending` — no platform variants emitted
 - Git push in `resize-post.js` failing — public URL fallback pipeline broken
 
