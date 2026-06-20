@@ -1,3 +1,4 @@
+require('dotenv').config({ quiet: true })
 const http = require('http')
 const path = require('path')
 const fs   = require('fs')
@@ -11,6 +12,51 @@ const SCOPES       = [
   'https://www.googleapis.com/auth/youtube.upload',
   'https://www.googleapis.com/auth/youtube.force-ssl',
 ].join(' ')
+
+// ─── --dry-run / --check: test the existing .env refresh token only ──────────
+// Doesn't touch client_secret.json, doesn't open a browser, doesn't print any
+// secret value — just reports whether the token in .env still works. Reuses
+// the existing run_diagnostic MCP tool (which always appends --dry-run), so
+// this works without any mcp-server.js changes or restart.
+const cliArgs = process.argv.slice(2)
+if (cliArgs.includes('--dry-run') || cliArgs.includes('--check')) {
+  ;(async () => {
+    const cid  = process.env.YOUTUBE_CLIENT_ID
+    const csec = process.env.YOUTUBE_CLIENT_SECRET
+    const rtok = process.env.YOUTUBE_REFRESH_TOKEN
+
+    if (!cid || !csec || !rtok) {
+      console.log('❌ One or more of YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN is missing from .env.')
+      process.exit(1)
+    }
+
+    try {
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    new URLSearchParams({
+          client_id:     cid,
+          client_secret: csec,
+          refresh_token: rtok,
+          grant_type:    'refresh_token',
+        }).toString(),
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data.access_token) {
+        console.log(`❌ Refresh token is NOT valid — re-auth needed.\nHTTP ${res.status} · ${data.error || 'unknown error'}: ${data.error_description || '(no description)'}`)
+        process.exit(1)
+      }
+
+      console.log(`✓ Refresh token is still valid — no re-auth needed.\nscope: ${data.scope || '(not returned)'}\nnew access_token expires_in: ${data.expires_in}s`)
+      process.exit(0)
+    } catch (e) {
+      console.log(`❌ Network error reaching Google's OAuth endpoint: ${e.message}`)
+      process.exit(1)
+    }
+  })()
+  return
+}
 
 // ─── Load client_secret.json ──────────────────────────────────────────────────
 

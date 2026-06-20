@@ -89,8 +89,7 @@ Google Drive "Ready to Post/"
 | `product-research.js` | Web search → affiliate product picks → Google Sheet; `--skip-research`, `--dry-run` flags |
 | `product-development.js` | Product development research agent |
 | `update-handoff.js` | Collects project state, rewrites handoff doc via Claude API, uploads to Drive |
-| `youtube-auth.js` | OAuth flow for YouTube on port 3000 |
-| `reauth.js` | YouTube reauth on port 3456, writes `config/youtube-token.json` |
+| `youtube-auth.js` | OAuth flow for YouTube on port 3000 (reads `client_secret.json` at repo root); `--check`/`--dry-run` tests the existing `.env` refresh token without starting the browser flow |
 | `sheets-client.js` | Google Sheets connection helper (product queue) |
 | `sync-shop.js` | Generates `public/shop/index.html` from approved sheet rows; git-commits and pushes to trigger Cloudflare deploy |
 | `social-listening.js` | Monitors social signals via web search |
@@ -164,7 +163,7 @@ Big Sole Vibes/
 ## Platform Notes
 
 - **Instagram** — uses two-step Graph API (create container → media_publish). Image must be a public URL. Now uploaded to Cloudflare R2 via `uploadToR2()` in `distribute.js` before the Meta container call.
-- **YouTube** — refresh token expires/revokes periodically. Re-auth: `node reauth.js` (port 3456, reads `config/youtube-credentials.json`, writes `config/youtube-token.json`).
+- **YouTube** — refresh token expires/revokes periodically. Check first: `node scripts/youtube-auth.js --check` (or the `youtube_token_check` MCP tool) — never assume it's dead. Re-auth: `node scripts/youtube-auth.js` (port 3000, reads `client_secret.json` at repo root, prints new `YOUTUBE_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` to add to `.env` manually — never written automatically). The `youtube_reauth` MCP tool runs this for Big D with one browser click, no terminal.
 - **X and Facebook** — currently in `PAUSED_PLATFORMS` in `distribute.js`. Remove to re-enable.
 - **Bluesky** — direct blob upload, compressed to JPEG under 2MB via sharp.
 
@@ -183,7 +182,7 @@ Big Sole Vibes/
 
 ## Known Issues (as of last handoff)
 
-- `YOUTUBE_REFRESH_TOKEN` revoked — re-auth needed via `reauth.js`
+- ~~`YOUTUBE_REFRESH_TOKEN` revoked — re-auth needed via `reauth.js`~~ — **stale, corrected 2026-06-19.** `reauth.js` doesn't exist in this repo; only `youtube-auth.js` does (port 3000, auto-catches the localhost callback, no code paste needed). Verified live: the existing token in `.env` still refreshes fine (`node scripts/youtube-auth.js --check`, or `run_diagnostic` with script `youtube-auth`) — no re-auth was actually needed. If it ever does expire, that script (or the `youtube_reauth` MCP tool) handles it with one browser click, zero terminal use.
 - R2 uploads failing with SSL handshake error + Unauthorized — credential or endpoint issue
 - Telegram alerts not confirmed — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` may be missing from `.env`; eng-bot silently drops alerts if not set (note: Zoho SMTP was replaced by Telegram — SMTP is no longer used)
 - `mon-pm`, `thu-pm` stuck in `_unknown: pending` — no platform variants emitted
