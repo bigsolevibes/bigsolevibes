@@ -21,6 +21,7 @@ const {
   archiveDecision,
   INBOX_REMOTE,
 } = require('./telegram-queue')
+const { approveVideo, rejectVideo } = require('./video-gate-actions')
 
 const { execSync } = require('child_process')
 
@@ -30,7 +31,6 @@ const INBOX_FILE   = path.join(ROOT, 'logs', 'telegram-inbox.log')
 const STATE_FILE   = path.join(ROOT, 'logs', 'telegram-webhook-state.json')
 const LOGS_DIR     = path.join(ROOT, 'logs')
 const POST_STATE   = path.join(ROOT, 'logs', 'post-state.json')
-const DRIVE_ROOT   = 'big sole vibes:Big Sole Vibes' // matches video-gen.js's GDRIVE_REMOTE
 
 const POLL_TIMEOUT = 25   // seconds — long-poll window
 const POLL_INTERVAL = 25  // seconds between poll cycles
@@ -106,23 +106,8 @@ function writeDecisionToDrive(driveFile, decision, notes) {
 // directly and synchronously here instead of round-tripping through
 // writeDecisionToDrive (which expects a top-level item.driveFile that
 // video-gen.js never sets, and which nothing downstream ever reads anyway).
-
-function approveVideo(driveFile) {
-  const filename = path.basename(driveFile)
-  execSync(
-    `rclone moveto "${DRIVE_ROOT}/${driveFile}" "${DRIVE_ROOT}/Ready to Post/${filename}"`,
-    { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
-  )
-  log(`Video approved — moved ${driveFile} → Ready to Post/${filename}`)
-}
-
-function rejectVideo(driveFile) {
-  execSync(
-    `rclone deletefile "${DRIVE_ROOT}/${driveFile}"`,
-    { stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
-  )
-  log(`Video rejected — deleted ${driveFile}`)
-}
+// approveVideo/rejectVideo now live in video-gate-actions.js — shared with the
+// dashboard's /api/dashboard/video-review route so both surfaces stay in sync.
 
 // ─── "First active" queue helper ──────────────────────────────────────────────
 
@@ -228,6 +213,7 @@ async function processMessage(text) {
     if (active.type === 'video-gate') {
       try {
         approveVideo(active.metadata.driveFile)
+        log(`Video approved — moved ${active.metadata.driveFile} → Ready to Post`)
       } catch (err) {
         log(`ERROR approving video: ${err.message}`)
         return `⚠️ Couldn't move the file in Drive — ${err.message}. Still pending, reply APPROVE again to retry.`
@@ -259,6 +245,7 @@ async function processMessage(text) {
     if (active.type === 'video-gate') {
       try {
         rejectVideo(active.metadata.driveFile)
+        log(`Video rejected — deleted ${active.metadata.driveFile}`)
       } catch (err) {
         log(`ERROR deleting rejected video: ${err.message}`)
         return `⚠️ Couldn't delete the file in Drive — ${err.message}. Still pending, reply REJECT again to retry.`
