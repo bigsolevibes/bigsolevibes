@@ -212,39 +212,44 @@ async function fetchCostReportTotal(startDate, endDate) {
   return total
 }
 
-// Defensive parser for the Cost Report response. Anthropic's docs describe
-// costs as "decimal strings in lowest units (cents)" grouped into daily
-// buckets, but the exact field names weren't verified against a live
-// response when this was written (no Admin key available yet). Tries the
-// documented/likely shapes (data[].results[].amount, data[].amount, etc.);
-// returns null — never 0 — if nothing recognizable is found, so a shape
-// mismatch shows up as a logged parse failure, not a silent $0.
-// VERIFY THIS against the first real response once ANTHROPIC_ADMIN_API_KEY
-// is live — adjust field names here if the raw log dump shows a different shape.
+// Defensive parser for the Cost Report response. VERIFIED LIVE 2026-06-28
+// against a real Admin-key response: {"data":[{"starting_at":"...",
+// "ending_at":"...","results":[]}],"has_more":false,"next_page":null} — the
+// data[].results[] shape guessed below was correct. results[] being EMPTY is
+// a normal, valid response (zero spend that bucket) — earlier versions of
+// this function treated "found no items" as "shape not recognized" and
+// returned null for a legitimate $0, which broke per-day burn history every
+// time a day had no spend. Now tracks shape-recognition separately from the
+// running total: a well-formed (even empty) bucket counts as recognized;
+// null is reserved for truly unparseable input. Inner item field name
+// (item.amount, assumed lowest-units/cents per the docs) is still unverified
+// against a non-empty results[] — re-check if/when a day shows real line items.
 function sumCostReportTotal(data) {
   const buckets = Array.isArray(data?.data) ? data.data
                 : Array.isArray(data?.results) ? data.results
                 : null
   if (!buckets) return null
   let totalCents = 0
-  let found = false
+  let shapeRecognized = buckets.length === 0 // empty top-level array is itself valid ($0)
   for (const bucket of buckets) {
     const items = Array.isArray(bucket?.results) ? bucket.results
                 : Array.isArray(bucket?.items)   ? bucket.items
                 : Array.isArray(bucket)          ? bucket
                 : null
     if (items) {
+      shapeRecognized = true // a real bucket, even if empty (= $0 for that period)
       for (const item of items) {
         const amt = item?.amount ?? item?.cost ?? item?.value
         const n = parseFloat(amt)
-        if (!isNaN(n)) { totalCents += n; found = true }
+        if (!isNaN(n)) totalCents += n
       }
     } else if (bucket?.amount !== undefined) {
+      shapeRecognized = true
       const n = parseFloat(bucket.amount)
-      if (!isNaN(n)) { totalCents += n; found = true }
+      if (!isNaN(n)) totalCents += n
     }
   }
-  if (!found) return null
+  if (!shapeRecognized) return null
   return totalCents / 100 // lowest units (cents) → dollars
 }
 
@@ -267,7 +272,15 @@ async function fetchAnthropicBalance() {
     return topupAmount
   }
 
-  const spendSinceTopup = await fetchCostReportTotal(topupDate, isoDate(new Date(Date.now() + 86400_000)))
+  // End bound must be a date that has already fully elapsed — confirmed live
+  // 2026-06-28 that the API 400s ("ending date must be after starting date")
+  // when ending_at is in the future, which tomorrow's date always is partway
+  // through today. Using today's date (not tomorrow) mirrors the same
+  // already-working pattern Week/Month use below; it means spend-since-topup
+  // lags by up to ~1 day (excludes today specifically), same documented
+  // tradeoff as those windows — safe and proven over guessing at sub-day
+  // timestamp granularity the API hasn't been confirmed to accept.
+  const spendSinceTopup = await fetchCostReportTotal(topupDate, isoDate(new Date()))
   if (spendSinceTopup === null) {
     log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — Cost Report API unavailable, couldn't subtract spend since topup ${topupDate})`)
     return topupAmount
@@ -329,7 +342,12 @@ async function summarise(label, window, mdirLog, imgLog, vidLog) {
   const videos = countVideoUploads(vidLog, start, end)
 
   // Claude: prefer the real Cost Report API (Admin key) for an actual $ total.
-  const realCost = await fetchCostReportTotal(isoDate(start), isoDate(end))
+  // "Today" is skipped here on purpose — confirmed live 2026-06-28 that the
+  // API 400s whenever ending_at is in the future, which Today's window
+  // (end = tomorrow's date boundary) always is until the day is over. No
+  // point burning a call that's guaranteed to fail; go straight to the
+  // existing log-estimate fallback for this window only.
+  const realCost = (label === 'Today') ? null : await fetchCostReportTotal(isoDate(start), isoDate(end))
 
   let claudeCalls, claudeInputTok, claudeOutputTok, claudeSource, cCost
   if (realCost !== null) {
@@ -355,7 +373,9 @@ async function summarise(label, window, mdirLog, imgLog, vidLog) {
       claudeOutputTok = parsed.outputTokens
       // Input tokens not logged — estimate at 2× output (conservative for long system prompts)
       claudeInputTok  = parsed.outputTokens * 2
-      claudeSource    = 'log estimate (input ≈ 2× output) — ANTHROPIC_ADMIN_API_KEY not set or call failed'
+      claudeSource    = (label === 'Today')
+        ? 'log estimate (input ≈ 2× output) — Cost Report API has no data for the current, still-in-progress day'
+        : 'log estimate (input ≈ 2× output) — ANTHROPIC_ADMIN_API_KEY not set or call failed'
     }
     cCost = claudeCost(claudeInputTok, claudeOutputTok)
   }
