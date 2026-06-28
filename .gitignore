@@ -41,7 +41,11 @@ gen-lang-client*.json
 # Dashboard — local only, never deploy to CF Pages
 # Narrowed to the NextAuth catch-all specifically (not all of app/api/auth/)
 # so app/api/auth/tiktok/callback/ can still be tracked and deployed.
-app/api/auth/[...nextauth]/
+# NOTE: square brackets are a glob character class in gitignore syntax, so
+# the unescaped form below never actually matched this literal directory
+# name — confirmed via `git check-ignore`, it was untracked-but-not-ignored
+# the whole time. Escaped so it actually takes effect.
+app/api/auth/\[...nextauth\]/
 app/api/dashboard/
 app/dashboard/
 lib/auth.ts
@@ -53,3 +57,7 @@ components/dashboard/
 *.bak
 *.tmp
 tsconfig.tsbuildinfo
+
+# Local pipeline staging copy — redundant with public/posts/output/ (the
+# served mirror); same "local working data" category as logs/.
+posts/output/
