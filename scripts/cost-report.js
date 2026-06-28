@@ -280,6 +280,18 @@ async function fetchAnthropicBalance() {
   // lags by up to ~1 day (excludes today specifically), same documented
   // tradeoff as those windows — safe and proven over guessing at sub-day
   // timestamp granularity the API hasn't been confirmed to accept.
+  //
+  // Edge case confirmed live 2026-06-28: if topupDate IS today, start===end
+  // and the API 400s again ("ending_at must be after starting_at") — same
+  // root cause, different wording, triggered by equality rather than a
+  // future date. No completed day exists yet to query, so treat it like the
+  // "Today" window: skip the call, assume $0 spend so far (true at the
+  // instant of topup), and let tomorrow's run pick up real spend once today
+  // has actually elapsed.
+  if (topupDate >= isoDate(new Date())) {
+    log(`Credit balance: $${topupAmount.toFixed(2)} (topup was today, ${topupDate} — no elapsed day to query yet, assuming $0 spend since)`)
+    return topupAmount
+  }
   const spendSinceTopup = await fetchCostReportTotal(topupDate, isoDate(new Date()))
   if (spendSinceTopup === null) {
     log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — Cost Report API unavailable, couldn't subtract spend since topup ${topupDate})`)
