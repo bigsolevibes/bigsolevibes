@@ -253,20 +253,42 @@ function buildDirectivesBlock(directives) {
 
 // ─── Four confirmed visual scenes ─────────────────────────────────────────────
 
-const SCENE_BLOCK = `FOUR CANONICAL SCENES — pick ONE and write the full scene description in IMAGE BRIEF. Do not name all four. Do not list options. Choose the one that fits this slot's theme and persona, then write it in full as a single cinematic shot.
-
-(1) THE TRANSITION — suit, leather chair, end of day. One shoe off, resting where he left it. The city is visible behind him.
+// Reference only — mood/tone/lighting inspiration. NOT a mandatory pick-one
+// template when a product is assigned (see buildSceneBlock below). Treating
+// these four as a checklist regardless of product is what kept producing
+// generalized leather-chair/shoeless-men imagery that says nothing about the
+// actual product — flagged by Big D 2026-06-13, 2026-06-20, and 2026-06-28.
+const CANONICAL_SCENES_REFERENCE = `(1) THE TRANSITION — suit, leather chair, end of day. One shoe off, resting where he left it. The city is visible behind him.
 (2) THE ATHLETE'S TOLL — post-game locker room. Cleats off on the bench. Still in uniform. Teammates visible in soft focus behind him.
 (3) THE CHEF — still in whites after long service. Shoes off, feet up on a beat-up chair or recliner. The kitchen is done. He's not, not quite.
-(4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off, off to the side. The room is warm, evening light.
+(4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off, off to the side. The room is warm, evening light.`
+
+function buildSceneBlock(product) {
+  if (product) {
+    return `SCENE CONSTRUCTION — BUILD AROUND THE ASSIGNED PRODUCT. DO NOT DEFAULT TO A GENERIC TEMPLATE.
+
+The setting must fit THIS product's category and the moment described in its Narrative above — not default furniture reached for out of habit. A face product belongs at a mirror or sink. A fragrance belongs while getting dressed or heading out the door. A recovery product belongs wherever that recovery actually happens. Build (or invent) whatever setting makes this specific product's moment real.
+
+The four settings below are mood/tone/lighting reference ONLY. Borrow the emotional register if it's useful — do not borrow their furniture (leather chair, locker room, kitchen, couch) unless the product's own story genuinely calls for it:
+${CANONICAL_SCENES_REFERENCE}
+
+HEAD TO TOE RULE: full body in frame — head, torso, hands, feet, the whole man. Not a close-up on any one part of him.
+
+VISUAL FOCUS — THE PRODUCT IS THE SCENE, NOT AN ADDITION TO ONE: build the moment around the product itself — he is reaching for it, holding it, mid-use, or has just set it down; that is the beat his deadpan, slightly amused expression is reacting to. The foot or shoe may appear as incidental scenery only if the setting genuinely calls for it — it is never the structural anchor of the scene when a product is assigned.
+
+TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought. Think Monty Python logic applied to a very specific grooming gap — the humor is in the recognition, not the joke.`
+  }
+
+  return `FOUR CANONICAL SCENES — pick ONE and write the full scene description in IMAGE BRIEF. Do not name all four. Do not list options. Choose the one that fits this slot's theme and persona, then write it in full as a single cinematic shot.
+
+${CANONICAL_SCENES_REFERENCE}
 
 HEAD TO TOE RULE: The full body must be visible in frame — head, torso, hands, feet, the whole man. This is a head-to-toe composition, not a close-up on any one part of him.
 
-VISUAL FOCUS — PRODUCT FIRST: If a Featured Product is assigned (see block below), the product — not the foot — is the visual and narrative focus of the shot. He is reaching for it, holding it, or has just set it down; that's the moment, that's what his deadpan, slightly amused expression is reacting to. Compose it where the eye lands first: in his hand, on the bench beside him, on the counter catching the light. The foot or shoe stays visible in frame as part of the setting — establishing the scene, not competing with the product for attention. It is never the punchline when a product is assigned.
-
-If NO product is assigned, the foot itself can carry the deadpan recognition beat ("he accounted for everything — except this") the way it has historically. Reserve that beat for product-free posts only — once a product is in the brief, the product earns the beat instead.
+This is a product-free post — the foot itself can carry the deadpan recognition beat ("he accounted for everything — except this") the way it has historically. That beat belongs to product-free posts only.
 
 TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought. Think Monty Python logic applied to a very specific grooming gap — the humor is in the recognition, not the joke.`
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -422,7 +444,7 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
   const imageBriefInstruction = editionVignette
     ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. The product is the visual focus of the shot, composed within the full head-to-toe frame — not tucked away as set dressing. Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
-    : `Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} must be physically visible and specifically described in the scene — its actual container/shape/color, given a concrete place in frame (in his hand, open on the counter, beside the sink). It is the visual focus of the shot — composed so the eye lands on it first, within a full head-to-toe frame of the man, not a close-up.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Name which of the four canonical scenes you chose. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys${product ? `, exactly where and how the product appears as the visual focus, and where the foot/shoe appears in frame as incidental scenery (not the focus)` : ', where the foot appears in frame'}. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. The full man must be visible head-to-toe — no close-up crops on the foot or any other single part of him. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject${product ? `, the assigned product (${product['Product Name']}) missing or not visually identifiable in the scene, or the product reduced to background dressing rather than the visual focus` : ''}.`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos.${product ? ` ${product['Product Name']} must be physically visible and specifically described in the scene — its actual container/shape/color, given a concrete place in frame (in his hand, open on the counter, beside the sink). It is the visual focus of the shot — composed so the eye lands on it first, within a full head-to-toe frame of the man, not a close-up.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. ${product ? `Describe the specific setting you built for this product — only name it as one of the four canonical scenes if the product's own story genuinely fits one; do not default to a canonical scene out of habit when the product calls for something else.` : 'Name which of the four canonical scenes you chose.'} Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys${product ? `, exactly where and how the product appears as the visual focus, and where the foot/shoe appears in frame as incidental scenery (not the focus)` : ', where the foot appears in frame'}. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. The full man must be visible head-to-toe — no close-up crops on the foot or any other single part of him. REJECTED without appeal if: no human subject, multiple frames, collage layout, stock photo energy, foot as the only subject${product ? `, the assigned product (${product['Product Name']}) missing or not visually identifiable in the scene, the product reduced to background dressing rather than the visual focus, or the setting defaulting to a generic leather-chair/locker-room/kitchen/couch template with no real connection to this product's story` : ''}.`
 
   const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
 
@@ -454,7 +476,7 @@ One job: write the brief. Everything you produce must align with the Proprietor'
 - Four hashtag cap — #BigSoleVibes counts as one
 - Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
 
-${SCENE_BLOCK}
+${buildSceneBlock(product)}
 
 ## Assigned Social Format: ${socialFormat}
 This format is assigned by media-director based on the audience persona for this slot. The three formats are defined in BSV-Memory.md above — follow the one assigned here exactly.
