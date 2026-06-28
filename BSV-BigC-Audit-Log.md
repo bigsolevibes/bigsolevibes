@@ -788,3 +788,61 @@ Big D: "we are still stuck on content creation... the pictures and stories are n
 - Restart `com.bsv.telegram-webhook` before this fix has any live effect.
 - `video-gen.js` dedup bug (checks Ready to Post instead of Video Review for already-generated output) still open.
 - Once restarted, confirm live: APPROVE on a real video-gate item actually lands the file in Ready to Post and flows through to `posts/output/`.
+
+## 2026-06-20 — Dashboard "Video Review" page: approve/deny videos with no Telegram, no terminal, no Drive drag-and-drop
+
+Big D asked for a TikTok approval/deny control on the dashboard, specifically so he could record himself using it for the TikTok Content Posting API demo video. He'd already said earlier in this session "im not running code" and declined to restart `com.bsv.telegram-webhook` by hand — so the Telegram fix above, while correct, isn't a path he wants to use. The dashboard (always-on `next dev` via launchd) is the one surface that's both no-code for him and already live.
+
+**What happened:**
+- Confirmed `/dashboard/tiktok` (existing page) only ever lists/posts already-finished `posts/output/*-youtube.mp4` — it had no way to get a video out of Drive's `Video Review` staging folder in the first place. That gap is what this closes.
+- Extracted `approveVideo`/`rejectVideo` out of `telegram-webhook.js` into a new shared module, `scripts/video-gate-actions.js` — same `rclone moveto` (approve → `Ready to Post`) / `rclone deletefile` (deny) logic, now in one place instead of two copies that could drift. `telegram-webhook.js` now requires it instead of defining its own.
+- Added `scripts/video-gate-action.js`, a thin CLI wrapper (`--approve "Video Review/x.mp4"` / `--deny "..."`) so the dashboard can shell out via `spawnSync` rather than `require()`-ing a CommonJS script into the Next.js bundle — matches the existing pattern `tiktok/post/route.ts` already uses for `tiktok-post.js`.
+- New dashboard page `/dashboard/video-review` (`app/dashboard/(protected)/video-review/page.tsx`, gitignored) lists every pending `video-gate` item straight from `logs/telegram-pending.json` — the same queue Telegram reads — with an inline `<video>` preview per item (streamed live from Drive via a new `GET /api/dashboard/video-review/preview?id=...` route, no temp files) and APPROVE/DENY buttons.
+- New API route `app/api/dashboard/video-review/route.ts` (gitignored): `GET` lists pending video-gate items, `POST {id, action}` looks up the item's `driveFile` server-side (never trusts a path from the client) and calls `video-gate-action.js`. On success it removes the item from `telegram-pending.json` — so approving/denying on the dashboard also clears it from Telegram's queue, and vice versa once the listener is back up. Added "Video Review" to the dashboard nav, between Product Queue and TikTok.
+- `npx tsc --noEmit` passed clean across the whole project. `node --check` passed on both new scripts.
+- Committed `scripts/telegram-webhook.js`, `scripts/video-gate-actions.js`, `scripts/video-gate-action.js` only (dashboard `app/`/`components/` files are gitignored by design — saving to disk is the deploy) — commit `39f04a77`, pushed to `preview/full-site`.
+
+**Decided / concluded:**
+- This is now the primary approve/deny surface — no terminal, no Telegram listener dependency. Drive drag-and-drop still works as a fallback; Telegram will work too once `com.bsv.telegram-webhook` is restarted, and both share the same underlying queue file so they can't go out of sync with the dashboard.
+- DENY on the dashboard permanently deletes the mp4 from Drive, same real behavior as Telegram REJECT/DENY — same caution applies.
+
+**Files / artifacts touched:**
+- `scripts/video-gate-actions.js` (new, committed)
+- `scripts/video-gate-action.js` (new, committed)
+- `scripts/telegram-webhook.js` (refactored to use the shared module, committed)
+- `app/api/dashboard/video-review/route.ts` (new, gitignored)
+- `app/api/dashboard/video-review/preview/route.ts` (new, gitignored)
+- `app/dashboard/(protected)/video-review/page.tsx` (new, gitignored)
+- `components/dashboard/DashboardNav.tsx` (nav link added, gitignored)
+
+**Open / follow-up:**
+- mon-am.mp4 / mon-pm.mp4 (the post-fix videos) and the four stale duplicates (fri-am, sat-am, sun-am, sun-pm) are still sitting in `Video Review` — first real-world use of this page.
+- `video-gen.js` dedup bug (still open, logged above) will keep regenerating unapproved videos on every `run_video_gen` call until fixed — not in scope for this pass.
+- Big D wants to record the TikTok demo using this flow next.
+
+## 2026-06-28 — Root-caused why cost alerts never fire: two fake Anthropic endpoints, always 404
+
+Big D: "we ran out of tokens and it has been refreshed, but again cost is not showing up any alerts" — same complaint class as 2026-06-16, after two prior fixes (orphaned launchd job; eng-bot dedup) already landed for that incident.
+
+**What happened:**
+- `logs/cost-report.log` looked empty (0 bytes), suggesting the script wasn't running — same masking pattern as 6/16's `log-rotate.js` truncation. Checked the rotated `.log.1`/`.log.2` backups instead and found the script running fine, every cycle.
+- Real finding, one layer deeper than either 6/16 fix: `fetchAnthropicUsage()`'s `/v1/usage` call and `fetchAnthropicBalance()`'s `/v1/billing/credit_balance` call both 404 every time (confirmed in the rotated logs: "Anthropic Usage API: 404", "Credit balance API: 404"). Confirmed via official docs (platform.claude.com/docs) that **neither endpoint exists** — there is no live/real-time balance API at all for a regular `ANTHROPIC_API_KEY`. Real cost data requires a separate **Admin API key** (`sk-ant-admin01-...`) hitting `/v1/organizations/cost_report` and `/v1/organizations/usage_report/messages`. Both calls were silently falling back to a static `.env` number and a hardcoded $0 burn, so the alert thresholds could never mathematically trigger — root cause of "no alert ever fires," not a regression, a design gap baked in since the original script was written.
+- Asked Big D how to fix it; he chose **Admin key + real cost tracking**.
+
+**Fix applied (`scripts/cost-report.js`):**
+- Added `fetchCostReportTotal(startDate, endDate)` — calls the real `cost_report` endpoint (Admin-key-gated via `ANTHROPIC_ADMIN_API_KEY`; returns `null` immediately if the key isn't set), plus `sumCostReportTotal(data)`, a defensive parser that tries several plausible response shapes and explicitly returns `null` (never `0`) on anything unrecognized, logging the raw response for inspection. Deliberate: the original bug was a silent-fallback-to-fake-value, so the replacement must never repeat that pattern.
+- Rewrote `fetchAnthropicBalance()` to stop calling the fake balance endpoint entirely. New model: balance = `ANTHROPIC_CREDIT_BALANCE` (last topup amount) minus real spend since `ANTHROPIC_CREDIT_TOPUP_DATE`, computed via `fetchCostReportTotal`. Falls back to the static topup number (old behavior) if either env var is missing or the API call fails — same graceful-degradation shape as before, just now backed by real data when available.
+- `fetchBurnHistory()` and `summarise()` both try the real Cost Report API first, fall back to the old token-estimate path if it returns `null`.
+- Added `balance_source` field to `logs/cost-state.json` (`'static env (no ANTHROPIC_ADMIN_API_KEY)'` / `'static env (no ANTHROPIC_CREDIT_TOPUP_DATE)'` / `'computed (topup − real spend via Cost Report API)'`) — so any future silent degradation back to fake/static is visible in the state file itself, not just in logs.
+- **Unverified, flagged in code comments:** exact JSON field names for `cost_report` responses couldn't be confirmed — the API reference page is client-rendered and neither `web_fetch` nor Claude in Chrome (not connected) could render it. `sumCostReportTotal()` is defensive against this, but needs a live check against the real response shape once the Admin key is added.
+- `node --check` passed. `run_diagnostic('cost-report')` ran clean end-to-end on the real machine, identical graceful-fallback behavior confirmed (no regression with the Admin key still absent).
+- Committed `a3b0d861` (scoped to `scripts/cost-report.js` only, not bundled with unrelated pipeline churn already sitting in the tree), pushed to `preview/full-site` — confirmed via `origin/preview/full-site` log showing it at HEAD.
+
+**Decided / concluded:**
+- This is the third layer of the same incident class: 6/16 was "script not running," 6/17 was "eng-bot shouldn't diagnose its own billing outage," 6/28 is "the script runs but its only two data sources never worked, ever." All three are now closed for different reasons; this one needed a real credential, not just code.
+
+**Open / follow-up — needs Big D, can't be done by Claude (never writes `.env`):**
+- Add `ANTHROPIC_ADMIN_API_KEY=sk-ant-admin01-...` to `.env` — create via Anthropic Console → Settings → Organization → API Keys → Create Admin Key.
+- Add `ANTHROPIC_CREDIT_TOPUP_DATE=<ISO date of most recent topup>` to `.env`.
+- Going forward, keep `ANTHROPIC_CREDIT_BALANCE` set to the actual topup amount each time credit is added, paired with an updated `ANTHROPIC_CREDIT_TOPUP_DATE`.
+- Once the Admin key is live, re-run `run_diagnostic('cost-report')` to see the real `cost_report` response and verify/adjust `sumCostReportTotal()`'s field-name assumptions against the live shape (flagged in code).
