@@ -145,12 +145,19 @@ async function fetchAnthropicUsage(startDate, endDate) {
 }
 
 // Fetch per-day Claude costs for the last N completed days (not today).
+// Prefers the real Cost Report API (Admin key); falls back to the
+// (non-functional, always-404) Usage API attempt for safety, same as before.
 async function fetchBurnHistory(days) {
   const results = []
   for (let i = days; i >= 1; i--) {
     const d    = new Date(); d.setDate(d.getDate() - i)
     const next = new Date(d); next.setDate(next.getDate() + 1)
     const dateStr = isoDate(d)
+    const realCost = await fetchCostReportTotal(dateStr, isoDate(next))
+    if (realCost !== null) {
+      results.push({ date: dateStr, cost: realCost })
+      continue
+    }
     const usage = await fetchAnthropicUsage(dateStr, isoDate(next))
     if (usage) {
       results.push({ date: dateStr, cost: claudeCost(usage.inputTokens, usage.outputTokens) })
@@ -159,31 +166,116 @@ async function fetchBurnHistory(days) {
   return results
 }
 
-// Returns credit balance in dollars. Tries the Anthropic billing API first;
-// falls back to ANTHROPIC_CREDIT_BALANCE in .env if the endpoint is unavailable.
-async function fetchAnthropicBalance() {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (apiKey) {
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/billing/credit_balance', {
-        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const raw = data.available_credit ?? data.balance ?? data.credit ?? null
-        if (raw !== null && !isNaN(parseFloat(raw))) {
-          log(`Credit balance from API: $${parseFloat(raw).toFixed(4)}`)
-          return parseFloat(raw)
-        }
-      } else {
-        log(`Credit balance API: ${res.status} — falling back to env var`)
+// ─── Real Cost Report API (Admin key required) ────────────────────────────────
+// Added 2026-06-28: /v1/usage and /v1/billing/credit_balance (above/below) are
+// not real Anthropic endpoints — they 404 every time, which is why no cost
+// alert had ever fired despite running out of credits twice. The only real
+// programmatic cost source is /v1/organizations/cost_report, and it requires
+// an Admin API key (ANTHROPIC_ADMIN_API_KEY), not the regular workspace key.
+// There is still no live "remaining balance" endpoint at all — Anthropic's
+// docs confirm balance is Console-UI-only — so balance below is *computed*
+// (topup amount − real spend since topup), not fetched directly.
+
+// Returns total $ spend for [startDate, endDate) as a plain number, or null
+// if the Admin key is missing, the call fails, or the response shape can't
+// be parsed. Never returns 0 on failure — failure must look like failure,
+// not like "nothing was spent," so it can't quietly defeat the alert logic
+// the way the old fake endpoints did.
+async function fetchCostReportTotal(startDate, endDate) {
+  const adminKey = process.env.ANTHROPIC_ADMIN_API_KEY
+  if (!adminKey) return null
+  const url = `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${startDate}T00:00:00Z&ending_at=${endDate}T00:00:00Z&group_by[]=description`
+  let raw = ''
+  try {
+    const res = await fetch(url, {
+      headers: { 'x-api-key': adminKey, 'anthropic-version': '2023-06-01' },
+    })
+    raw = await res.text()
+    if (!res.ok) {
+      log(`  Cost Report API: ${res.status} — ${raw.slice(0, 200)}`)
+      return null
+    }
+  } catch (err) {
+    log(`  Cost Report API error: ${err.message}`)
+    return null
+  }
+  let data
+  try { data = JSON.parse(raw) } catch {
+    log(`  Cost Report API: non-JSON response — ${raw.slice(0, 200)}`)
+    return null
+  }
+  const total = sumCostReportTotal(data)
+  if (total === null) {
+    log(`  Cost Report API: response shape not recognized — logging raw for inspection: ${raw.slice(0, 800)}`)
+    return null
+  }
+  return total
+}
+
+// Defensive parser for the Cost Report response. Anthropic's docs describe
+// costs as "decimal strings in lowest units (cents)" grouped into daily
+// buckets, but the exact field names weren't verified against a live
+// response when this was written (no Admin key available yet). Tries the
+// documented/likely shapes (data[].results[].amount, data[].amount, etc.);
+// returns null — never 0 — if nothing recognizable is found, so a shape
+// mismatch shows up as a logged parse failure, not a silent $0.
+// VERIFY THIS against the first real response once ANTHROPIC_ADMIN_API_KEY
+// is live — adjust field names here if the raw log dump shows a different shape.
+function sumCostReportTotal(data) {
+  const buckets = Array.isArray(data?.data) ? data.data
+                : Array.isArray(data?.results) ? data.results
+                : null
+  if (!buckets) return null
+  let totalCents = 0
+  let found = false
+  for (const bucket of buckets) {
+    const items = Array.isArray(bucket?.results) ? bucket.results
+                : Array.isArray(bucket?.items)   ? bucket.items
+                : Array.isArray(bucket)          ? bucket
+                : null
+    if (items) {
+      for (const item of items) {
+        const amt = item?.amount ?? item?.cost ?? item?.value
+        const n = parseFloat(amt)
+        if (!isNaN(n)) { totalCents += n; found = true }
       }
-    } catch (err) {
-      log(`Credit balance API error: ${err.message} — falling back to env var`)
+    } else if (bucket?.amount !== undefined) {
+      const n = parseFloat(bucket.amount)
+      if (!isNaN(n)) { totalCents += n; found = true }
     }
   }
-  const raw = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
-  return (!isNaN(raw) && raw >= 0) ? raw : null
+  if (!found) return null
+  return totalCents / 100 // lowest units (cents) → dollars
+}
+
+// Computed balance: there is no live "remaining credit" API at all (confirmed
+// against current Anthropic docs 2026-06-28 — Console billing page is the
+// only real-time source). Best available approximation: Big D reports the
+// balance at his last topup (ANTHROPIC_CREDIT_BALANCE) and the date of that
+// topup (ANTHROPIC_CREDIT_TOPUP_DATE); we subtract real spend since then via
+// the Cost Report API. Falls back to the raw static env value (old behavior)
+// if there's no topup date or the Admin key/call isn't working — and that
+// fallback is logged explicitly as a snapshot, not live data, so a degraded
+// number can't masquerade as a real one again.
+async function fetchAnthropicBalance() {
+  const topupAmount = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
+  const topupDate    = process.env.ANTHROPIC_CREDIT_TOPUP_DATE
+  if (isNaN(topupAmount) || topupAmount < 0) return null
+
+  if (!topupDate) {
+    log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — ANTHROPIC_CREDIT_TOPUP_DATE not set, not decremented for spend since topup)`)
+    return topupAmount
+  }
+
+  const spendSinceTopup = await fetchCostReportTotal(topupDate, isoDate(new Date(Date.now() + 86400_000)))
+  if (spendSinceTopup === null) {
+    log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — Cost Report API unavailable, couldn't subtract spend since topup ${topupDate})`)
+    return topupAmount
+  }
+
+  const balance = Math.max(0, topupAmount - spendSinceTopup)
+  log(`Credit balance: $${balance.toFixed(4)} = $${topupAmount.toFixed(2)} topup (${topupDate}) − $${spendSinceTopup.toFixed(4)} real spend since`)
+  return balance
 }
 
 // Sends a Telegram message using the project-standard credentials.
@@ -236,28 +328,38 @@ async function summarise(label, window, mdirLog, imgLog, vidLog) {
   const images = countImageUploads(imgLog, start, end)
   const videos = countVideoUploads(vidLog, start, end)
 
-  // Claude: try Anthropic API for today/month windows, fall back to logs
-  let claudeData
-  if (label !== 'Week') {
-    claudeData = await fetchAnthropicUsage(isoDate(start), isoDate(end))
-  }
+  // Claude: prefer the real Cost Report API (Admin key) for an actual $ total.
+  const realCost = await fetchCostReportTotal(isoDate(start), isoDate(end))
 
-  let claudeCalls, claudeInputTok, claudeOutputTok, claudeSource
-  if (claudeData) {
-    claudeCalls     = claudeData.calls
-    claudeInputTok  = claudeData.inputTokens
-    claudeOutputTok = claudeData.outputTokens
-    claudeSource    = claudeData.source
+  let claudeCalls, claudeInputTok, claudeOutputTok, claudeSource, cCost
+  if (realCost !== null) {
+    claudeCalls     = null
+    claudeInputTok  = null
+    claudeOutputTok = null
+    claudeSource    = 'Anthropic Cost Report API (real $)'
+    cCost           = realCost
   } else {
-    const parsed = parseClaudeLogs(mdirLog, start, end)
-    claudeCalls     = parsed.calls
-    claudeOutputTok = parsed.outputTokens
-    // Input tokens not logged — estimate at 2× output (conservative for long system prompts)
-    claudeInputTok  = parsed.outputTokens * 2
-    claudeSource    = 'log estimate (input ≈ 2× output)'
+    // Fall back to the old (non-functional) Usage API attempt, then logs.
+    let claudeData
+    if (label !== 'Week') {
+      claudeData = await fetchAnthropicUsage(isoDate(start), isoDate(end))
+    }
+    if (claudeData) {
+      claudeCalls     = claudeData.calls
+      claudeInputTok  = claudeData.inputTokens
+      claudeOutputTok = claudeData.outputTokens
+      claudeSource    = claudeData.source
+    } else {
+      const parsed = parseClaudeLogs(mdirLog, start, end)
+      claudeCalls     = parsed.calls
+      claudeOutputTok = parsed.outputTokens
+      // Input tokens not logged — estimate at 2× output (conservative for long system prompts)
+      claudeInputTok  = parsed.outputTokens * 2
+      claudeSource    = 'log estimate (input ≈ 2× output) — ANTHROPIC_ADMIN_API_KEY not set or call failed'
+    }
+    cCost = claudeCost(claudeInputTok, claudeOutputTok)
   }
 
-  const cCost = claudeCost(claudeInputTok, claudeOutputTok)
   const iCost = imagenCost(images)
   const vCost = veoCost(videos)
   const total = cCost + iCost + vCost
@@ -278,12 +380,15 @@ function buildReport(today, week, month, reportDate) {
     : `✓ ${budgetPct.toFixed(1)}% of $${MONTHLY_BUDGET} monthly budget used`
 
   function windowSection(w) {
+    const claudeUnits = (w.claudeInputTok === null)
+      ? 'real $ from Cost Report API'
+      : `${w.claudeCalls} calls, ~${(w.claudeInputTok / 1000).toFixed(1)}K in / ${(w.claudeOutputTok / 1000).toFixed(1)}K out tokens`
     return [
       `### ${w.label} (${isoDate(w.start)} → ${isoDate(w.end)})`,
       '',
       '| Service | Units | Est. Cost |',
       '|---------|-------|-----------|',
-      `| Claude API (${w.claudeCalls} calls, ~${(w.claudeInputTok / 1000).toFixed(1)}K in / ${(w.claudeOutputTok / 1000).toFixed(1)}K out tokens) | — | ${fmt(w.cCost)} |`,
+      `| Claude API (${claudeUnits}) | — | ${fmt(w.cCost)} |`,
       `| Imagen 4 Fast (${w.images} images @ ${fmt(IMAGEN_PER_IMAGE)}/image) | ${w.images} | ${fmt(w.iCost)} |`,
       `| Veo 3.1 Fast (${w.videos} videos @ ${fmt(VEO_PER_SECOND)}/s × ${VEO_CLIP_SECONDS}s) | ${w.videos} | ${fmt(w.vCost)} |`,
       `| **Total** | | **${fmt(w.total)}** |`,
@@ -412,12 +517,21 @@ async function loadMemory() {
   const shouldSendBalanceAlert = balanceNowLow && (!prevAlertSentAt || wasAboveThreshold)
 
   // Write cost-state.json so chief-of-staff can read runway into the stand-up
+  const hasAdminKey = !!process.env.ANTHROPIC_ADMIN_API_KEY
+  const hasTopupDate = !!process.env.ANTHROPIC_CREDIT_TOPUP_DATE
+  const balanceSource = !hasAdminKey
+    ? 'static env (no ANTHROPIC_ADMIN_API_KEY)'
+    : !hasTopupDate
+      ? 'static env (no ANTHROPIC_CREDIT_TOPUP_DATE)'
+      : 'computed (topup − real spend via Cost Report API)'
+
   const costState = {
     date:                   reportDate,
     today_cost:             todayData.total,
     avg_daily_burn:         avgDailyBurn,
     burn_days:              burnHistory.length,
     balance:                balance,
+    balance_source:         balanceSource,
     runway_hours:           runwayHours,
     burn_history:           burnHistory,
     balance_alert_sent_at:  balanceNowLow
