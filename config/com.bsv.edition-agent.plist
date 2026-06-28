@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bsv.edition-agent</string>
+
+  <!-- Runs 1st of each month at 6:00 AM -->
+  <!-- To trigger manually: launchctl start com.bsv.edition-agent -->
+  <!-- To approve after review: node scripts/edition-agent.js --approve -->
+  <!-- To force a new edition mid-month: node scripts/edition-agent.js --force -->
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/davidgeer/claude/bigsolevibes-web/scripts/edition-agent.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Day</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/edition-agent-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/davidgeer/claude/bigsolevibes-web/logs/edition-agent-launchd.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/davidgeer</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
