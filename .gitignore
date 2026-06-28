@@ -58,6 +58,11 @@ components/dashboard/
 *.tmp
 tsconfig.tsbuildinfo
 
-# Local pipeline staging copy — redundant with public/posts/output/ (the
-# served mirror); same "local working data" category as logs/.
+# Processed pipeline media (both local staging and public/ mirror) — never
+# tracked in git by design. Per commit 495addb5 (2026-05-27, "remove git
+# push from resize-post — Drive/R2 are authoritative"): Google Drive holds
+# the source assets and Cloudflare R2 serves the public Instagram URL;
+# distribute.js posts from local disk + R2, not from a Next.js-served path.
+# Same "local working data" category as logs/.
 posts/output/
+public/posts/output/
