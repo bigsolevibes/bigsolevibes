@@ -48,3 +48,8 @@ lib/auth.ts
 lib/dashboard/
 middleware.ts
 components/dashboard/
+
+# Build/editor junk — never commit
+*.bak
+*.tmp
+tsconfig.tsbuildinfo
