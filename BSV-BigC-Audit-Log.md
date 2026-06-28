@@ -903,3 +903,24 @@ Verified: `node --check` clean; isolated `buildSceneBlock()` eval against a real
 **Open / follow-up:**
 - Watch the next batch of generated briefs for product-assigned slots — confirm the custom-scene behavior holds up over multiple products/categories, not just the one tested locally.
 - Big D: mirror the 06-28 correction text into `BSV-Directive.md` on Drive if you want other agents reading that doc to see it (sandbox has no `rclone`).
+
+## 2026-06-28 (same day, cont. 4) — Git working-tree cleanup: 6 commits, tree now clean
+
+Big D asked to clean up the large uncommitted/untracked pile flagged earlier this session. Investigated each category before touching anything, then committed in scoped batches (all pushed to `preview/full-site`):
+
+1. **`10302a1e`** — 15 files that had **zero git history on any branch, ever**: `scripts/learn.js`, `edition-agent.js`, `push-to-main.js`, `push-preview.js`, `clear-git-lock.js`, `data/shelf-products.json` (the live product pool `media-director.js` rotates through), `config/com.bsv.edition-agent.plist`, `.github/workflows/main-push-alert.yml`, plus 7 utility/audit scripts (`_audit-foot-care-coverage.js`, `_audit-pending-foot-narratives.js`, `check-sheet-dupes.js`, `gen-crawl-images.js`, `generate-locker-image.js`, `resolve-spongelle-tier.js`, `update-spongelle-link.js`). Several of these are named directly in CLAUDE.md as the sanctioned tools (`push-to-main.js` especially) — they only existed on this machine until now. Scanned all of them for secret-shaped strings first (`sk-ant-`, `AIza`, `ya29.`, PEM headers, Slack tokens) — none found.
+2. **Real finding inside that batch:** `.github/workflows/main-push-alert.yml` — a Telegram alert meant to fire on every push to `main` — has never actually been live, because `.github/` was never pushed to GitHub. There has been no server-side tripwire on `main` this whole time, only the `push_to_main` MCP tool's fast-forward-only git safety. Committing it is necessary but not sufficient: `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` still need to be added as **GitHub repo secrets** (Settings → Secrets → Actions on github.com/bigsolevibes/bigsolevibes) — separate from `.env` — before it'll actually send anything. Flagged to Big D, not yet done.
+3. **`fb9a243a`** — gitignored `*.bak`, `*.tmp`, `tsconfig.tsbuildinfo`.
+4. **`445e8073`** — found and fixed a real gitignore bug: `app/api/auth/[...nextauth]/` was never actually being ignored. Square brackets are a glob character class in gitignore syntax, so the literal directory name never matched — confirmed via `git check-ignore` returning exit 1 despite the rule's clear intent (and a comment claiming it was deliberate). It's been showing as untracked noise since whenever that line was first written. Escaped to `app/api/auth/\[...nextauth\]/`, re-verified with `git check-ignore` (now matches). Also gitignored `posts/output/` — the local pre-mirror staging copy CLAUDE.md describes as redundant with `public/posts/output/`, same category as `logs/`.
+5. **`322e0b13`** — `BSV-Start-Here.md` had zero git history too — step 1 of the Pre-Session Protocol, read every session, was never backed up.
+6. **`bd3a3935`** — one-time snapshot of accumulated pipeline-output drift: 28 new Bluesky image variants + 56 refreshed instagram/youtube/flow renders across all 14 slots, plus routine `org-chart.html`/`BSV-Directive.md`/`affiliate-overrides.json` regeneration. Root cause of the drift: `resize-post.js` currently has **zero** git/push logic in it (grepped, confirmed) despite CLAUDE.md's "Key Scripts" table still describing it as auto-pushing to `preview/full-site`. That doc line is stale. This commit just clears the existing backlog — it does not fix the underlying gap, so the same drift will reaccumulate on the next pipeline run.
+
+**Verified:** `git status` clean after the final commit; all 6 commits pushed and confirmed present in `origin/preview/full-site`'s log.
+
+**Decided / concluded:**
+- Two real, previously-invisible bugs surfaced purely from doing the cleanup, not from being asked to look for them: the never-armed main-push Telegram alert, and the broken gitignore bracket pattern. Worth noting since neither would have been caught by reading CLAUDE.md alone — both required actually running `git check-ignore`/`git log --all` against the real working tree.
+
+**Open / follow-up:**
+- Big D: add `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` as GitHub repo secrets so `main-push-alert.yml` actually fires.
+- Decide whether `resize-post.js`'s auto-push should be restored (real code change, not done here) or whether periodic manual/Claude-driven snapshot commits like `bd3a3935` are an acceptable standing pattern.
+- CLAUDE.md's `resize-post.js` description ("git pushes to preview/full-site") is stale and should be corrected next time that file is touched.
