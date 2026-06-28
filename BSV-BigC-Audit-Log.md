@@ -864,4 +864,22 @@ Big D added `ANTHROPIC_ADMIN_API_KEY` to `.env` (confirmed present + correctly p
 
 **Open / follow-up:**
 - Big D still needs to add `ANTHROPIC_CREDIT_TOPUP_DATE` to `.env` for the computed-balance path to activate (currently still falling back to the static `$25.00` env snapshot, correctly logged as such).
+
+## 2026-06-28 (same day, cont. 2) — Third bug found (same-day topup edge case); .env duplicate key flagged
+
+Big D added `ANTHROPIC_CREDIT_TOPUP_DATE=2026-06-28` to `.env`, plus a new `ANTHROPIC_CREDIT_BALANCE=18.90` line — but the original `ANTHROPIC_CREDIT_BALANCE=25.00` line (added during the first pass) was never removed, so `.env` now has the same key defined twice (line 42 = 25.00, line 54 = 18.90). dotenv's parser takes the last occurrence in the file, so 18.90 is the value actually in effect — confirmed live in the diagnostic run below. Flagged to Big D to delete the stale line 42 himself (never written by Claude, per hard rule) before it causes confusion later. Also flagged as open: unclear whether 18.90 represents the topup amount itself or the Console's current balance already net of some of today's spend — matters because of the ~1-day lag tradeoff (see below); if today's pre-existing spend gets recorded by the Cost Report after the lag resolves, it would be subtracted a second time from 18.90, drifting the computed balance low. Needs Big D to confirm.
+
+Re-ran `run_diagnostic('cost-report')` to verify the computed-balance path end to end now that both required `.env` vars are present — surfaced a third bug:
+
+**`fetchAnthropicBalance()`'s spend-since-topup call 400'd when `topupDate` is today.** Same family as bug 2 from the prior entry (future `ending_at` rejected) but a different trigger: with `topupDate = 2026-06-28` and the end bound also `isoDate(new Date())` = `2026-06-28`, `starting_at === ending_at` — the API rejects equal dates too (`400 — "ending_at must be after starting_at"`), not just strictly-future ones. No completed day exists yet for a same-day topup to query. Fixed: added a guard — when `topupDate >= today`, skip the live call and return the static topup amount directly, logged as `"topup was today, 2026-06-28 — no elapsed day to query yet, assuming $0 spend since"`. This assumption is true at the instant of topup; real spend will be subtracted starting tomorrow once today has fully elapsed, same lag pattern as Week/Month/Today elsewhere in the script.
+
+**Verified live (`run_diagnostic('cost-report')`, third pass):** no 400s anywhere in the run. `Credit balance: $18.90 (topup was today, 2026-06-28 — no elapsed day to query yet, assuming $0 spend since)`. `node --check` passed. Committed `cae35b14`, pushed to `preview/full-site` — confirmed via `origin/preview/full-site` log.
+
+**Decided / concluded:**
+- Three bugs found across two verification passes, all in the same family (the Cost Report API's date-range validation is stricter than assumed — rejects both future and equal `ending_at`, not just literal start>end ordering). Each was only found by running against the live API with a real Admin key, not by code review — reinforces that defensive parsing against guessed API shapes is not a substitute for live verification.
+- The computed-balance mechanism Big D asked for is now live and bug-free for the cases exercised so far (no topup date, topup in the past, topup today). Will self-correct starting tomorrow once today's spend is a completed, queryable day.
+
+**Open / follow-up:**
+- Big D to delete the stale `ANTHROPIC_CREDIT_BALANCE=25.00` line (line 42) from `.env` and confirm whether `18.90` is the topup amount or current balance net of today's usage.
+- Inner `results[].amount` field name still unverified against a non-empty result set — same caveat as before, still no day with real recorded spend observed.
 - Spot-check `results[].amount` field name once a real (non-zero) day appears in burn history.
