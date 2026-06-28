@@ -941,3 +941,22 @@ Also found `git-push-guard.js` has a fully-built but completely dead `safePushTo
 **Open / follow-up:**
 - `safePushToPipeline()`/`media-cache` branch: confirmed dead code. No action taken — flagging only in case Big D wants it removed outright at some point (not done — no deletion without explicit say-so).
 - `main-push-alert.yml` GitHub secrets still pending (see above, unchanged).
+
+## 2026-06-28 (same day, cont. 6) — TikTok "approval button": not missing, just nothing flowing into it
+
+Big D: "what happened to our tiktok approval button on the dashboard." Investigated rather than guessing:
+
+- `app/dashboard/(protected)/tiktok/page.tsx` ("Post to TikTok" button) and `app/dashboard/(protected)/video-review/page.tsx` (APPROVE/DENY buttons, built 06-20 specifically for the TikTok demo recording — see that date's entry) both still exist on disk, code intact, nothing deleted. Both are gitignored by design (dashboard tree never goes through git/Cloudflare), so `git log` shows no history for either — expected, not a red flag.
+- `com.bsv.dashboard` launchd job is up and healthy (PID 225, exit 0) — the dashboard itself isn't down.
+- Root cause of the empty/missing-looking button: `posts/output/` currently has **zero `.mp4` files** — only image variants (`mon-am-bluesky.jpg` etc.). The TikTok page only lists `*-youtube.mp4` files, so with none present it correctly renders "No video ready yet," which reads as "the button is gone."
+- Why no mp4s exist: confirmed via `logs/telegram-pending.json` (the same queue both Telegram and the Video Review dashboard page read) that **8 videos have been sitting unapproved in Drive's `Video Review` folder since 06-20**: `fri-am`, `fri-pm`, `mon-am`, `mon-pm`, `sat-am`, `sat-pm`, `sun-am`, `sun-pm`. None have been approved or denied in over a week, so none have moved to `Ready to Post` → none have run through `resize-post.js`/`brand-video.js` → none have landed in `posts/output/*-youtube.mp4`.
+- Likely contributing factor: `com.bsv.telegram-webhook` (the other approve/deny path, via Telegram replies) is still down (confirmed again via `get_launchd_status` — last exit signal -15), and known per CLAUDE.md's Known Issues. The dashboard's own Video Review page was built as a no-Telegram-needed alternative path for exactly this scenario, but doesn't appear to have been used since the 06-20 test.
+- Also reconfirmed: TikTok has never had a per-slot approve button in the main Approval Queue (`ApprovalQueue.tsx`, `lib/dashboard/types.ts`, `lib/dashboard/state-adapter.ts` — zero "tiktok" references in any of them) and is deliberately excluded from the automatic pipeline: `watch-drive.js`'s `SKIPPED_PLATFORMS = ['tiktok', 'youtube', 'twitter', 'facebook']` marks every slot's `tiktok` status `skipped`/`attempts:0` by design — TikTok posting is manual-only via the two dedicated dashboard pages above, never automatic.
+
+**Decided / concluded:**
+- No code is broken or missing — nothing fixed, nothing changed. Reported findings to Big D; the actual unblock is his call (approve/deny the 8 stuck videos via the dashboard's Video Review page, or restart `com.bsv.telegram-webhook` to use Telegram instead).
+
+**Open / follow-up:**
+- 8 videos awaiting approve/deny in Video Review since 06-20 (listed above) — Big D to action via `/dashboard/video-review`.
+- `com.bsv.telegram-webhook` still down — `launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook` would restart it (no remote MCP path yet, per existing Known Issue).
+- `logs/telegram-pending.json` has grown to 141KB / ~170 entries, many from early June (`eng` type) — likely never pruned after being actioned or going stale. Not touched this pass (no deletion without Big D's say-so), just flagging.
