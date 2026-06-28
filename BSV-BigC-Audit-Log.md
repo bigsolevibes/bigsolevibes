@@ -922,5 +922,22 @@ Big D asked to clean up the large uncommitted/untracked pile flagged earlier thi
 
 **Open / follow-up:**
 - Big D: add `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` as GitHub repo secrets so `main-push-alert.yml` actually fires.
-- Decide whether `resize-post.js`'s auto-push should be restored (real code change, not done here) or whether periodic manual/Claude-driven snapshot commits like `bd3a3935` are an acceptable standing pattern.
-- CLAUDE.md's `resize-post.js` description ("git pushes to preview/full-site") is stale and should be corrected next time that file is touched.
+- ~~Decide whether `resize-post.js`'s auto-push should be restored...~~ — **resolved same day, see below.**
+
+## 2026-06-28 (same day, cont. 5) — Correction: resize-post.js not pushing is by design, not a gap. bd3a3935 partially reverted.
+
+Big D said "yes lets fix" to the open item above (restore resize-post.js's git push). Before writing that code, ran `git log --follow -- scripts/resize-post.js` to find the right insertion point and hook into the existing convention — and found the push logic wasn't missing by accident. **Commit `495addb5` (2026-05-27): "fix: remove git push from resize-post — Drive/R2 are authoritative."** Big D removed it on purpose, with a prior Claude session, a month ago. Reasoning holds up: Drive holds source assets, Cloudflare R2 serves the public Instagram URL, and `distribute.js` posts from local disk + R2 — git never needed to carry this binary media.
+
+Also found `git-push-guard.js` has a fully-built but completely dead `safePushToPipeline()` function (targets a `media-cache` branch via throwaway worktree + cherry-pick, specifically so media commits never touch `preview/full-site` or trigger Cloudflare) — header comment says "Used by resize-post only," with real commit history on `origin/media-cache` through 2026-05-27, the same day it was unwired. Confirmed via grep across the whole repo: zero current callers. Dead code, not a missing wire-up worth restoring — would need testing from scratch and the simpler fix (don't track media in git at all) already works by design.
+
+**So the earlier framing was wrong** — I called this "the underlying gap" in the prior entry; it's actually a deliberate architecture decision that CLAUDE.md's docs just hadn't caught up to. Corrected:
+- CLAUDE.md's Key Scripts table and Known Issues section both updated to reflect that this is intentional, with the commit hash cited.
+- This session's own `bd3a3935` commit (the "pipeline output snapshot," logged above) had re-added 84 of those media files to git, going directly against the May 27 decision — caught and partially reverted in `8eff212c`: `git rm --cached` on those same 84 files (kept on disk, just untracked again), plus extended `.gitignore` to cover `public/posts/output/` in addition to `posts/output/`. The other 3 files `bd3a3935` touched (`BSV-Directive.md`, `org-chart.html`, `affiliate-overrides.json`) were left committed — legitimate routine state syncs, unrelated to the media question.
+
+**Decided / concluded:**
+- "Drive/R2 are authoritative" for processed media is the standing policy — don't re-suggest restoring git push/tracking for `posts/output/` or `public/posts/output/` in future sessions.
+- Worth the general lesson: before treating an absence of expected logic as a bug, check `git log --follow` on the file first. This is the second time this session that move surfaced the real story (first was the `[...nextauth]` gitignore bug, which actually *was* a bug — this one wasn't).
+
+**Open / follow-up:**
+- `safePushToPipeline()`/`media-cache` branch: confirmed dead code. No action taken — flagging only in case Big D wants it removed outright at some point (not done — no deletion without explicit say-so).
+- `main-push-alert.yml` GitHub secrets still pending (see above, unchanged).

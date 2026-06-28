@@ -82,7 +82,7 @@ Google Drive "Ready to Post/"
 |--------|---------|
 | `watch-drive.js` | Main watcher loop — polls Drive, orchestrates the full pipeline |
 | `distribute.js` | Posts to all platforms; `--force` bypasses `post_time` gate; `--platforms x,instagram` restricts targets |
-| `resize-post.js` | Resizes to platform variants, copies to `posts/output/` and `public/posts/output/`, git pushes to `preview/full-site` |
+| `resize-post.js` | Resizes to platform variants, copies to `posts/output/` and `public/posts/output/`. **No git push** — deliberately removed 2026-05-27 (commit `495addb5`): Drive holds source assets, Cloudflare R2 serves the public Instagram URL, `distribute.js` posts from local disk + R2. Both output dirs are gitignored. |
 | `brand-video.js` | Adds BSV logo overlay + audio to MP4s |
 | `brand-image.js` | Adds BSV logo overlay to still images |
 | `eng-bot.js` | Reads `watch-drive.log`, calls Claude API to triage, emails digest via Zoho SMTP |
@@ -186,7 +186,7 @@ Big Sole Vibes/
 - R2 uploads failing with SSL handshake error + Unauthorized — credential or endpoint issue
 - ~~Telegram alerts not confirmed — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` may be missing from `.env`~~ — **stale, corrected 2026-06-20.** Both vars are present in `.env`. Outbound alerts (`sendTelegram` in `telegram.js`) work fine. However: the inbound listener (`telegram-webhook.js`, launchd job `com.bsv.telegram-webhook`) was found down — last exit signal -15, not in the live process list — meaning Big D's approve/deny replies aren't currently being picked up. Needs `launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook` to restart (no MCP path to do this remotely yet). (note: Zoho SMTP was replaced by Telegram — SMTP is no longer used)
 - `mon-pm`, `thu-pm` stuck in `_unknown: pending` — no platform variants emitted
-- Git push in `resize-post.js` failing — public URL fallback pipeline broken
+- ~~Git push in `resize-post.js` failing — public URL fallback pipeline broken~~ — **stale, corrected 2026-06-28.** Not failing — intentionally removed (see Key Scripts table). Confirmed via `git log --follow` that this was a deliberate 2026-05-27 decision, not a regression.
 
 ---
 
