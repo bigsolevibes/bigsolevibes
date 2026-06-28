@@ -77,14 +77,14 @@
 
   <div class="page-header">
     <h1>Operations — Agent Org Chart</h1>
-    <p>Last updated by chief-of-staff — Sat, Jun 13, 9:30 AM CDT</p>
+    <p>Last updated by chief-of-staff — Sun, Jun 28, 9:34 AM CDT</p>
   </div>
 
   <div class="summary">
     <div class="summary-item"><div class="summary-num">23</div><div class="summary-lbl">TOTAL AGENTS</div></div>
-    <div class="summary-item"><div class="summary-num ok-num">20</div><div class="summary-lbl">OK</div></div>
-    <div class="summary-item"><div class="summary-num warn-num">3</div><div class="summary-lbl">WARNING</div></div>
-    <div class="summary-item"><div class="summary-num error-num">0</div><div class="summary-lbl">ERROR</div></div>
+    <div class="summary-item"><div class="summary-num ok-num">21</div><div class="summary-lbl">OK</div></div>
+    <div class="summary-item"><div class="summary-num warn-num">0</div><div class="summary-lbl">WARNING</div></div>
+    <div class="summary-item"><div class="summary-num error-num">2</div><div class="summary-lbl">ERROR</div></div>
   </div>
 
   
@@ -108,7 +108,7 @@
         <div class="cost-lbl">TODAY</div>
       </div>
     </div>
-    <div style="font-size:0.6rem;color:#F59E0B;margin-top:0.5rem;text-align:center;letter-spacing:0.05em;">⚠ cost data from 2026-06-02 — run cost-report.js to refresh</div>
+    
   </div>
 
   <div class="chart">
@@ -125,14 +125,14 @@
       
       
     </div>
-    <div class="agent-card status-ok">
+    <div class="agent-card status-error">
       <div class="agent-header">
-        <div class="status-dot" style="background:#22C55E"></div>
+        <div class="status-dot" style="background:#EF4444"></div>
         <span class="agent-name">strategist</span>
-        <span class="status-label" style="color:#22C55E">OK</span>
+        <span class="status-label" style="color:#EF4444">ERROR</span>
       </div>
       <span class="badge weekly">WEEKLY</span>
-      
+      <div class="agent-msg">ERROR: Claude API failed — 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access t</div>
     </div></div>
       </div>
       <div class="tier">
@@ -147,23 +147,23 @@
       <span class="badge essential">ESSENTIAL</span>
       
     </div>
-    <div class="agent-card status-warning">
+    <div class="agent-card status-ok">
       <div class="agent-header">
-        <div class="status-dot" style="background:#F59E0B"></div>
+        <div class="status-dot" style="background:#22C55E"></div>
         <span class="agent-name">media-director</span>
-        <span class="status-label" style="color:#F59E0B">WARN</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
       </div>
       <span class="badge essential">ESSENTIAL</span>
-      <div class="agent-msg">stale — 6h since last activity</div>
+      
     </div>
-    <div class="agent-card status-warning">
+    <div class="agent-card status-ok">
       <div class="agent-header">
-        <div class="status-dot" style="background:#F59E0B"></div>
+        <div class="status-dot" style="background:#22C55E"></div>
         <span class="agent-name">creative-agent</span>
-        <span class="status-label" style="color:#F59E0B">WARN</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
       </div>
       <span class="badge essential">ESSENTIAL</span>
-      <div class="agent-msg">stale — 6h since last activity</div>
+      
     </div>
     <div class="agent-card status-ok">
       <div class="agent-header">
@@ -174,14 +174,14 @@
       <span class="badge essential">ESSENTIAL</span>
       
     </div>
-    <div class="agent-card status-ok">
+    <div class="agent-card status-error">
       <div class="agent-header">
-        <div class="status-dot" style="background:#22C55E"></div>
+        <div class="status-dot" style="background:#EF4444"></div>
         <span class="agent-name">eng-bot</span>
-        <span class="status-label" style="color:#22C55E">OK</span>
+        <span class="status-label" style="color:#EF4444">ERROR</span>
       </div>
       <span class="badge essential">ESSENTIAL</span>
-      
+      <div class="agent-msg">ERROR: Claude diagnosis failed: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to acc</div>
     </div>
     <div class="agent-card status-ok">
       <div class="agent-header">
@@ -205,14 +205,14 @@
       <span class="badge weekly">WEEKLY</span>
       
     </div>
-    <div class="agent-card status-warning">
+    <div class="agent-card status-ok">
       <div class="agent-header">
-        <div class="status-dot" style="background:#F59E0B"></div>
+        <div class="status-dot" style="background:#22C55E"></div>
         <span class="agent-name">update-handoff</span>
-        <span class="status-label" style="color:#F59E0B">WARN</span>
+        <span class="status-label" style="color:#22C55E">OK</span>
       </div>
       <span class="badge essential">ESSENTIAL</span>
-      <div class="agent-msg">stale — 5h since last activity</div>
+      
     </div>
     <div class="agent-card status-unknown">
       <div class="agent-header">
