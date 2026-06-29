@@ -996,3 +996,4 @@ An automated "CRITICAL: No bluesky/twitter image found in posts" blocker came th
 - Big D: add `KLAVIYO_FROM_EMAIL` to `.env`.
 - The `undefined: undefined (NaNm ago)` incident-status bug (open since 06-07) is worth fixing — it's making genuine alerts harder to trust.
 - backup-scripts' actual current health is unverified — worth a real check next time it's due to run (3am) rather than reasoning from absent logs.
+- `commit_changes` timed out (`MCP error -32001`) on the first attempt to push this entry — same flakiness already seen on `run_diagnostic` earlier this session. Commit landed locally either way; preview/full-site had ~10 commits sitting unpushed to origin as a result (no impact — that branch doesn't trigger any deploy — but worth a clean push when the MCP server cooperates).
