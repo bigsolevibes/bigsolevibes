@@ -955,6 +955,35 @@ async function watchBlogAgent() {
     else log(`WARNING: Telegram agent alert returned no confirmation (${issue.name})`)
   }
 
+  // ── Local standup snapshot (dashboard reads this) ──────────────────────────
+  // lib/dashboard/state-adapter.ts's getLatestStandup() reads the newest
+  // logs/standup-*.txt for the Blockers panel. Nothing wrote this file once
+  // the old retired generator (sole-report-agent) was replaced by this script
+  // — the dashboard served a single 2026-05-29 snapshot as "today's blockers"
+  // for a month (incl. a long-resolved "No bluesky/twitter image found" item)
+  // until this was traced 2026-06-28. BLOCKERS must stay the last section,
+  // with nothing after it — extractBlockers() captures from "BLOCKERS" to
+  // end-of-string and checks for the literal substring "No blockers".
+  try {
+    const snapshotLines = [
+      `*BSV — ${DAY_NAME} ${DATE_STAMP}*`,
+      ``,
+      `💰 *REVENUE:* ${revenueYd}${revenueWk} | Links: ${linkStatus}`,
+      `📲 *POSTS:* ${postLine}`,
+      `👥 *AUDIENCE:* ${audienceLine}`,
+      agents.issues.length
+        ? `🔧 *AGENTS:* ${agents.issues.length} issue(s) — ${agents.issues.slice(0, 3).map(i => i.name).join(', ')}`
+        : null,
+      ``,
+      `*BLOCKERS*`,
+      blockerLines.length ? blockerLines.slice(0, 3).map(l => `• ${l}`).join('\n') : 'No blockers.',
+    ].filter(l => l !== null).join('\n')
+    fs.writeFileSync(path.join(ROOT, 'logs', `standup-${DATE_STAMP}.txt`), snapshotLines)
+    log(`Local standup snapshot written → logs/standup-${DATE_STAMP}.txt`)
+  } catch (err) {
+    log(`WARNING: failed to write local standup snapshot — ${err.message}`)
+  }
+
   // ── Claude standup doc (Drive record) ─────────────────────────────────────
   // Shorter than before — Telegram carries the operational output.
   // Claude adds context, root-cause analysis, and the "Tonight" schedule.

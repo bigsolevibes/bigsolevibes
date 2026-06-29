@@ -56,33 +56,43 @@ server.tool(
 )
 
 // ── get_incident_status ───────────────────────────────────────────────────────
+// eng-bot.js's real loadSeen()/saveSeen() shape is a flat dedup map:
+//   { baselineAt: ISOString|null, hashes: { [md5(source::platform::msg)]: ISOTimestampString } }
+// It does NOT store per-entry {ts,agent,msg,level,resolved} fields — that was
+// this tool's original (wrong) assumption, which produced the long-standing
+// "undefined: undefined (NaNm ago)" output (open since 2026-06-07, fixed
+// 2026-06-28). There's no human-readable message or level stored per hash, so
+// this reports what the file actually contains — tracked failure-signature
+// count, baseline time, and first-seen age — rather than fabricating fields
+// that don't exist. For current human-readable failures, use read_log.
 server.tool(
   'get_incident_status',
-  'Get current pipeline incident status — blockers, warnings, and resolved issues from eng-bot.',
+  'Get eng-bot\'s tracked failure-signature history (logs/eng-seen.json): count, baseline time, and first-seen age per hash. No per-incident agent/message/level/resolved detail is stored — use read_log for that.',
   {},
   async () => {
     try {
       const seenPath = path.join(LOGS_DIR, 'eng-seen.json')
-      const seen     = fs.existsSync(seenPath) ? JSON.parse(fs.readFileSync(seenPath, 'utf8')) : {}
-      const now      = Date.now()
-      const blockers = []
-      const warnings = []
-      const resolved = []
+      const raw       = fs.existsSync(seenPath) ? JSON.parse(fs.readFileSync(seenPath, 'utf8')) : {}
+      const baselineAt = raw.baselineAt || null
+      const hashes     = raw.hashes && typeof raw.hashes === 'object' ? raw.hashes : {}
+      const now        = Date.now()
 
-      for (const [key, entry] of Object.entries(seen)) {
-        const age = Math.round((now - new Date(entry.ts).getTime()) / 60000)
-        const line = `  [${entry.level || 'warning'}] ${entry.agent}: ${entry.msg} (${age}m ago)`
-        if (entry.resolved) resolved.push(line)
-        else if (entry.level === 'blocker') blockers.push(line)
-        else warnings.push(line)
-      }
+      const entries = Object.entries(hashes)
+        .map(([hash, ts]) => {
+          const seenAt = ts ? new Date(ts).getTime() : NaN
+          const age    = !isNaN(seenAt) ? Math.round((now - seenAt) / 60000) : null
+          return { hash, ts, age }
+        })
+        .sort((a, b) => (a.age ?? Infinity) - (b.age ?? Infinity))
+
+      const lines = entries.map(e =>
+        `  ${e.hash.slice(0, 12)}…  first seen ${e.ts || 'unknown'}${e.age != null ? ` (${e.age}m ago)` : ''}`
+      )
 
       const text = [
-        `${blockers.length} blocker(s)  ${warnings.length} warning(s)  ${resolved.length} resolved`,
-        ...blockers,
-        ...warnings,
-        ...(resolved.length ? ['', '  resolved:'] : []),
-        ...resolved,
+        `${entries.length} tracked failure signature(s) — baseline ${baselineAt || '(none set)'}`,
+        'No per-incident agent/message/level is stored in eng-seen.json — use read_log on the relevant agent for current detail.',
+        ...(entries.length ? ['', ...lines] : []),
       ].join('\n')
 
       return { content: [{ type: 'text', text: text || 'No incidents on record.' }] }
