@@ -960,3 +960,39 @@ Big D: "what happened to our tiktok approval button on the dashboard." Investiga
 - 8 videos awaiting approve/deny in Video Review since 06-20 (listed above) — Big D to action via `/dashboard/video-review`.
 - `com.bsv.telegram-webhook` still down — `launchctl kickstart -k gui/$(id -u)/com.bsv.telegram-webhook` would restart it (no remote MCP path yet, per existing Known Issue).
 - `logs/telegram-pending.json` has grown to 141KB / ~170 entries, many from early June (`eng` type) — likely never pruned after being actioned or going stale. Not touched this pass (no deletion without Big D's say-so), just flagging.
+
+## 2026-06-28 (same day, cont. 7) — TikTok Direct Post audit requirements researched
+
+Big D: "go to it" (research TikTok's Direct Post / `video.publish` audit requirements). Pulled TikTok's official Content Sharing Guidelines and App Review Guidelines directly rather than relying on secondhand summaries.
+
+**Findings:**
+- Submission needs: custom app name/icon not referencing TikTok, public website with visible Privacy Policy + ToS (already done, see 06-09 entry), correct redirect URI, a written explanation per scope, and 1–5 demo videos (≤50MB each) showing the live integration end-to-end in TikTok's sandbox — the domain shown in the video must match the registered website URL.
+- The real gap is UX, not paperwork. Direct Post requires: a live `creator_info` lookup (show creator nickname, block posting if they can't post right now, check video duration against `max_video_post_duration_sec`), a Title field, a Privacy Status dropdown sourced from `privacy_level_options` with no default, ungated Allow Comment/Duet/Stitch checkboxes (off by default, greyed out if the creator disabled them), a Music Usage Confirmation consent line before the publish button, a Commercial Content Disclosure toggle (off by default, "Your Brand"/"Branded Content" options, branded content can't be paired with a private post), a content preview, and post-status polling. None of this exists in `tiktok-post.js`/`/dashboard/tiktok` — by design, since that code deliberately only uses the no-audit-needed inbox/draft endpoint.
+- **Real conflict found:** TikTok's Watermark Guidelines explicitly forbid superimposing any brand logo/watermark on content posted via this API, citing content deletion/account suspension as the consequence. The `-youtube.mp4` file `tiktok-post.js` already uses (and any future Direct Post flow would reuse) has the BSV logo burned in via `brand-video.js`. This applies regardless of audit status — worth resolving before any further TikTok work.
+- Reconfirmed unaudited-client interim limits: 5 users/24h cap, accounts must be private at post time, content posts `SELF_ONLY` until the account owner manually flips it public.
+
+**Decided / concluded:** Pure research this pass — no code changed. Reported to Big D with the watermark conflict flagged as the standout finding; he hasn't yet said whether to build the Direct Post UI now or hold.
+
+**Open / follow-up:**
+- Decide whether to build the creator_info/title/privacy/disclosure UI now, and whether TikTok needs its own unbranded video render separate from the youtube-targeted one.
+- Audit turnaround is typically 2–4 weeks with multiple feedback rounds once submitted — factor into any timeline.
+
+## 2026-06-28 (same day, cont. 8) — Standup blocker alert was mostly false positives
+
+An automated "CRITICAL: No bluesky/twitter image found in posts" blocker came through, bundled with warnings for backup-scripts, drive-sync, newsletter-agent, product-research, affiliate-scout, and telegram-webhook. Investigated each via live MCP tools instead of taking the alert at face value.
+
+**Findings:**
+- The CRITICAL item is a false alarm. `distribute.log` for `mon-pm` (posted ~50 min before the alert) shows `twitter: NOT FOUND` and `facebook: NOT FOUND` — exactly expected, since both sit in `PAUSED_PLATFORMS` and never get a rendered variant. Bluesky's image (`mon-pm-bluesky.jpg`) WAS found, and the post succeeded on both Instagram and Bluesky (`ok=2 failed=0`). Whatever generates these alerts appears to scan for "NOT FOUND" lines without checking which platforms are paused by design.
+- The `drive-sync` warning cites a `2026/05/27` timestamp — a month-old log line. The live log shows drive-sync running cleanly every 5 minutes all night with zero errors. Stale, not current.
+- `get_incident_status` itself returned two warnings as literal `undefined: undefined (NaNm ago)` — the same malformed-incident-data bug flagged on 06-07, still unfixed, and a likely contributor to noisy alerts like this one.
+- `backup-scripts`'s cited error ("Service Accounts do not have storage quota") is a real, recognizable Google Drive API error (service accounts have 0 personal storage quota outside Shared Drives) — but it isn't in any current or rotated `backup-scripts*.log`, and there's no `com.bsv.backup-scripts` launchd job (it's installed under the older `com.bigsolevibes.backup-scripts` label, 3am daily, so `get_launchd_status` doesn't surface it). Couldn't confirm timing from here — flagged as plausible but unverified rather than chased further.
+- `newsletter-agent`'s "KLAVIYO_FROM_EMAIL not set" is real and current — confirmed absent from `.env`.
+- `telegram-webhook` "Poll error: fetch failed" matches the already-documented down state (exit signal -15) — not new.
+- `affiliate-scout` (one brand homepage fetch failed) and `product-research` (one product search failed) are single-item flakiness in routine research loops, not pipeline blockers.
+
+**Decided / concluded:** No code changed. Reported the one real, actionable item (KLAVIYO_FROM_EMAIL) to Big D and explained why the rest isn't.
+
+**Open / follow-up:**
+- Big D: add `KLAVIYO_FROM_EMAIL` to `.env`.
+- The `undefined: undefined (NaNm ago)` incident-status bug (open since 06-07) is worth fixing — it's making genuine alerts harder to trust.
+- backup-scripts' actual current health is unverified — worth a real check next time it's due to run (3am) rather than reasoning from absent logs.
