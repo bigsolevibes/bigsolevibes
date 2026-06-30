@@ -1,32 +1,29 @@
 ## Pre-Session Protocol — Read Before Responding
 
-Before responding to any message in any session, read **in this order** and **present the stand-up to Big D immediately**:
+Read **one file**: `logs/bigc-brief.md`
 
-1. **`BSV-Start-Here.md`** — orientation + precedence rules. Read this FIRST. (local — fast)
-2. **Latest `standup-YYYY-MM-DD.md` in Drive's `Reports/` folder** — the chief brief. Has explicit BIG D and BIG C action items. Most actionable doc in the stack — surface it in full, including both action lists.
-3. **`BSV-Session-Context.md` in Drive's `Handoff/` folder** — strategic context. When it conflicts with `BSV-Memory.md` on current state, trust this one.
-4. **`BSV-BigC-Audit-Log.md`** — last 5–10 entries. Append at end of any session where something durable happened. (local — fast)
+Chief-of-staff.js writes it every morning from all live data sources. It contains the full standup (revenue, posts, agents, cost, growth, BIG D action items, BIG C action items) plus a compact session-context block (last 3 audit log headlines, hard rules, precedence). One read, everything you need.
 
-**Read on demand only — do NOT read every session:**
-- `BSV-Handoff-YYYY-MM-DD.md` — only if session-context is missing or stale
+**If `logs/bigc-brief.md` is missing or its mtime is >24h:** fall back to the latest `standup-YYYY-MM-DD.md` in Drive's `Reports/` folder.
+
+`MEMORY.md` is auto-loaded — cross-session context is already in scope.
+
+**Present the stand-up to Big D as the opening of every session** — Revenue, Posts, Agent health, Cost, Growth. Skip only if Big D says "skip the brief."
+
+**The stand-up is non-negotiable.** If Big D opens with anything other than "skip the brief" — present it first, then address their message.
+
+**Read on demand only — do NOT read at startup:**
+- `BSV-BigC-Audit-Log.md` — only when appending at end of session, or investigating a specific past decision
+- `BSV-Start-Here.md` — deprecated; rules are in this file and in bigc-brief.md
+- `BSV-Session-Context.md` (Drive) — only if bigc-brief is missing and you need strategic context
 - `eng-report-YYYY-MM-DD.md` — only if standup flags active agent failures
 - `cost-report-YYYY-MM-DD.md` — only if standup flags a budget alert
 - `BSV-Memory.md` — only when brand voice or strategic decisions are in question
 
-**Present the stand-up to Big D as the opening of every session.** Cover all five sections — don't summarize into nothing:
-- **Revenue** — yesterday's commissions, week total, action today
-- **Posts** — confirmed, gaps, stuck media
-- **Agent health** — errors and warnings surfaced from the eng report
-- **Cost** — balance, burn rate, runway (from cost report)
-- **Growth** — follower counts, email list, trend
+For live pipeline state, pull via `mcp__bsv__get_pipeline_state` — fresher than any file.
 
-**The stand-up is non-negotiable.** If Big D opens with anything other than "skip the brief" — present it first, then address their message.
-
-For live pipeline state, pull directly via `mcp__bsv__*` tools — fresher than any cached doc.
-
-Do not ask questions answered in `BSV-Start-Here.md`, `BSV-Memory.md`, or `BSV-BigC-Audit-Log.md`.
-Do not ask Code to read scripts documented in the org chart.
-Do not ask Big D for context that chief already reported or that the audit log already covers.
+Do not ask questions answered in bigc-brief.md or MEMORY.md.
+Do not ask Big D for context that chief already reported.
 
 ---
 

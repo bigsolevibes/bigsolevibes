@@ -733,6 +733,55 @@ async function watchBlogAgent() {
   }
 }
 
+// ─── Big C Session Context ────────────────────────────────────────────────────
+// Appended to logs/bigc-brief.md so Big C starts every session from ONE file.
+// Replaces the 4-file startup read (BSV-Start-Here, standup, Session-Context,
+// Audit-Log) with a single local read. Chief is the aggregator; Big C reads.
+// Added 2026-06-30 per Big D: "I want to start out fresh and clean."
+
+function buildBigCContext() {
+  const lines = ['\n\n---\n\n## Big C Session Context\n']
+
+  // ── Last 3 audit log entries — headlines only, not full text ─────────────
+  lines.push('### Recent Work (BSV-BigC-Audit-Log.md — last 3 entries)')
+  try {
+    const auditPath = path.join(ROOT, 'BSV-BigC-Audit-Log.md')
+    if (fs.existsSync(auditPath)) {
+      const text = fs.readFileSync(auditPath, 'utf8')
+      const entries = text.split(/\n(?=## \d{4}-\d{2}-\d{2})/).filter(Boolean)
+      const recent  = entries.slice(-3).reverse()
+      for (const entry of recent) {
+        const m = entry.match(/^## (.+)/)
+        if (!m) continue
+        const headline = m[1].trim()
+        const snippet  = entry.split('\n').slice(1)
+          .find(l => l.trim() && !l.startsWith('---'))
+          ?.replace(/^\*\*[^*]+\*\*[:\s]*/, '').trim().slice(0, 120) || ''
+        lines.push(`- **${headline}**${snippet ? ` — ${snippet}` : ''}`)
+      }
+    } else {
+      lines.push('- (audit log not found)')
+    }
+  } catch {
+    lines.push('- (audit log unavailable)')
+  }
+
+  // ── Hard rules — condensed, don't re-derive ───────────────────────────────
+  lines.push('\n### Hard Rules')
+  lines.push("- **Never delete files** without Big D's explicit say-so — ask first, every time")
+  lines.push('- **Never touch .env** — tell Big D what to add manually; never write to it')
+  lines.push('- **Pushing to main** = explicit, live confirmation each time + `mcp__bsv__push_to_main` only; never proactive')
+  lines.push('- **Dashboard** (`lib/dashboard/`, `app/dashboard/`, `components/dashboard/`) = gitignored, localhost-only; saving to disk IS the deploy — no commit, no push')
+  lines.push('- **Prefer `mcp__bsv__*` tools** over asking Big D to run terminal commands')
+
+  // ── Precedence ────────────────────────────────────────────────────────────
+  lines.push('\n### Precedence')
+  lines.push('This brief > live MCP state > memory. For live slot/approval status: `mcp__bsv__get_pipeline_state`.')
+  lines.push('To append to the audit log or dig into history: read `BSV-BigC-Audit-Log.md` on demand — not at startup.')
+
+  return lines.join('\n')
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -1200,6 +1249,21 @@ ${efficiencyAudit ? "## Agent Efficiency\n(Review table. Call out flags.)" : ""}
       log(`Standup uploaded → ${REMOTE}/Reports/${outFile}`)
     } catch (err) {
       log(`ERROR: standup upload — ${err.message}`)
+    }
+  }
+
+  // ── Big C brief — one-file session startup ───────────────────────────────
+  // Full standup + compact session context written to logs/bigc-brief.md so
+  // Big C reads ONE local file at startup instead of four separate sources.
+  // CLAUDE.md Pre-Session Protocol points here. See buildBigCContext() above.
+  if (standupText.trim()) {
+    try {
+      const bigcPath    = path.join(ROOT, 'logs', 'bigc-brief.md')
+      const bigcContent = standupText + buildBigCContext()
+      fs.writeFileSync(bigcPath, bigcContent)
+      log(`Big C brief written → logs/bigc-brief.md`)
+    } catch (err) {
+      log(`WARNING: Big C brief write failed — ${err.message}`)
     }
   }
 
