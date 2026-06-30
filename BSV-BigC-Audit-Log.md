@@ -4,6 +4,101 @@
 **Written by:** Big C — appended at the end of every session (or when something durable happens)
 **Purpose:** A running, chronological record of what Big D and Big C actually did together — decisions, deliverables, things discovered, things broken, things fixed. Memory holds the *consolidated* understanding; this holds the *play-by-play*, so Big C stops re-deriving (or mis-deriving) things Big D already explained.
 
+## 2026-06-29 — Root-caused and fixed the "dark leather, no product" image bug (gemini-bridge.js BSV_VISUAL_PREAMBLE)
+
+**What happened:**
+- Big D: tue-pm's image is still generic dark-leather-chair, no product visible, doesn't match the story. Three corrections on this exact symptom had already gone through `learn.js` (2026-06-13, 06-20, 06-28) — none changed the actual images. Big D: "there is something blocking that we cant get past."
+
+**Root cause found:**
+- Not a brief problem. `posts/briefs/tue-pm-brief.txt`'s `IMAGE BRIEF:` is excellent — explicitly demands the Brickell Clarifying Gel Face Wash bottle be the visual focus on a bathroom counter, REJECTED-without-appeal language against leather-chair defaults. `creative-agent.js` correctly loads and applies all three `learn.js` corrections from `logs/creative-directives.json` into the brief-writing prompt — confirmed working as intended.
+- The actual bug is one layer downstream, in `scripts/gemini-bridge.js`'s `BSV_VISUAL_PREAMBLE` — a static block prepended to *every* image/video prompt before the brief text, unconditionally. It flatly stated "the product or category appears as a prop in the scene, not the hero of the shot" and "Dark wood, leather, low light" as fixed rules. Imagen sees the preamble first, the specific brief second — the generic/contradictory framing wins regardless of brief quality. This is why none of the three `learn.js` corrections ever reached the actual pixels: they all land in `creative-agent.js` (the brief layer), and nothing in that file is read by `gemini-bridge.js`, which builds the real prompt independently.
+- Confirmed via logs: `gemini-bridge.log`/`image-gen.log` show a clean, error-free run for tue-pm this morning (09:01–09:03) — purely a prompt-content bug, not an infra/error-path failure.
+
+**Fixed:**
+- `scripts/gemini-bridge.js`: rewrote `BSV_VISUAL_PREAMBLE` to make both contradictions conditional instead of absolute, and added an explicit precedence rule ("the SCENE brief below... wins" whenever it conflicts with the defaults above). Product-as-prop and dark-wood/leather are now stated as defaults for when the brief doesn't specify otherwise, with an explicit exception when a brief names a product as hero or describes a different setting. Brand tone/color anchors (#C17D2E amber, #0D1B2A navy, deadpan/Monty-Python tone, head-to-toe composition) left untouched — only the two contradicting rules were touched.
+- Committed to `preview/full-site`.
+
+**Not yet done / needs Big D:**
+- The fix only changes future prompt-building — it does not retroactively fix tue-pm's already-generated image. Regenerating just that image (keeping the existing "The Callout" / Brickell brief as-is) requires re-running `gemini-bridge.js` for that day, which isn't exposed through any MCP tool that takes a `--day` arg (`run_diagnostic` always runs with `--dry-run` and no other args; `apply_code_fix` only queues a future Code-session fix, doesn't execute). The one MCP tool that does take a `day` param, `run_media_director`, was deliberately **not** used here — it calls `media-director.js --day tue`, which generates a brand-new brief from the shelf product rotation, i.e. it would likely overwrite the existing, already-correct Brickell story with a different product/story entirely. That's a bigger change than "fix the picture for the story we already have." Asked Big D to run `node scripts/gemini-bridge.js --day tue` once by hand instead — reuses the existing brief verbatim, just rebuilds the image/video prompts and regenerates art through the now-fixed preamble.
+
+---
+
+## 2026-06-29 — Dashboard image lookup fixed, queue redesigned to per-platform post previews, Pipeline Health/Blockers schema mismatch fixed
+
+**What happened:**
+- Right after the caption-preview fix landed, Big D reported the caption text now shows but the image disappeared, asked for the expand view to show an enlarged full post per platform (not combined), and separately flagged that Pipeline Health shows "clear" while individual agents show "never run" — asked to investigate while already in the dashboard code.
+
+**Root causes found:**
+- **Missing image:** `app/api/dashboard/media/route.ts` only ever checked `posts/output/` (`process.cwd()/posts/output`). That directory had only 3 files total (one slot's worth, just-written) — everything else (166 files spanning weeks of slots) was sitting in `public/posts/output/` instead. `resize-post.js` writes both directories every run (confirmed by reading it), so this wasn't a pipeline bug — `posts/output/` itself had been emptied by something outside the scripts (not investigated further; out of scope unless Big D wants to chase it), and the dashboard route never had a fallback. Result: almost every slot's image silently 404'd.
+- **Pipeline Health "clear" + agents "never run":** `lib/dashboard/types.ts`'s `AgentState`/`AgentStatus` (`tier`/`role`/`schedule`/`status: active|stale|error|never-run|inactive`/`lastSeen`/`lastError`) never matched what `chief-of-staff.js`'s `checkAgentHealth()` actually writes to `logs/org-chart-state.json` (`essential`/`weekly`/`status: ok|warning|error|unknown`/`msg`/`fix`). Confirmed `org-chart-agent.js` only *reads* that file to rebuild `public/org-chart.html` — `chief-of-staff.js` is the sole writer, and its shape was never aligned with the dashboard's types. Two consequences: (1) every agent's `status` lookup (`"ok"` etc.) missed every `STATUS_CONFIG` key and fell back to "inactive," and `lastSeen` was always undefined so `timeAgo()` always printed "never" — every agent looked dead regardless of real health; (2) `extractBlockers()`'s condition `agent.status === 'error' && agent.lastError` could never be true (`lastError` doesn't exist on the real shape — it's `msg`), so org-chart-driven blockers were structurally dead code, no matter how bad a real error was. Checked the live file: every agent currently reports `status: "ok"` — the pipeline genuinely is healthy right now, this was a display bug, not a hidden incident.
+
+**Fixed:**
+- `app/api/dashboard/media/route.ts`: now takes an optional `platform` param and searches `posts/output/` then falls back to `public/posts/output/`, trying `.png`/`.jpg`/`.jpeg`. Verified against real files: `tue-pm`/`tue-pm-flow`/`mon-am`/`mon-am-flow` all resolve correctly via the fallback now.
+- `app/api/dashboard/caption/route.ts`: added `youtube` to `perPlatform` (was instagram/facebook/bluesky only) for parity with `captionFor()` in `distribute.js`.
+- `components/dashboard/ContentQueue.tsx`: expand panel rewritten from one shared image + a combined stacked-caption block into one card per platform (Instagram/Facebook/Bluesky/YouTube), each with its own enlarged image (up to 420px, falls back to the `-flow` sibling's art if the base slot has none for that platform) directly above its own caption text — per Big D: "I dont want to see it all combined."
+- `lib/dashboard/types.ts`, `components/dashboard/PipelineHealth.tsx`, `lib/dashboard/state-adapter.ts`: `AgentState`/`AgentStatus` rewritten to match the real `chief-of-staff.js` shape; `PipelineHealth` now shows real ok/stale/error/no-data status with the actual `msg`/`fix` text instead of a fabricated "inactive"/"Last run: never" for everything; `extractBlockers` now fires on real `error`/`warning` status using `msg`, tested against both the live (all-clear) state and a simulated essential-agent failure to confirm it actually surfaces when something's wrong.
+- Verified: `tsc --noEmit` clean across the whole project; no other file references the old `AgentState` fields (`lastSeen`/`lastError`/`role`/`schedule`/`tier`) — checked via direct grep against `lib/dashboard`, `app/dashboard`, `components/dashboard`, `app/api/dashboard` since these paths are gitignored and the Grep tool silently skips gitignored files (ripgrep respects `.gitignore` by default) — only `mcp__workspace__bash`'s plain `grep` sees them.
+
+**Open / follow-up:**
+- Why `posts/output/` was nearly empty while `public/posts/output/` had full history wasn't chased — resize-post.js's own write logic looks correct (writes outputDir first, copies to publicDir + Desktop right after), so something external cleared it. Worth asking Big D if he's manually clearing that folder for disk space, since the dashboard now tolerates it but the underlying divergence is still there.
+- Facebook/legacy platforms (twitter, tiktok) no longer get image variants generated at all — `resize-post.js`'s `platforms` array currently only produces instagram/youtube/bluesky. Older slots (e.g. `wed-am`) still have facebook/twitter/tiktok files from before that array was trimmed. New slots' Facebook card will correctly show "No image generated for this platform" until/unless Facebook is unpaused and resize-post.js's platform list is restored.
+
+---
+
+## 2026-06-29 — Live-posting caption bug found and fixed; dashboard queue deduped + caption preview added
+
+**What happened:**
+- While building the dashboard's "show the full post on click" feature (Big D: "I click on the queue content, i see a pic but do not see any of the te[x]t... it should give me the entire post as it would show up on the media"), traced `distribute.js`'s `parseCaptionFile()` and found a real bug, not just a display gap: it strips the `## instagram` / `## twitter` / `## facebook` section headings but never branches on them — every section's text gets concatenated into one `body`, and that same merged blob is posted to every active platform. Verified by running the actual parser against the real `tue-pm.md` content: the would-be Instagram post was the Instagram copy, immediately followed by the Twitter-style punch line, immediately followed by the Facebook copy again.
+- This had not yet hit a live post — every caption file built in this 3-section format was still sitting in the approval backlog (see prior entry, same day). `tue-pm`/`tue-pm-flow` would have been the first to actually go out through this code path.
+- Got Big D's explicit go-ahead before touching live-posting code (`distribute.js` posts to real Instagram/Bluesky).
+
+**Fixed:**
+- `scripts/distribute.js`: `parseCaptionFile()` now also returns a `sections` map keyed by heading name. Added `captionFor(platform)` which picks the right section per platform (instagram→`## instagram`, facebook→`## facebook` falling back to instagram, x/twitter/bluesky→`## twitter`). Bluesky deliberately reads the "twitter" section — `gemini-bridge.js` and `watch-drive.js` both write Bluesky's punchy copy under that heading on purpose (X is paused; "twitter" is the established short-form-copy label, not literally X-only). All 5 `postTo*` functions now call `captionFor()` instead of the old flat `caption`. Legacy single-block caption files with no `##` sections fall through to the old flat-body behavior unchanged — tested both paths against real and synthetic files, syntax-checked clean.
+- `components/dashboard/ContentQueue.tsx`: collapsed the 4-row am/am-flow/pm/pm-flow grid down to 2 rows (am/pm) per Big D's "I don't know why I need to see both — clean that up." Each cell now folds in its `-flow` sibling: combined status badge (worse/more-actionable of the two wins), both images shown side-by-side on expand, one combined Approve/Deny that fires both slots together via two calls to the existing single-slot `/api/dashboard/approve`+`/deny` routes (no batch endpoint exists, so this is sequential, not atomic).
+- New `app/api/dashboard/caption/route.ts`: reads the slot's staged `~/tmp/bsv-ready/{slot}.md`, parses it with the same section logic as `distribute.js`, and returns the actual per-platform text (instagram/bluesky/facebook) the way `captionFor()` would select it — not a flattened or truncated blob. Wired into `ContentQueue`'s expand panel so clicking a queue item now shows image + the real per-platform caption text, fulfilling Big D's ask. Only covers currently-pending slots (the local tmp copy is deleted once a slot archives to Drive's `Posted/` folder, same limitation `ApprovalQueue` already has) — historical/already-posted captions aren't recoverable from local state at all (`post-state.json`'s `PostRecord.caption` field is typed but `appendPostState()` never actually writes it).
+
+**Open / follow-up:**
+- `post-state.json` never persists caption text on success despite the type having a `caption?` field — if Big D ever wants historical caption lookback, this needs wiring (and likely a fallback to Drive's `Posted/YYYY-MM-DD/{slot}.md`, since that's where the .md actually survives archiving).
+- `gemini-bridge.js`'s "## twitter" heading literally holding Bluesky copy (not X copy) is a confusing label inherited from before Bluesky existed. Didn't rename — touches `gemini-bridge.js` and `watch-drive.js`'s `buildFlowCaption`, bigger blast radius than what was asked. Flagging in case a real X relaunch ever needs its own distinct section.
+- Brief-level `YOUTUBE:`/`TIKTOK:` fields (referenced in `creative-agent.js`'s field regex) never make it into the caption `.md` at all — `buildCaptionMd()` only ever writes instagram/twitter/facebook sections. Not acted on — YouTube/TikTok are currently skipped for both live slots anyway.
+
+---
+
+## 2026-06-29 — Backlog/queue date confusion resolved; 12 stale slots denied, 2 genuine today slots identified
+
+**What happened:**
+- Big D flagged that the queue and backlog are indistinguishable because slots show no date — `_hold_since` in `get_pipeline_state` reads `2026-06-29` for every single one of the 14 held slots, even though some are nearly two weeks old.
+- Root cause: `_hold_since` gets touched on every pipeline run rather than preserving the slot's true original generation date. Confirmed via Drive `createdTime` on the actual caption/image files in "Ready to Post": fri-am/-flow created 6/18, sat-am/-flow created 6/19–20, sun-am/-flow and mon-am/-flow created 6/20, tue-am/-flow created 6/22, thu-am/-flow created 6/24. Only `tue-pm`/`tue-pm-flow` were genuinely created this morning (6/29, ~9:01–9:03am) — "The Callout," a Brickell Clarifying Gel Face Wash story, post_time 19:00 tomorrow.
+- Big D confirmed denying all 12 backlog slots now (not handling via Telegram himself). Ran `mcp__bsv__deny_slot` on all 12: fri-am, fri-am-flow, sat-am, sat-am-flow, sun-am, sun-am-flow, mon-am, mon-am-flow, tue-am, tue-am-flow, thu-am, thu-am-flow. All denied cleanly, cleared from pipeline state, captured in `denial-log.json`. Verified via fresh `get_pipeline_state` call — only `tue-pm`/`tue-pm-flow` remain.
+
+**Decided / concluded:**
+- The dashboard/queue view needs a real per-slot "created" date surfaced (not `_hold_since`) so this doesn't recur — flagged as open follow-up, not fixed this session (scope discipline, wasn't asked).
+- `tue-pm.md`/`tue-pm-flow.md` identical captions traced to `gemini-bridge.js` (lines 165–176): by design, not a bug. One Claude call produces one `captionContent`, written verbatim to both `{slug}.md` and `{slug}-flow.md` — the code comment says the flow file exists only as a distribution gate ("watch-drive won't distribute until BOTH the media and this caption file are present"), not to carry distinct video copy. Separately, `buildCaptionMd()` (line 91, `const fb = fields.instagram || ''`) hardcodes Facebook = Instagram text for every slot, flow or not. Confirmed via `creative-agent.log`: only one Claude generation ran for "tue-pm / NOD" (08:10:49–08:11:19); no second call for a flow-specific variant.
+
+**Open / follow-up:**
+- Surface a true per-slot creation date in the dashboard/queue UI — `_hold_since` is not reliable for this.
+- Real feature gap, not yet requested: `gemini-bridge.js` never writes distinct copy for video/flow posts vs. static posts, and Facebook never gets its own copy either. If Big D wants flow posts to read differently, `buildCaptionMd()`/the brief format need a video-specific field.
+- Carryover from previous entry, still open: `chief-of-staff.js` standup-upload fallback bug, `creative-agent.log` Drive-save `ETIMEDOUT`, `cj-research.js` missing-module error, telegram-webhook inbound listener down, blog-agent stale 43 days.
+
+---
+
+## 2026-06-29 — Today's Drive standup.md found truncated; root cause is chief-of-staff.js uploading a terminated API response as final
+
+**What happened:**
+- Session open — pulled the stand-up per protocol. Drive's `standup-2026-06-29.md` (fetched via Drive connector) is only 169 bytes and cuts off mid-word: "Reddit post — non-negotiable. Post to r/goodyear" — no BIG C list, no Revenue/Posts/Agent/Cost/Growth sections.
+- Root-caused via `chief-of-staff.log`: `15:00:45.294Z ERROR: standup API call failed — terminated`, immediately followed by `15:00:46.776Z Standup uploaded → .../standup-2026-06-29.md`. The script doesn't check whether the Claude call actually completed before uploading — it uploaded whatever partial text came back from the terminated call as if it were the finished doc.
+- Worked around it for this session using the local snapshot (`logs/standup-2026-06-29.txt`, written successfully *before* the failed LLM call at 14:43:45) plus live MCP state (`get_pipeline_state`, `get_cost_state`, `get_agent_processes`) plus `chief-of-staff.log` / `eng-bot.log` directly.
+
+**Decided / concluded:**
+- Not fixed yet — flagging only, per scope discipline. This is a real bug (no fallback-to-local-snapshot path when the LLM standup-doc call fails/truncates) but wasn't something Big D asked to be fixed this session.
+
+**Open / follow-up:**
+- `chief-of-staff.js`: add a check after the Claude call — if it errors or returns truncated/incomplete content, upload the local snapshot format instead of the partial LLM text.
+- eng-bot's latest run (22:47–22:59) also flagged: `creative-agent.log` — `WARNING: Drive save failed — spawnSync /bin/sh ETIMEDOUT` (new, not yet investigated); `cj-research.log` — `Cannot find module` (open since at least 2026-06-22, still unresolved); CJ revenue 404 and telegram-webhook poll error are the same long-standing known issues.
+- 14 slots (fri-am/-flow, mon-am/-flow, sat-am/-flow, sun-am/-flow, thu-am/-flow, tue-am/-flow, tue-pm/-flow) held at approval gate since 2026-06-29, awaiting Big D's APPROVE/DENY.
+
+---
+
 ## 2026-06-19 — TikTok OAuth connected; tiktok_token_exchange MCP tool added
 
 TikTok account is now authorized. `config/tiktok-token.json` has a valid `access_token` (24h) and `refresh_token` (1yr), scope `user.info.basic,video.upload`. `getValidAccessToken()` in `tiktok-auth.js` will auto-refresh going forward.

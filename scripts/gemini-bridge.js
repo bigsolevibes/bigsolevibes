@@ -96,6 +96,21 @@ function buildCaptionMd(fields) {
 // ─── BSV visual preamble ──────────────────────────────────────────────────────
 // Prepended to every image and video prompt before it reaches Gemini/Imagen.
 // ONE scene only. The brief selects the scene — this preamble sets the rules.
+//
+// Fixed 2026-06-29 (see BSV-BigC-Audit-Log.md): this preamble used to assert
+// "the product... is a prop, not the hero" and "Dark wood, leather, low light"
+// as flat, unconditional rules — directly contradicting per-slot briefs from
+// creative-agent.js that name a specific product and explicitly require it to
+// be the visual focus in a specific (often non-leather) setting. Confirmed via
+// tue-pm-brief.txt: the brief correctly demanded the Brickell Clarifying Gel
+// Face Wash bottle be the hero on a bathroom counter, but the rendered image
+// came back as a generic dark-leather-chair scene with no product visible —
+// because this preamble's flat rules sat upstream of the brief and won. Big D
+// had already filed three corrections on this exact symptom via learn.js
+// (2026-06-13, 06-20, 06-28) that all reached creative-agent.js's brief
+// quality but never this file, which is why the actual images never improved.
+// Both rules below are now explicitly conditional, and a precedence statement
+// makes the brief authoritative whenever it conflicts with this preamble.
 
 const BSV_VISUAL_PREAMBLE = `SINGLE FRAME ONLY. ONE photograph. ONE person. ONE moment. ONE location.
 DO NOT generate a collage, grid, panel layout, mood board, contact sheet, or multiple images.
@@ -103,17 +118,19 @@ DO NOT show more than one version of the same scene. If you are about to produce
 
 BIG SOLE VIBES — VISUAL STANDARD
 
+PRECEDENCE: The SCENE brief below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including the product's role in the shot or the setting described — the brief wins. Everything below is a fallback for when the brief doesn't specify otherwise, not a rule layered on top of it.
+
 The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. The man has already made up his mind — we are catching him mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The gap is real. The man is real. The humor is in the recognition, not the joke.
 
-WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. The product or category appears as a prop in the scene, not the hero of the shot. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline. It is never the subject unless the brief explicitly calls for it.
+WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the brief below names a specific product and instructs that it be the visual focus, follow the brief — the product is the hero, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline, unless the brief calls for it to be the subject.
 
-VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A). Cinematic grain. 35mm editorial feel. Dark wood, leather, low light. No stock photo energy. No product labels. No logos. No text in the image.
+VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain. 35mm editorial feel. No stock photo energy. No product labels unless the brief calls for a specific product's label to be readable. No logos. No text in the image. Dark wood and leather are one recurring BSV environment, not the only one — use the actual setting the brief describes (bathroom counter, locker room, kitchen, office, outdoors, wherever) instead of defaulting to a leather chair when the brief says otherwise.
 
 TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. The man looks like he just thought of something — not like he is being photographed.
 
 HEAD TO TOE: The full body should be visible or strongly implied. Head, torso, hands, feet — the whole man. This is a head-to-toe brand. The foot is the wink at the bottom of the frame. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. Otherwise: foot is present, incidental, the period at the end of the sentence.
 
-SCENE (from the brief below):
+SCENE (from the brief below — this is the actual assignment; everything above is fallback context only):
 `
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
