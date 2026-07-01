@@ -159,7 +159,7 @@ Search each persona's communities now. Use web search to pull current Reddit thr
 
 ## MAN 1 — THE PROFESSIONAL
 *Communities: r/malefashionadvice, r/goodyearwelt, r/bootroom, r/suits | Sites: Huckberry, Esquire, GQ*
-*Hashtags: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle*
+*Hashtags: #BigSoleVibes #mensgrooming #selfcare #menwellness*
 
 ### Top 3 Conversations Right Now
 For each: thread title or headline, platform/source, approximate engagement signal, and what the conversation is actually about underneath the surface topic.
@@ -174,7 +174,7 @@ What problems are being named in these communities that no product or brand is v
 
 ## MAN 2 — THE ATHLETE
 *Communities: r/running, r/cycling, r/crossfit, r/nba, r/basketball*
-*Hashtags: #recoverydays #athletelife #trainhard #crossfit #runnerscommunity*
+*Hashtags: #BigSoleVibes #recovery #musclerecovery #mensgrooming #selfcare*
 
 ### Top 3 Conversations Right Now
 Focus on recovery conversation, foot and lower-body pain points, performance rituals. Same format: source, engagement signal, what's underneath it.
@@ -189,7 +189,7 @@ Specific problems being named — especially around foot health, recovery produc
 
 ## MAN 3 — THE STYLE-CONSCIOUS
 *Communities: r/streetwear, r/sneakers, r/malefashionadvice | Sites: Highsnobiety, Mr Porter, Complex*
-*Hashtags: #menswear #ootd #streetstyle #complexstyle #highsnobiety*
+*Hashtags: #BigSoleVibes #mensgrooming #selfcaremen #groomingformen*
 
 ### Top 3 Conversations Right Now
 Focus on boot and shoe care, detail-oriented grooming, ritual and routine. Same format.
@@ -228,7 +228,7 @@ Three angles, one per persona. Each must be briefable tomorrow morning.
 ## Hashtag Performance Signal
 Which hashtags from the three persona lists are getting traction this week vs. going quiet? Use search to check recent post volume and engagement patterns. Flag any rising tags not on the list that BSV should be watching.
 
-Hashtags to assess: #mensstyle #bespoke #leathergoods #shoecare #gentlemanstyle #recoverydays #athletelife #trainhard #crossfit #runnerscommunity #menswear #ootd #streetstyle #complexstyle #highsnobiety
+Hashtags to assess: #BigSoleVibes #mensgrooming #selfcare #menwellness #selfcaremen #groomingformen #recovery #musclerecovery #footcare #foothealth #skincare #skincareformen
 
 ---
 

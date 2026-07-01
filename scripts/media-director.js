@@ -109,9 +109,9 @@ const PERSONA_LANE = {
 
 // Persona-matched hashtags (from the social-listening brief)
 const PERSONA_HASHTAGS = {
-  professional:      ['#mensstyle', '#bespoke', '#leathergoods', '#shoecare', '#gentlemanstyle'],
-  athlete:           ['#recoverydays', '#athletelife', '#trainhard', '#crossfit', '#runnerscommunity'],
-  'style-conscious': ['#menswear', '#ootd', '#streetstyle', '#complexstyle', '#highsnobiety'],
+  professional:      ['#BigSoleVibes', '#mensgrooming', '#selfcare', '#menwellness'],
+  athlete:           ['#BigSoleVibes', '#recovery', '#musclerecovery', '#mensgrooming', '#selfcare'],
+  'style-conscious': ['#BigSoleVibes', '#mensgrooming', '#selfcaremen', '#groomingformen'],
 }
 
 const DOW_TO_SLUG = ['sun','mon','tue','wed','thu','fri','sat']
