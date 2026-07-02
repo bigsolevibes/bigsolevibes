@@ -112,25 +112,27 @@ function buildCaptionMd(fields) {
 // Both rules below are now explicitly conditional, and a precedence statement
 // makes the brief authoritative whenever it conflicts with this preamble.
 
-const BSV_VISUAL_PREAMBLE = `SINGLE FRAME ONLY. ONE photograph. ONE person. ONE moment. ONE location.
+const BSV_VISUAL_PREAMBLE = `TEXT-FREE IMAGE. Zero letters, words, captions, labels, or writing of any kind anywhere in the photograph — not as a title card, not as an overlay, not written on any object. If a word could appear anywhere in the frame, remove it. This rule has no exceptions.
+
+SINGLE FRAME ONLY. ONE photograph. ONE person. ONE moment. ONE location.
 DO NOT generate a collage, grid, panel layout, mood board, contact sheet, or multiple images.
 DO NOT show more than one version of the same scene. If you are about to produce multiple frames, STOP and produce only the first.
 
 BIG SOLE VIBES — VISUAL STANDARD
 
-PRECEDENCE: The SCENE brief below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including the product's role in the shot or the setting described — the brief wins. Everything below is a fallback for when the brief doesn't specify otherwise, not a rule layered on top of it.
+PRECEDENCE: The assignment below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including the product's role in the shot or the setting described — the assignment below wins. Everything in this standard is a fallback for when the assignment doesn't specify otherwise, not a rule layered on top of it. The setting described in the assignment below (bathroom counter, locker room, kitchen, office, outdoors, wherever it says) must be the setting shown — do not substitute a leather chair, dark wood study, or any other generic environment unless the assignment itself describes that setting.
 
 The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. The man has already made up his mind — we are catching him mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The gap is real. The man is real. The humor is in the recognition, not the joke.
 
-WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the brief below names a specific product and instructs that it be the visual focus, follow the brief — the product is the hero, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline, unless the brief calls for it to be the subject.
+WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline, unless the assignment calls for it to be the subject.
 
-VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain. 35mm editorial feel. No stock photo energy. No product labels unless the brief calls for a specific product's label to be readable. No logos. No text in the image. Dark wood and leather are one recurring BSV environment, not the only one — use the actual setting the brief describes (bathroom counter, locker room, kitchen, office, outdoors, wherever) instead of defaulting to a leather chair when the brief says otherwise.
+VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain. 35mm editorial feel. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
 
 TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. The man looks like he just thought of something — not like he is being photographed.
 
 HEAD TO TOE: The full body should be visible or strongly implied. Head, torso, hands, feet — the whole man. This is a head-to-toe brand. The foot is the wink at the bottom of the frame. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. Otherwise: foot is present, incidental, the period at the end of the sentence.
 
-SCENE (from the brief below — this is the actual assignment; everything above is fallback context only):
+THE ASSIGNMENT — this is what you are actually generating. Everything above is fallback context only. The setting and product named below are mandatory, not optional:
 `
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
