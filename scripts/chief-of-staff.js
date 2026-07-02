@@ -257,7 +257,23 @@ const AGENT_ROSTER = [
   { name: 'product-development',essential: false, weekly: true },
   { name: 'blog-agent',        essential: false, weekly: true  },
   { name: 'sole-report-agent', essential: false, weekly: true  },
+  // Added 2026-07-01 — both had rotating logs and were being called "Healthy" in the
+  // standup with zero backing check (see BSV-BigC-Audit-Log.md same date). affiliate-scout
+  // is a real committed script (scripts/affiliate-scout.js) — weekly audit cadence.
+  // cj-research is NOT in this repo at all (no .js file in git history) despite active
+  // logs on the machine — tracked here for honest staleness reporting only; Big D still
+  // needs to decide whether to commit its source or retire it.
+  { name: 'affiliate-scout',   essential: false, weekly: true  },
+  { name: 'cj-research',       essential: false, weekly: true  },
 ]
+
+// Scripts with their own log file that are intentionally NOT tracked as recurring
+// agents — one-off/manual/utility scripts, not part of the scheduled pipeline.
+// findUntrackedAgents() below uses this to avoid false-flagging them as sprawl.
+const KNOWN_NON_AGENT_LOGS = new Set([
+  'run-now', 'seed-products', 'regen-4', 'generate-all-scenes', 'generate-locker-image',
+  'promote-sole-report', 'log-rotate', 'dashboard', 'telegram-inbox', 'brand-image',
+])
 
 function checkAgentHealth() {
   const now    = Date.now()
@@ -311,6 +327,36 @@ function checkAgentHealth() {
   log(`Agent health: ${ok.length} OK, ${issues.length} issue(s)`)
   for (const i of issues) log(`  [${i.severity}] ${i.name}: ${i.msg}`)
   return { ok, issues }
+}
+
+// ─── Sprawl check: scripts producing logs that nobody is tracking ────────────
+// Added 2026-07-01. AGENT_ROSTER is a hand-maintained list — it drifts. This scans
+// what's actually producing log activity on disk and diffs it against the roster,
+// so a script can't silently run untracked (and get called "Healthy" with zero
+// backing check, which is exactly what happened with affiliate-scout/cj-research
+// before they were added above). Recency-gated so retired scripts' old logs don't
+// nag forever.
+function findUntrackedAgents() {
+  const rosterNames = new Set(AGENT_ROSTER.map(a => a.name))
+  const now = Date.now()
+  const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  let files = []
+  try { files = fs.readdirSync(path.join(ROOT, 'logs')) } catch { return [] }
+
+  const untracked = []
+  for (const f of files) {
+    const m = f.match(/^([a-z0-9-]+)\.log$/i)
+    if (!m) continue // skip .log.1/.log.2 rotations, -error.log, non-log files
+    const name = m[1]
+    if (rosterNames.has(name) || KNOWN_NON_AGENT_LOGS.has(name)) continue
+    let mtime
+    try { mtime = fs.statSync(path.join(ROOT, 'logs', f)).mtimeMs } catch { continue }
+    if (now - mtime <= ACTIVE_WINDOW_MS) {
+      untracked.push({ name, lastActivityHoursAgo: Math.round((now - mtime) / 3600000) })
+    }
+  }
+  return untracked
 }
 
 // ─── Priority 4: Growth ───────────────────────────────────────────────────────
@@ -813,6 +859,11 @@ function buildBigCContext() {
   log('P3: Agent health...')
   const agents = checkAgentHealth()
 
+  const untrackedAgents = findUntrackedAgents()
+  if (untrackedAgents.length) {
+    log(`Untracked agents (active logs, not in roster): ${untrackedAgents.map(u => u.name).join(', ')}`)
+  }
+
   // ── Update org chart state — chief owns this ──────────────────────────────
   try {
     const orgState = {
@@ -1118,6 +1169,10 @@ Stuck media (caption never arrived): ${posts.stuckMediaSlots.join(', ') || 'none
 ## Agent Issues
 ${agents.issues.map(i => `${i.name} [${i.severity}]: ${i.msg} | fix: ${i.fix}`).join('\n') || 'None'}
 Healthy: ${agents.ok.slice(0, 10).join(', ')}
+This Healthy list is the ONLY source of truth for which agents are healthy. Do not add any name to your own "Healthy:" line that isn't in this exact list — not from memory, not from other context below, not because it sounds familiar.
+
+## Untracked Agents (sprawl check)
+${untrackedAgents.length ? untrackedAgents.map(u => `${u.name} — active log, last activity ${u.lastActivityHoursAgo}h ago, NOT in the tracked roster (no health check ever run on it)`).join('\n') : 'None — every script producing log activity is in the tracked roster.'}
 
 ## Growth
 Total: ${growth.total ?? 'unknown'} (Lounge: ${growth.lounge ?? '?'}, Drop: ${growth.drop ?? '?'}) | ${growth.trend}
@@ -1198,7 +1253,7 @@ Confirmed vs expected. Cause of any gap.
 What each agent reported last run — not a status light, a one-line summary of what they actually did or flagged. Required entries: Brand Manager (last score, top fix, denials reviewed), Media Director (chapter planned, strategy aligned), Eng-Bot (triage summary, any P0/P1 escalations), Research (shelf picks waiting, trending signals flagged, affiliate paths identified). If an agent hasn't run recently, say so — that's a signal too.
 
 ## Agents
-Issues with fix commands. Healthy: [comma list].
+Issues with fix commands. Healthy: [comma list] — copy this verbatim from the Healthy list given to you above. Never add a name to it yourself. If any Untracked Agents were reported above, list them here too, clearly separate from Healthy — e.g. "Untracked (no health check exists): x, y — needs a roster decision." Never call an untracked agent "Healthy."
 
 ## Growth
 Numbers, trend, recommendation.
