@@ -362,6 +362,52 @@ function findUntrackedAgents() {
   return untracked
 }
 
+// ─── Domain conflict check: hardcoded content/style overrides outside their owner ──
+// Added 2026-07-02, after Big D found the same bug in 4 different files in one
+// day: gemini-bridge.js (57d3ce86), creative-agent.js (e00d20de), image-gen.js
+// (07072f8a), video-gen.js (42fa0b0f) — each a downstream file quietly defining
+// its own competing content/voice/scene/style block instead of using what
+// creative-agent.js / media-director.js already decided. Big D was explicit this
+// needs to be chief's job, not a manual Big C checklist item.
+//
+// Content/voice/scene decisions belong to creative-agent.js and media-director.js
+// (config/bsv-voices.js is the shared source both already read from correctly).
+// This scans every other pipeline script for the actual shape of the bug: a long
+// prose block carrying brand-voice/style/scene language, sitting in a file that
+// doesn't own that decision. Heuristic, not a hard gate — same pattern as
+// findUntrackedAgents(): surface it, let a human confirm whether it's a real
+// conflict or a legitimate fallback (e.g. BSV_VISUAL_PREAMBLE is allowed to exist
+// in gemini-bridge.js now that it's explicitly precedence-scoped — this check
+// will still flag it for a quick human glance, which is the point, not a bug).
+const CONTENT_OWNING_FILES = new Set([
+  'creative-agent.js', 'media-director.js', 'edition-agent.js', 'blog-agent.js', 'lounge-reconcile.js',
+])
+const OVERRIDE_RISK_KEYWORDS = /\b(deadpan|cinematic|leather chair|tone:|style:|voice:|scene:|editorial photography|35mm|monty python)\b/i
+
+function findContentOverrideRisks() {
+  const scriptsDir = path.join(ROOT, 'scripts')
+  let files = []
+  try { files = fs.readdirSync(scriptsDir).filter(f => f.endsWith('.js')) } catch { return [] }
+
+  const risks = []
+  for (const f of files) {
+    if (CONTENT_OWNING_FILES.has(f)) continue
+    let content
+    try { content = fs.readFileSync(path.join(scriptsDir, f), 'utf8') } catch { continue }
+
+    const templateLiterals = content.match(/`[^`]{150,}?`/gs) || []
+    for (const block of templateLiterals) {
+      if (OVERRIDE_RISK_KEYWORDS.test(block)) {
+        const idx     = content.indexOf(block)
+        const lineNum = content.slice(0, idx).split('\n').length
+        risks.push({ file: f, line: lineNum, preview: block.replace(/\s+/g, ' ').slice(0, 100) })
+        break // one flag per file — enough signal to prompt a look, avoid noise
+      }
+    }
+  }
+  return risks
+}
+
 // ─── Priority 4: Growth ───────────────────────────────────────────────────────
 // Reads subscriber counts from marketing reports + uses web_search to surface
 // what is actually working in men's grooming/lifestyle content right now.
@@ -867,6 +913,11 @@ function buildBigCContext() {
     log(`Untracked agents (active logs, not in roster): ${untrackedAgents.map(u => u.name).join(', ')}`)
   }
 
+  const contentOverrideRisks = findContentOverrideRisks()
+  if (contentOverrideRisks.length) {
+    log(`Content override risks (hardcoded voice/style outside owning agent): ${contentOverrideRisks.map(r => `${r.file}:${r.line}`).join(', ')}`)
+  }
+
   // ── Update org chart state — chief owns this ──────────────────────────────
   try {
     const orgState = {
@@ -1177,6 +1228,10 @@ This Healthy list is the ONLY source of truth for which agents are healthy. Do n
 ## Untracked Agents (sprawl check)
 ${untrackedAgents.length ? untrackedAgents.map(u => `${u.name} — active log, last activity ${u.lastActivityHoursAgo}h ago, NOT in the tracked roster (no health check ever run on it)`).join('\n') : 'None — every script producing log activity is in the tracked roster.'}
 
+## Content Override Risks (domain conflict check)
+${contentOverrideRisks.length ? contentOverrideRisks.map(r => `${r.file}:${r.line} — "${r.preview}..."`).join('\n') : 'None found this pass.'}
+This is a heuristic scan for hardcoded voice/style/scene content sitting outside creative-agent.js/media-director.js (the files that own those decisions) — a flag here means "a human should glance at this," not "this is definitely a bug." Known example of what this catches: gemini-bridge.js's BSV_VISUAL_PREAMBLE will likely flag every time — that's expected, it's a legitimate precedence-scoped fallback, not a conflict. The point is nothing gets to hide from view again.
+
 ## Growth
 Total: ${growth.total ?? 'unknown'} (Lounge: ${growth.lounge ?? '?'}, Drop: ${growth.drop ?? '?'}) | ${growth.trend}
 ${growth.recommendation ? `Trend note: ${growth.recommendation}` : ''}
@@ -1256,7 +1311,7 @@ Confirmed vs expected. Cause of any gap.
 What each agent reported last run — not a status light, a one-line summary of what they actually did or flagged. Required entries: Brand Manager (last score, top fix, denials reviewed), Media Director (chapter planned, strategy aligned), Eng-Bot (triage summary, any P0/P1 escalations), Research (shelf picks waiting, trending signals flagged, affiliate paths identified). If an agent hasn't run recently, say so — that's a signal too.
 
 ## Agents
-Issues with fix commands. Healthy: [comma list] — copy this verbatim from the Healthy list given to you above. Never add a name to it yourself. If any Untracked Agents were reported above, list them here too, clearly separate from Healthy — e.g. "Untracked (no health check exists): x, y — needs a roster decision." Never call an untracked agent "Healthy."
+Issues with fix commands. Healthy: [comma list] — copy this verbatim from the Healthy list given to you above. Never add a name to it yourself. If any Untracked Agents were reported above, list them here too, clearly separate from Healthy — e.g. "Untracked (no health check exists): x, y — needs a roster decision." Never call an untracked agent "Healthy." If any Content Override Risks were reported above, list them too — file:line and a one-line note on whether it looks like a real conflict or a known-legitimate fallback (BSV_VISUAL_PREAMBLE / BSV_VIDEO_PREAMBLE). Don't skip this even if it's the same flags as yesterday — recurring flags on new files are the actual signal.
 
 ## Growth
 Numbers, trend, recommendation.
