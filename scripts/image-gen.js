@@ -142,11 +142,15 @@ async function generateImage(apiKey, prompt) {
     log(`  ${slot}: generating image...`)
     log(`    prompt: ${visualPrompt.slice(0, 120)}${visualPrompt.length > 120 ? '…' : ''}`)
 
-    const finalPrompt = [
-      '⚠ SINGLE IMAGE ONLY. ONE frame. ONE photograph. Do not produce a grid, collage, panel layout, mood board, contact sheet, or multiple versions. If you are about to generate more than one image, STOP. Generate only the single scene described below.',
-      'Style: dark cinematic editorial photography. 35mm film. One consistent color grade. Square 1:1 format.',
-      visualPrompt,
-    ].join('\n\n')
+    // NOTE: visualPrompt already = BSV_VISUAL_PREAMBLE + the slot's actual IMAGE BRIEF
+    // (built by gemini-bridge.js from creative-agent.js's brief). The preamble already
+    // carries the single-frame instruction and a "brief wins" precedence-scoped style
+    // fallback. Do NOT staple another unconditional style/format block on here — that
+    // was the same bug fixed in gemini-bridge.js (57d3ce86) and creative-agent.js
+    // (e00d20de): a flat style directive with no precedence sitting downstream of the
+    // brief and winning over it. This file is the last mile before the API call, so a
+    // hardcoded block here is the hardest one to notice and the most damaging.
+    const finalPrompt = visualPrompt
 
     try {
       const buf = await generateImage(apiKey, finalPrompt)
