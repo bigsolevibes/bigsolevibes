@@ -16,16 +16,12 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
-const { execSync } = require('child_process')
-const path         = require('path')
-const fs           = require('fs')
-const os           = require('os')
+const path = require('path')
+const fs   = require('fs')
 
 const ROOT            = path.join(__dirname, '..')
 const DIRECTIVES_FILE = path.join(ROOT, 'logs', 'creative-directives.json')
 const LOG_FILE        = path.join(ROOT, 'logs', 'learn.log')
-const TEMP_DIR        = path.join(os.tmpdir(), 'bsv-learn')
-const REMOTE          = 'big sole vibes:Big Sole Vibes'
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
@@ -45,26 +41,49 @@ function saveDirectives(d) {
   fs.writeFileSync(DIRECTIVES_FILE, JSON.stringify(d, null, 2))
 }
 
+async function getGoogleAuth() {
+  const { google } = require('googleapis')
+  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH
+  if (!keyPath) throw new Error('GOOGLE_SERVICE_ACCOUNT_PATH not set in .env')
+  const key = JSON.parse(fs.readFileSync(path.resolve(keyPath), 'utf8'))
+  return new google.auth.GoogleAuth({
+    credentials: key,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  })
+}
+
 async function appendToDirectiveDoc(note, dateStr) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true })
-  const localPath = path.join(TEMP_DIR, 'BSV-Directive.md')
+  const { google } = require('googleapis')
+  const { Readable } = require('stream')
 
-  // Pull current BSV-Directive.md from Drive
-  try {
-    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-  } catch {}
+  const auth  = await getGoogleAuth()
+  const drive = google.drive({ version: 'v3', auth })
 
+  // Find existing BSV-Directive.md in the BSV root folder
+  const BSV_FOLDER_ID = '1Ko9X70iO9F2y1bnDpQnOYENvOFXW6foD'
+  const search = await drive.files.list({
+    q: `name = 'BSV-Directive.md' and '${BSV_FOLDER_ID}' in parents and trashed = false`,
+    fields: 'files(id, name)',
+    spaces: 'drive',
+  })
+  const existing = search.data.files?.[0]
+
+  // Download current content or fall back to stub
   let content = ''
-  if (fs.existsSync(localPath)) {
-    content = fs.readFileSync(localPath, 'utf8')
-  } else {
+  if (existing) {
+    const res = await drive.files.get(
+      { fileId: existing.id, alt: 'media' },
+      { responseType: 'arraybuffer' }
+    )
+    content = Buffer.from(res.data).toString('utf8')
+  }
+  if (!content.trim()) {
     content = `# BSV Directive\n\nThis document is read by all pipeline agents. It takes precedence over BSV-Memory.md on operational decisions.\n`
   }
 
-  // Find or create a ## Corrections section
+  // Find or create ## Big D Corrections section
   const correctionEntry = `- [${dateStr}] ${note}`
   if (content.includes('## Big D Corrections')) {
-    // Append under existing section
     content = content.replace(
       /(## Big D Corrections[\s\S]*?)(\n##\s|\n#\s|$)/,
       (match, section, next) => `${section.trimEnd()}\n${correctionEntry}\n${next}`
@@ -73,16 +92,46 @@ async function appendToDirectiveDoc(note, dateStr) {
     content = content.trimEnd() + `\n\n## Big D Corrections\n\nThe following are direct corrections from Big D. They are non-negotiable and apply immediately to all content production.\n\n${correctionEntry}\n`
   }
 
-  fs.writeFileSync(localPath, content)
+  const mediaBody = Readable.from([Buffer.from(content, 'utf8')])
+  const mediaOptions = { mimeType: 'text/plain', body: mediaBody }
 
-  // Push back to Drive
-  try {
-    execSync(`rclone copyto "${localPath}" "${REMOTE}/BSV-Directive.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
-    return true
-  } catch (err) {
-    log(`WARNING: Drive upload failed — ${err.message}`)
-    return false
+  if (existing) {
+    await drive.files.update({ fileId: existing.id, media: mediaOptions })
+  } else {
+    await drive.files.create({
+      requestBody: { name: 'BSV-Directive.md', parents: [BSV_FOLDER_ID] },
+      media: mediaOptions,
+    })
   }
+  return true
+}
+
+async function appendToDirectiveDocRclone(note, dateStr) {
+  const { execSync } = require('child_process')
+  const os = require('os')
+  const TEMP_DIR  = require('path').join(os.tmpdir(), 'bsv-learn')
+  const REMOTE    = 'big sole vibes:Big Sole Vibes'
+  const localPath = require('path').join(TEMP_DIR, 'BSV-Directive.md')
+
+  fs.mkdirSync(TEMP_DIR, { recursive: true })
+  try { execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: 'pipe' }) } catch {}
+
+  let content = fs.existsSync(localPath)
+    ? fs.readFileSync(localPath, 'utf8')
+    : `# BSV Directive\n\nThis document is read by all pipeline agents.\n`
+
+  const correctionEntry = `- [${dateStr}] ${note}`
+  if (content.includes('## Big D Corrections')) {
+    content = content.replace(
+      /(## Big D Corrections[\s\S]*?)(\n##\s|\n#\s|$)/,
+      (match, section, next) => `${section.trimEnd()}\n${correctionEntry}\n${next}`
+    )
+  } else {
+    content = content.trimEnd() + `\n\n## Big D Corrections\n\nThe following are direct corrections from Big D. Non-negotiable, apply immediately.\n\n${correctionEntry}\n`
+  }
+  fs.writeFileSync(localPath, content)
+  execSync(`rclone copyto "${localPath}" "${REMOTE}/BSV-Directive.md"`, { stdio: 'pipe' })
+  return true
 }
 
 ;(async function run() {
@@ -141,7 +190,19 @@ async function appendToDirectiveDoc(note, dateStr) {
   log(`creative-directives.json updated — ${d.big_d.corrections.length} Big D correction(s) active`)
 
   // 2. Append to BSV-Directive.md on Drive
-  const driveOk = await appendToDirectiveDoc(note, dateStr)
+  // Try googleapis first (works from any environment with service account access),
+  // fall back to rclone (works on Big D's Mac where rclone is installed).
+  let driveOk = false
+  try {
+    driveOk = await appendToDirectiveDoc(note, dateStr)
+  } catch (apiErr) {
+    log(`Drive API failed (${apiErr.message}) — trying rclone fallback`)
+    try {
+      driveOk = await appendToDirectiveDocRclone(note, dateStr)
+    } catch (rcloneErr) {
+      log(`WARNING: Both Drive update methods failed. API: ${apiErr.message} | rclone: ${rcloneErr.message}`)
+    }
+  }
   log(`BSV-Directive.md on Drive: ${driveOk ? 'updated' : 'failed (local copy updated)'}`)
 
   // 3. Telegram confirm

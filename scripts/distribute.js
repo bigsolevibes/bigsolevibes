@@ -43,6 +43,18 @@ const slot         = getArg('--slot') || null
 // When --caption-file is given, read the .md file and extract header fields
 // (platform:, post_time:) plus the caption body. Header lines are stripped
 // before the body is used as the caption text.
+//
+// Caption files carry per-platform sections (## instagram / ## twitter /
+// ## facebook). `sections` captures each one separately so each platform can
+// be posted its own text. `body` is kept too, as a flat fallback for legacy
+// caption files that have no ## sections at all (just a single block of text).
+//
+// Fixed 2026-06-29: previously every section's text was concatenated into one
+// `body` and that same merged blob was posted to every active platform — e.g.
+// Instagram would have received its own caption immediately followed by the
+// Twitter-style line and then the Facebook copy, all jammed together. This
+// had not yet gone out live because every caption file built in this format
+// was still sitting in the approval backlog. See BSV-BigC-Audit-Log.md.
 
 function parseCaptionFile(filePath) {
   const raw = fs.readFileSync(filePath, 'utf8')
@@ -50,6 +62,8 @@ function parseCaptionFile(filePath) {
   let postTime = null
 
   const bodyLines = []
+  const sectionLines = {}
+  let currentSection = null
   let pastHeaders = false
   for (const line of raw.split('\n')) {
     if (!pastHeaders) {
@@ -59,23 +73,40 @@ function parseCaptionFile(filePath) {
       if (tm) { postTime = tm[1].trim(); continue }
       pastHeaders = true
     }
-    // Strip markdown headings (# Title, ## instagram, etc.) but keep inline
+    // "## instagram" etc. — a platform-section heading. Switches which
+    // section subsequent lines accumulate into, and isn't itself part of
+    // any section's text.
+    const sectionMatch = line.match(/^##\s+(\S+)/)
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim().toLowerCase()
+      sectionLines[currentSection] = sectionLines[currentSection] || []
+      continue
+    }
+    // Strip other markdown headings (# Title, etc.) but keep inline
     // hashtags (#BigSoleVibes) — headings have a space after the #, tags don't.
     if (/^#+\s/.test(line)) continue
     bodyLines.push(line)
+    if (currentSection) sectionLines[currentSection].push(line)
   }
 
-  return { platform, postTime, body: bodyLines.join('\n').trim() }
+  const sections = {}
+  for (const [name, lines] of Object.entries(sectionLines)) {
+    sections[name] = lines.join('\n').trim()
+  }
+
+  return { platform, postTime, body: bodyLines.join('\n').trim(), sections }
 }
 
 // Resolve caption and platform from either --caption-file or --caption / --platforms
 let caption
+let captionSections = {}
 let filePlatform = null
 
 if (captionFile) {
-  const parsed = parseCaptionFile(captionFile)
-  caption      = parsed.body
-  filePlatform = parsed.platform
+  const parsed   = parseCaptionFile(captionFile)
+  caption         = parsed.body
+  captionSections = parsed.sections
+  filePlatform    = parsed.platform
 
   if (parsed.postTime && !isForce) {
     const [h, m]   = parsed.postTime.split(':').map(Number)
@@ -89,6 +120,28 @@ if (captionFile) {
   }
 } else {
   caption = getArg('--caption')
+}
+
+// Per-platform caption selection. Falls back through to the merged `body`
+// when a file has no ## sections at all (legacy single-block caption files
+// keep working exactly as before).
+//
+// The "twitter" section is also where Bluesky's punchy/short copy lives —
+// gemini-bridge.js and watch-drive.js both deliberately source it from the
+// brief's BLUESKY field and write it under a "## twitter" heading (X and
+// Bluesky are both short-form platforms; X is paused, so today only Bluesky
+// reads it). If a true X-specific section is ever added, this can split.
+function captionFor(platform) {
+  const s = captionSections
+  switch (platform) {
+    case 'instagram': return s.instagram || caption
+    case 'facebook':  return s.facebook  || s.instagram || caption
+    case 'x':
+    case 'twitter':   return s.twitter   || s.instagram || caption
+    case 'bluesky':   return s.twitter   || s.instagram || caption
+    case 'youtube':   return s.youtube   || s.instagram || caption
+    default:          return caption
+  }
 }
 
 // Platform resolution: file-level platform: field > --platforms flag > all active
@@ -213,7 +266,7 @@ async function postToX() {
       accessSecret: X_ACCESS_TOKEN_SECRET,
     })
     const mediaId = await client.v1.uploadMedia(images.twitter)
-    const tweet = await client.v2.tweet({ text: caption, media: { media_ids: [mediaId] } })
+    const tweet = await client.v2.tweet({ text: captionFor('x'), media: { media_ids: [mediaId] } })
     log('X', 'ok', `Posted — tweet ID ${tweet.data.id}`)
     appendPostState('x', 'success', tweet.data.id)
   } catch (err) {
@@ -250,9 +303,10 @@ async function postToBluesky() {
 
     // Bluesky caption: trim to 300 chars, then strip hashtags beyond the first two.
     // Text is the primary content — the image embed is supporting.
-    const rawBskyText = [...caption].length > 300
-      ? [...caption].slice(0, 297).join('') + '...'
-      : caption
+    const bskyCaption = captionFor('bluesky')
+    const rawBskyText = [...bskyCaption].length > 300
+      ? [...bskyCaption].slice(0, 297).join('') + '...'
+      : bskyCaption
 
     const bskyText = trimBskyHashtags(rawBskyText, 2)
 
@@ -314,8 +368,9 @@ async function postToFacebook() {
     if (!pageAccessToken) throw new Error('Page Access Token not returned — ensure token has pages_show_list and pages_read_engagement permissions')
     console.log(`  [debug] Page Access Token (first 30): ${pageAccessToken.slice(0, 30)}`)
 
+    const fbCaption = captionFor('facebook')
     const form = new FormData()
-    form.append('caption', caption)
+    form.append('caption', fbCaption)
     form.append('access_token', pageAccessToken)
     form.append('source', fs.createReadStream(images.facebook), {
       filename:    path.basename(images.facebook),
@@ -324,7 +379,7 @@ async function postToFacebook() {
 
     const photoUrl = `https://graph.facebook.com/v19.0/${META_PAGE_ID}/photos`
     console.log(`  [debug] Facebook photo upload URL: ${photoUrl}`)
-    console.log(`  [debug] Facebook request body fields: caption="${caption.slice(0, 60)}...", source="${path.basename(images.facebook)}", access_token=[Page token, first 30: ${pageAccessToken.slice(0, 30)}]`)
+    console.log(`  [debug] Facebook request body fields: caption="${fbCaption.slice(0, 60)}...", source="${path.basename(images.facebook)}", access_token=[Page token, first 30: ${pageAccessToken.slice(0, 30)}]`)
     const res = await fetch(photoUrl, {
       method:  'POST',
       body:    form,
@@ -402,7 +457,7 @@ async function postToInstagram() {
       {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ image_url: imageUrl, caption, access_token: META_ACCESS_TOKEN }),
+        body:    JSON.stringify({ image_url: imageUrl, caption: captionFor('instagram'), access_token: META_ACCESS_TOKEN }),
       }
     )
     const container = await containerRes.json()
@@ -469,7 +524,7 @@ async function postToYouTube() {
       path.join(__dirname, 'youtube-post.js'),
       '--video',       youtubeVideo,
       '--title',       'Big Sole Vibes — The Standard',
-      '--description', caption.replace(/\n/g, ' '),
+      '--description', captionFor('youtube').replace(/\n/g, ' '),
     ], { stdio: 'inherit', env: process.env })
     if (result.status !== 0) throw new Error(`youtube-post.js exited with code ${result.status}`)
     log('YouTube', 'ok', `Video uploaded — ${path.basename(youtubeVideo)}`)

@@ -60,3 +60,37 @@ All picks must have an Amazon ASIN and be available via tag bigsolevibes-20. No 
 ### The Voice Test
 
 Before scoring any product: does this belong in a room with a Merkur razor and a Therabody WaveRoller? Yes = score it. No = move on.
+
+---
+
+## Hashtag Rules — Standing Order (2026-06-30)
+
+**Approved hashtags — use only from this list:**
+- `#BigSoleVibes` — required on every post, every platform
+- `#mensgrooming` `#mengrooming` `#groomingformen`
+- `#selfcare` `#selfcaremen` `#menwellness` `#menselfcare`
+- `#footcare` `#foothealth` — when the product is foot care
+- `#recovery` `#musclerecovery` — when the product is recovery/body
+- `#skincare` `#skincareformen` — when the product is skin/face
+- Product brand tags when relevant (e.g. `#Therabody`, `#DrSquatch`, `#Dior`)
+
+**Banned hashtags — never use:**
+- `#bespoke` `#leathergoods` `#menswear` `#ootd` `#streetstyle` `#mensfashion` `#menstyle` `#mensstyle` `#style` `#fashion` `#dapper` `#sartorial` `#tailored`
+- Any hashtag associated with clothing, fashion, or tailoring
+- Generic lifestyle tags that don't reflect grooming/wellness/foot care
+
+**Rule:** BSV is a grooming and foot care brand, not a fashion brand. Every hashtag must match the actual product category and audience. When in doubt, use fewer hashtags — `#BigSoleVibes` alone is better than irrelevant tags.
+
+---
+
+## Image Visual Philosophy — Standing Order (2026-06-30)
+
+**The image must pose a question, not answer it.**
+
+Never show a man applying a product to any body part — not feet, not face, not hands, not anything. This includes foot care products (foot cream, balm, soak) and skin care. "Man putting lotion on his feet" is the answer. We want the question.
+
+Build the world the story lives in — a scene, an object, a mood, a moment that makes someone stop scrolling and wonder what this is about. The image opens a door; the caption is the handle.
+
+**Illustration style is welcome and preferred as part of the visual mix.** Reference: The Lounge aesthetic. Not everything needs to be photography. A mix of atmospheric illustration and photography is the target.
+
+Shoe/feet close-ups and product-application shots are retired as default image briefs regardless of the product being featured. If a canonical scene (TRANSITION/ATHLETE/CHEF/INTIMATE) can't build a world around the assigned product without showing application — write a custom scene instead.
