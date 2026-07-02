@@ -106,38 +106,41 @@ async function checkRevenue() {
   const cjCid   = process.env.CJ_CID
 
   if (cjToken && cjCid) {
-    const xmlTag = (xml, tag) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`)); return m ? m[1].trim() : null }
-    const allBlocks = (xml, tag) => { const re = new RegExp(`<${tag}[\\s\\S]*?</${tag}>`, 'g'); return [...xml.matchAll(re)].map(m => m[0]) }
+    // Fixed 2026-07-02: CJ retired the REST v3 endpoint (commissions.api.cj.com/v3/
+    // commissions) this used to call — every request 404'd ("CJ API 404: NOT_FOUND"),
+    // which is what the standup had been reporting as "revenue dark" since at least
+    // 2026-06-24. Not a credential/account issue — verified via scripts/check-cj-api.js
+    // that CJ_API_TOKEN/CJ_CID work fine against their current GraphQL endpoint. CJ's
+    // Commission Detail API is GraphQL now, single URL for everything:
+    // https://commissions.api.cj.com/query. See BSV-BigC-Audit-Log.md 2026-07-02.
+    const iso = d => d.toISOString().slice(0, 19) + 'Z'
 
     const fetchCommissions = async (startDate, endDate) => {
-      const url = `https://commissions.api.cj.com/v3/commissions?date-type=posting&start-date=${startDate}&end-date=${endDate}&website-id=${cjCid}`
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${cjToken}`, Accept: 'application/xml' },
+      const query = `{publisherCommissions(forPublishers: ["${cjCid}"], sincePostingDate: "${iso(startDate)}", beforePostingDate: "${iso(endDate)}") { count records { pubCommissionAmountUsd } } }`
+      const res = await fetch('https://commissions.api.cj.com/query', {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${cjToken}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ query }),
       })
-      const xml = await res.text()
-      if (!res.ok) throw new Error(`CJ API ${res.status}: ${xml.slice(0, 200)}`)
-      const totalMatch = xml.match(/total-matched="(\d+)"/)
-      const total = totalMatch ? parseInt(totalMatch[1]) : 0
-      const blocks = allBlocks(xml, 'commission')
-      const amount = blocks.reduce((sum, b) => {
-        const a = xmlTag(b, 'commission-amount')
-        return sum + (a ? parseFloat(a) : 0)
-      }, 0)
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json || json.errors) {
+        const detail = json?.errors ? JSON.stringify(json.errors).slice(0, 200) : `HTTP ${res.status}`
+        throw new Error(`CJ API error: ${detail}`)
+      }
+      const pc     = json.data?.publisherCommissions
+      const total  = pc?.count ?? 0
+      const amount = (pc?.records ?? []).reduce((sum, r) => sum + (parseFloat(r.pubCommissionAmountUsd) || 0), 0)
       return { commissions: total, amount }
     }
 
     try {
-      const yd = new Date(_now)
-      yd.setDate(yd.getDate() - 1)
-      const ydStr = yd.toISOString().slice(0, 10)
-      const wkStart = new Date(_now)
-      wkStart.setDate(wkStart.getDate() - 7)
-      const wkStr   = wkStart.toISOString().slice(0, 10)
-      const todayStr = DATE_STAMP
+      const todayStart = new Date(_now); todayStart.setUTCHours(0, 0, 0, 0)
+      const ydStart     = new Date(todayStart); ydStart.setDate(ydStart.getDate() - 1)
+      const wkStart     = new Date(todayStart); wkStart.setDate(wkStart.getDate() - 7)
 
       const [ydData, wkData] = await Promise.all([
-        fetchCommissions(ydStr, ydStr),
-        fetchCommissions(wkStr, todayStr),
+        fetchCommissions(ydStart, todayStart),
+        fetchCommissions(wkStart, _now),
       ])
       result.available  = true
       result.yesterday  = ydData
