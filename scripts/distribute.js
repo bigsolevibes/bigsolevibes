@@ -4,7 +4,6 @@ const path = require('path')
 const { execSync, spawnSync } = require('child_process')
 const { TwitterApi } = require('twitter-api-v2')
 const { AtpAgent, RichText } = require('@atproto/api')
-const FormData = require('form-data')
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3')
 
 const RESULTS_FILE    = path.join(__dirname, '..', 'logs', 'distribute-results.json')
@@ -369,21 +368,27 @@ async function postToFacebook() {
     console.log(`  [debug] Page Access Token (first 30): ${pageAccessToken.slice(0, 30)}`)
 
     const fbCaption = captionFor('facebook')
+    // Native FormData/Blob (Node 18+), not the 'form-data' package. Fixed 2026-07-02:
+    // 'form-data' + form.getHeaders() with native fetch (undici) is a known
+    // incompatibility — undici doesn't reliably stream a 'form-data' body when the
+    // multipart boundary header is set manually. This silently produced a malformed
+    // request that Facebook rejected with a cryptic "(#100) 0 does not resolve to a
+    // valid user ID" error — nothing to do with permissions or credentials. Verified
+    // live via scripts/test-facebook-post.js: same token, same image, only the form
+    // body construction changed, and it posted successfully. This was very likely the
+    // actual reason Facebook got paused on 2026-05-02 in the first place.
+    const fileBuffer = fs.readFileSync(images.facebook)
     const form = new FormData()
     form.append('caption', fbCaption)
     form.append('access_token', pageAccessToken)
-    form.append('source', fs.createReadStream(images.facebook), {
-      filename:    path.basename(images.facebook),
-      contentType: 'image/jpeg',
-    })
+    form.append('source', new Blob([fileBuffer], { type: 'image/jpeg' }), path.basename(images.facebook))
 
     const photoUrl = `https://graph.facebook.com/v19.0/${META_PAGE_ID}/photos`
     console.log(`  [debug] Facebook photo upload URL: ${photoUrl}`)
     console.log(`  [debug] Facebook request body fields: caption="${fbCaption.slice(0, 60)}...", source="${path.basename(images.facebook)}", access_token=[Page token, first 30: ${pageAccessToken.slice(0, 30)}]`)
     const res = await fetch(photoUrl, {
-      method:  'POST',
-      body:    form,
-      headers: form.getHeaders(),
+      method: 'POST',
+      body:   form,
     })
     const data = await res.json()
     console.log('  [debug] Facebook response:', JSON.stringify(data, null, 2))
