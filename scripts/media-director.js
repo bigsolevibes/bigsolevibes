@@ -170,6 +170,31 @@ const SOCIAL_FORMAT_MAP = {
   'style-conscious': 'Simple Modern Man',
 }
 
+// ─── Visual approach rotation ──────────────────────────────────────────────────
+// Added 2026-07-02. Photorealistic-human-in-scene generation was fighting Imagen
+// all night (framing, product legibility, setting drift) — verified via repeated
+// live tests, not a one-off. The site's actual proven-successful images
+// (public/brand/bsv-hero-foundation.png, public/crawl/*.jpg) never asked for that:
+// one is a still-life with no human figure, the others are flat 2D illustration
+// (the Monty Python cutout style already built in gen-crawl-images.js). Per BSV's
+// own visual philosophy ("illustration mix welcome" — image poses a question,
+// never answers it), those styles were always allowed; the daily pipeline just
+// never used them. This rotation weights toward the styles that are actually
+// reliable, keeping photorealistic scenes as an occasional option rather than
+// the only one. creative-agent.js branches its IMAGE BRIEF instruction on
+// whichever approach is assigned here.
+const VISUAL_APPROACH_POOL = [
+  'illustration', 'illustration', 'still-life', 'still-life', 'photorealistic-scene',
+]
+
+function pickVisualApproach(slug) {
+  // Deterministic per-slot pick (not random) so re-runs for the same slot are
+  // stable — hash the slot slug into the pool.
+  let hash = 0
+  for (const ch of slug) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+  return VISUAL_APPROACH_POOL[hash % VISUAL_APPROACH_POOL.length]
+}
+
 // ─── Chapter state ────────────────────────────────────────────────────────────
 // media-director owns _chapter_state: reads on run, writes back at completion.
 
@@ -611,6 +636,9 @@ Return JSON only — no markdown fences:
       log(`[${slug}] Lounge cadence: Week ${loungeSlot.week} — ${loungeSlot.ref} (${loungeSlot.format})`)
     }
 
+    const visualApproach = pickVisualApproach(slug)
+    log(`[${slug}] visual approach: ${visualApproach}`)
+
     const personaContext = {
       persona,
       lane,
@@ -621,6 +649,7 @@ Return JSON only — no markdown fences:
       storyAngle:       parsed?.storyAngle        ?? null,
       hashtagSignal:    parsed?.hashtagSignal      ?? '',
       directive:        dailyDirective?.content   ?? null,
+      visualApproach,
       chapterState,
       ...(loungeSlot ? {
         loungeOverride: {
