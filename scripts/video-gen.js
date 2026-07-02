@@ -87,11 +87,23 @@ function scanPromptFiles() {
 // ─── BSV video preamble ───────────────────────────────────────────────────────
 // Prepended to every Veo prompt. Mirrors the Head to Toe rule in gemini-bridge.js
 // and image-gen.js so the campaign visual language is consistent across media.
+//
+// Fixed 2026-07-01 (see BSV-BigC-Audit-Log.md): this preamble carried the same
+// unconditional-style bug already fixed in gemini-bridge.js (57d3ce86) and
+// image-gen.js (07072f8a) — "Dark wood, leather, low light" as a flat rule with
+// no precedence, sitting upstream of the per-slot VIDEO BRIEF and able to win
+// over a brief that describes a completely different setting (e.g. tue-pm's
+// bathroom vanity under warm incandescent light). Now explicitly a fallback,
+// with the brief stated as authoritative when it conflicts.
 
 const BSV_VIDEO_PREAMBLE = `BSV HEAD TO TOE — VIDEO VISUAL RULE:
-A bare foot enters the frame naturally at some point in the video — not dramatically, not as the subject. The camera never calls attention to it directly. The foot is present, incidental, knowing. When the product being featured is foot care, the foot becomes the subject. Otherwise it is the wink — the audience finds it, the camera does not announce it.
-TONE: Lived-in, not staged. The man looks complete but slightly caught. Casual confidence, never try-hard. Dark wood, leather, low light where the scene allows — the lounge aesthetic.
 
+PRECEDENCE: The VIDEO BRIEF below is written for this specific product and story. If anything in it conflicts with the defaults below — including setting, lighting, or tone — the brief wins. Everything below is a fallback for when the brief doesn't specify otherwise, not a rule layered on top of it.
+
+A bare foot enters the frame naturally at some point in the video — not dramatically, not as the subject. The camera never calls attention to it directly. The foot is present, incidental, knowing. When the product being featured is foot care, the foot becomes the subject. Otherwise it is the wink — the audience finds it, the camera does not announce it.
+TONE (fallback only): Lived-in, not staged. The man looks complete but slightly caught. Casual confidence, never try-hard. Dark wood, leather, low light is one recurring BSV environment, not the only one — use the actual setting the brief describes instead of defaulting to it when the brief says otherwise.
+
+VIDEO BRIEF (from below — this is the actual assignment; everything above is fallback context only):
 `
 
 // ─── Veo video generation ─────────────────────────────────────────────────────
