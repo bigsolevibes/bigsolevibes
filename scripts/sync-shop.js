@@ -132,6 +132,13 @@ const C = {
 
 function buildProductCard(product) {
   const amazonUrl = buildAmazonUrl(product)
+  // Route through the click-tracking redirect (app/api/go/[key]/route.ts)
+  // instead of linking straight to the affiliate URL — added 2026-07-10 per
+  // Big D so the dashboard can show a click count per shelf product. The key
+  // matches the convention already used elsewhere in the dashboard
+  // (ASIN when present, else the product name).
+  const clickKey  = ((product['ASIN'] || '').trim()) || (product['Product Name'] || '').trim()
+  const trackedUrl = `/api/go/${encodeURIComponent(clickKey)}?to=${encodeURIComponent(amazonUrl)}`
 
   // Scene image: prefer Sheet Image_URL → fall back to local public/posts/output/{slug}-scene.jpg
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
@@ -193,7 +200,7 @@ function buildProductCard(product) {
             ${highlightsHtml}
             <div class="card-footer">
               ${priceHtml}
-              <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+              <a href="${trackedUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
                 Get it on Amazon →
               </a>
             </div>
