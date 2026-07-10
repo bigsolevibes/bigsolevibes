@@ -1128,7 +1128,7 @@ If BSV featured the top 3 products once each per week for a month at 2% conversi
     system:     'You extract structured product data from research documents. Return only valid JSON — no markdown fences, no commentary.',
     messages:   [{
       role: 'user',
-      content: `From the research below, extract the top 12 products from The Shelf shortlist for BSV review.
+      content: `From the research below, extract AT MOST 2 products from The Shelf shortlist for BSV review — this is a curated shortlist, not a ranked dump. Added 2026-07-10 per Big D: the queue had grown into a long Pending list that mostly didn't meet the shelf standard, and it wasn't being reviewed as individual, well-reasoned candidates. Be genuinely selective: if only one product this cycle clearly earns a spot, return one. If none do, return an empty array — do not pad the list out to hit a number. Quality and a clear "why it belongs" over volume, every time.
 
 Return a JSON array with this exact shape:
 [
@@ -1150,7 +1150,7 @@ Return a JSON array with this exact shape:
 ]
 
 Rules:
-- Pick the 12 highest-scoring products from The Shelf section only — do not include anything from Gate Rejections, Skipped, Held Back, or Competitive Intelligence
+- Pick at most 2 products from The Shelf section only, and only ones that genuinely clear the bar — do not include anything from Gate Rejections, Skipped, Held Back, or Competitive Intelligence. Fewer or zero is correct when the shortlist is weak this cycle.
 - Track 1 products: minimum score 70/100. Track 2 products: minimum score 60/100.
 - For Track 2 products: set track to "2", populate crossover_signal with the evidence
 - Every product in the output must have been confirmed in stock on Amazon and confirmed not sponsored
