@@ -1010,6 +1010,27 @@ server.tool(
   }
 )
 
+// ── reject_pending_products ────────────────────────────────────────────────────
+// Added 2026-07-10 per Big D: the product queue's Pending backlog had grown
+// into a long list that mostly wasn't meeting the shelf standard. Mirrors the
+// existing --clear-approved pattern in product-research.js/sheets-client.js —
+// flips every Pending row to Rejected, no new write. Runs in the foreground
+// (not detached) since it's a quick single Sheets batchUpdate, not a research
+// cycle.
+server.tool(
+  'reject_pending_products',
+  "Reject every product currently in 'Pending' status on the product queue sheet (sets Status to Rejected). Use to clear a stale/oversized backlog. Does not touch Approved or Archived rows.",
+  {},
+  async () => {
+    const script = path.join(ROOT, 'scripts', 'product-research.js')
+    const result = spawnSync(process.execPath, [script, '--reject-pending'], {
+      cwd: ROOT, env: { ...process.env }, encoding: 'utf8', timeout: 60000,
+    })
+    const out = [result.stdout, result.stderr].filter(Boolean).join('\n').trim()
+    return { content: [{ type: 'text', text: out || '(no output)' }] }
+  }
+)
+
 // ── install_product_research_schedule ─────────────────────────────────────────
 server.tool(
   'install_product_research_schedule',

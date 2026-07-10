@@ -191,4 +191,47 @@ async function archiveApproved({ sheets, spreadsheetId }) {
   return updates.length
 }
 
-module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick, archiveApproved }
+// Sets Status = 'Rejected' for every row currently marked 'Pending'.
+// Added 2026-07-10 per Big D: the pending queue had grown into a long list
+// that mostly didn't meet the shelf standard, and reviewing it row-by-row
+// wasn't working. Mirrors archiveApproved()'s pattern exactly. Returns the
+// count of rows rejected.
+async function rejectPending({ sheets, spreadsheetId }) {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Sheet1!A:Z',
+  })
+  const rows = res.data.values || []
+  if (rows.length < 2) return 0
+
+  const headers    = rows[0]
+  const statusCol  = headers.indexOf('Status')
+  if (statusCol === -1) return 0
+
+  const statusColLetter = colLetter(statusCol + 1)
+  const updates = []
+
+  for (let i = 1; i < rows.length; i++) {
+    const status = (rows[i][statusCol] || '').trim()
+    if (status.toLowerCase() === 'pending') {
+      updates.push({
+        range: `Sheet1!${statusColLetter}${i + 1}`,
+        values: [['Rejected']],
+      })
+    }
+  }
+
+  if (!updates.length) return 0
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: 'RAW',
+      data: updates,
+    },
+  })
+
+  return updates.length
+}
+
+module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendPick, archiveApproved, rejectPending }

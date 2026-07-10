@@ -4,7 +4,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { connect, ensureHeaders, readAllRows, appendPick, archiveApproved } = require('./sheets-client')
+const { connect, ensureHeaders, readAllRows, appendPick, archiveApproved, rejectPending } = require('./sheets-client')
 
 // ─── BSV DUAL-TRACK MANDATE ───────────────────────────────────────────────────
 // The BSV man is the coal miner AND the CFO. The shelf serves both.
@@ -660,6 +660,7 @@ function writeResearchState(picks, added, reportText) {
   const skipResearch  = process.argv.includes('--skip-research')
   const dryRun        = process.argv.includes('--dry-run')
   const clearApproved = process.argv.includes('--clear-approved')
+  const rejectPend    = process.argv.includes('--reject-pending')
   const track2Mode    = process.argv.includes('--track2')
   const targetsArg    = process.argv.indexOf('--targets')
   const targetsFile   = targetsArg !== -1 ? process.argv[targetsArg + 1] : null
@@ -672,7 +673,7 @@ function writeResearchState(picks, added, reportText) {
   const networkArg    = process.argv.indexOf('--affiliate-network')
   const networkVal    = networkArg !== -1 ? process.argv[networkArg + 1] : 'Amazon Associates'
 
-  log(`━━━ product-research start ━━━${clearApproved ? ' [clear-approved]' : ''}${targetsFile ? ' [targets]' : ''}${track2Mode ? ' [track2]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
+  log(`━━━ product-research start ━━━${clearApproved ? ' [clear-approved]' : ''}${rejectPend ? ' [reject-pending]' : ''}${targetsFile ? ' [targets]' : ''}${track2Mode ? ' [track2]' : ''}${skipResearch ? ' [skip-research]' : ''}${dryRun ? ' [dry-run]' : ''}`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) { log('ERROR: ANTHROPIC_API_KEY not set'); process.exit(1) }
@@ -707,6 +708,27 @@ function writeResearchState(picks, added, reportText) {
       process.exit(1)
     }
     log('━━━ product-research complete (--clear-approved) ━━━\n')
+    return
+  }
+
+  // ─── --reject-pending: reject all pending rows, no new write ─────────────────
+  // Added 2026-07-10 per Big D: the pending queue had grown long and mostly
+  // wasn't meeting the shelf standard — reviewing it as a big list wasn't
+  // working. Clears the backlog to Rejected so future cycles start clean.
+  // Going forward the plan is smaller batches (1-2 candidates) with fit
+  // reasoning surfaced in the standup, not a long list to review alone.
+  if (rejectPend) {
+    log('Rejecting pending rows...')
+    try {
+      if (!conn) { conn = await connect(); await ensureHeaders(conn) }
+      const rejected = await rejectPending(conn)
+      log(`Rejected ${rejected} pending row(s) → Status: Rejected`)
+      sheetRows = await readAllRows(conn)
+    } catch (err) {
+      log(`ERROR: rejectPending failed — ${err.message}`)
+      process.exit(1)
+    }
+    log('━━━ product-research complete (--reject-pending) ━━━\n')
     return
   }
 
