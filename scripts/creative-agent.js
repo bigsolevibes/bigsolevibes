@@ -263,28 +263,36 @@ const CANONICAL_SCENES_REFERENCE = `(1) THE TRANSITION — suit, leather chair, 
 (3) THE CHEF — still in whites after long service. Shoes off, feet up on a beat-up chair or recliner. The kitchen is done. He's not, not quite.
 (4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off, off to the side. The room is warm, evening light.`
 
+// Added 2026-07-10 per Big D — the tone the image and caption both need to
+// land: absurdist, deadpan-committed, sarcastic but never mean, funny enough
+// that the reader laughs, and underneath the joke a straight-faced case that
+// this is a need, not a want. Same register as the PROPRIETOR voice's "Monty
+// Python straight-faced officer" energy, applied consistently rather than
+// left to whichever voice happens to be assigned.
+const COMEDIC_REGISTER = `TONE: Absurdist and deadpan — commit to the bit completely, never wink at the camera or explain the joke. Sarcastic, not mean; the target of the joke is the absurdity of resisting the standard, never the man himself. The logic should feel like: "why WOULDN'T a serious man have this" — treat the product as an obvious, faintly ridiculous inevitability, delivered completely straight-faced. The reader should laugh, and underneath the laugh, feel the actual argument that this is a need, not a want. Not brooding, not earnest, not a lifestyle ad.`;
+
 function buildSceneBlock(product) {
   if (product) {
     return `SCENE CONSTRUCTION — BUILD AROUND THE ASSIGNED PRODUCT.
 
 The setting must come from the product's own story — its category, its Narrative above, the specific moment it belongs to. A body wash belongs in a bathroom at a particular hour. A cologne belongs at the mirror before he walks out. A recovery tool belongs wherever recovery actually happens. Do not reach for a default setting — build the one this product earns.
 
-HEAD TO TOE RULE: full body in frame — head, torso, hands, feet, the whole man. Not a close-up on any one part of him.
+HEAD TO TOE RULE: full body in frame — head, torso, hands, feet, the whole man. Not a close-up on any one part of him. His face is visible — this is not about hiding him.
 
-VISUAL FOCUS: The product is the reason for the scene. He is reaching for it, holding it, mid-use, or has just set it down. His expression reacts to that beat — deadpan, certain, already decided. The image poses a question; it does not answer one.
+VISUAL FOCUS: The product is the reason for the scene. He is reaching for it, holding it, mid-use, or has just set it down. His expression reacts to that beat — the image poses a question; it does not answer one.
 
-TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought.`
+${COMEDIC_REGISTER}`
   }
 
   return `SCENE CONSTRUCTION — PRODUCT-FREE POST.
 
 Build a scene that makes the man stop scrolling — not because it shows him anything explicit, but because it poses a question. The image opens a door; the caption is the handle.
 
-HEAD TO TOE RULE: The full body must be visible in frame — head, torso, hands, feet, the whole man.
+HEAD TO TOE RULE: The full body must be visible in frame — head, torso, hands, feet, the whole man. His face is visible — this is not about hiding him.
 
-The foot can carry the deadpan recognition beat in product-free posts — but only if the scene genuinely calls for it. Do not default to a foot close-up.
+The foot can carry the recognition beat in product-free posts — but only if the scene genuinely calls for it. Do not default to a foot close-up.
 
-TONE: Deadpan, confident, slightly amused. Not brooding. The man has already made up his mind. We are catching him mid-thought.`
+${COMEDIC_REGISTER}`
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -440,26 +448,38 @@ TONE: Deadpan, confident, slightly amused. Not brooding. The man has already mad
       : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
-  // Visual approach branch — added 2026-07-02, corrected same day per Big D:
-  // "we want product first, head to toe second — it's about full body, not just
-  // things." media-director.js assigns visualApproach per slot (see
-  // pickVisualApproach there for why photorealistic-only was unreliable). The
-  // styles below are chosen for what Imagen can actually render consistently —
-  // but the man's full body is never optional. PRIORITY ORDER, every branch:
-  // (1) the product visible and legible, (2) the man head-to-toe in frame. Never
-  // one or the other — a product-only still life with no human figure is wrong,
-  // same as a photorealistic scene missing the product is wrong.
-  const visualApproach = personaContext?.visualApproach ?? 'photorealistic-scene'
+  // Visual approach branch — REWRITTEN 2026-07-10 per Big D, twice-corrected:
+  // (1) it was never about hiding the man's face — people, faces, feet are all
+  // welcome; (2) the still-life "boots and bourbon" object-only shot
+  // (public/brand/bsv-hero-foundation.png) is retired — it read as the old
+  // default, not the target. The target is the OpeningCrawl sequence
+  // (public/crawl/*.jpg): a real style gradient built from actual technique
+  // references (flat cutout collage, hand-tinted engraving, hand-tinted
+  // Kodachrome photograph, full photorealistic cinematic), not three generic
+  // photo/illustration buckets. media-director.js assigns visualApproach per
+  // slot on a weekly-varying rotation (see pickVisualApproach there).
+  //
+  // Also per Big D: the image must never get ahead of the story — it has to
+  // depict the exact same specific comedic beat the caption tells, not a
+  // separately-invented scene. STORY_COHESION below is embedded in every
+  // branch for that reason. COMEDIC_REGISTER (defined above, shared with
+  // buildSceneBlock) carries the absurdist-deadpan-sarcastic-not-mean tone
+  // into the image brief itself, not just the caption.
+  const visualApproach = personaContext?.visualApproach ?? 'photorealistic-cinematic'
 
-  const PRIORITY_ORDER = `PRIORITY ORDER — both required, in this order: (1) the product physically visible and legible — the eye lands on it first. (2) the man's full body, head to toe, visible in the same frame — this is a head-to-toe brand, not a product-only shot. Neither priority is optional.`
+  const PRIORITY_ORDER = `PRIORITY ORDER — both required, in this order: (1) the product physically visible and legible — the eye lands on it first. (2) the man's full body, head to toe, visible in the same frame, face included — this is a head-to-toe brand, not a product-only shot and not a hidden-face shot. Neither priority is optional.`
+
+  const STORY_COHESION = `STORY COHESION: This image must depict the exact same specific comedic beat/moment that the INSTAGRAM caption below tells — not a separately invented scene. Decide the one moment first, then write both around it. If someone could read the caption and look at this image and not immediately recognize them as the same joke, this fails.`
 
   const imageBriefInstruction = editionVignette
-    ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. ${PRIORITY_ORDER} Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
+    ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. ${PRIORITY_ORDER} ${STORY_COHESION} Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
     : visualApproach === 'illustration'
-    ? `Gemini Imagen 4. Square 1:1. No text, no logos. Flat 2D cutout collage animation, Monty Python Flying Circus style (Terry Gilliam) — the same proven style used in public/crawl/*.jpg. Stiff paper-cutout shapes, flat blocks of color, visible torn-paper edges, deadpan absurdist tone, no shading or photographic depth. Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette. ${PRIORITY_ORDER}${product ? ` The man (full cutout figure, head to toe) holds or stands beside ${product['Product Name']} — its container shape and color recognizable even in this flat style, given the most visually prominent position in the frame.` : ' Build the composition around the man, full figure, head to toe.'} Write ONE scene description, 3-5 sentences. The image poses a question, it does not answer one. REJECTED without appeal if: photorealistic rendering, multiple frames, any text or logo, the man's full body not visible${product ? `, or the product missing/not the clear focal point` : ''}.`
-    : visualApproach === 'still-life'
-    ? `Gemini Imagen 4. Square 1:1. No text, no logos. A product-forward composition in the mood of public/brand/bsv-hero-foundation.png — warm directional light, shallow depth of field, cinematic — but with the man present, not an object-only still life. ${PRIORITY_ORDER}${product ? ` ${product['Product Name']} sits in the foreground, sharp focus, composed so the eye lands on it first — describe its actual container/shape/color in specific physical detail. The man stands or sits beyond it, full body head-to-toe visible, slightly softer focus than the product but still clearly the second visual anchor — reaching for it, having just set it down, or simply present in the same frame.` : ' Build the composition around the man, full body, with one or two objects that evoke the theme in the foreground.'} Warm amber (#C17D2E) and deep navy (#0D1B2A) palette. Write ONE scene description, 3-5 sentences. REJECTED without appeal if: the man's full body is not visible, multiple frames, any text or logo${product ? `, the product missing or not the clear first focal point` : ''}.`
-    : `Gemini Imagen 4. Square 1:1. No text, no logos. ${PRIORITY_ORDER}${product ? ` ${product['Product Name']} must be physically visible and identifiable in the scene — describe its actual container, shape, and color; give it a specific place in frame.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences. Build the scene from the product and the moment in its Narrative — not from a generic template. Describe: the exact setting, the time of day and light, what the man is wearing, what he is doing, what his expression conveys${product ? `, exactly where and how the product appears as the visual focus` : ''}. The image poses a question — it does not answer one. Write it as a film still — specific enough that a DP could light it from this description alone. SINGLE FRAME ONLY — do not describe multiple panels or angles. REJECTED without appeal if: no human subject, the man's full body not visible head-to-toe, multiple frames, collage layout, stock photo energy${product ? `, the assigned product (${product['Product Name']}) missing or not visually identifiable, or the setting defaulting to a generic template unconnected to this product's story` : ''}.`
+    ? `Gemini Imagen 4. Square 1:1. No text, no logos. Flat 2D cutout collage animation, Monty Python Flying Circus style (Terry Gilliam) — the same proven style used in public/crawl/cave.jpg and public/crawl/roman.jpg. Stiff paper-cutout shapes, flat blocks of color, visible torn-paper edges, no shading or photographic depth. Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette. ${PRIORITY_ORDER} ${STORY_COHESION}${product ? ` The man (full cutout figure, head to toe, face included) holds or stands beside ${product['Product Name']} — its container shape and color recognizable even in this flat style, given the most visually prominent position in the frame.` : ' Build the composition around the man, full figure, head to toe, face included.'} Write ONE scene description, 3-5 sentences, depicting the one specific absurd beat. ${COMEDIC_REGISTER} REJECTED without appeal if: photorealistic rendering, multiple frames, any text or logo, the man's full body or face not visible, or the scene doesn't match the caption's specific beat${product ? `, or the product missing/not the clear focal point` : ''}.`
+    : visualApproach === 'hand-tinted-engraving'
+    ? `Gemini Imagen 4. Square 1:1. No text, no logos. Hand-tinted engraving brought softly to life — halfway between illustration and photograph, the same proven style used in public/crawl/victorian.jpg. Cross-hatched linework rendered in warm sepia and muted tones, subtle painterly dimensionality, soft photographic depth beginning to emerge from the linework, like a colorized 19th-century print. Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette. ${PRIORITY_ORDER} ${STORY_COHESION}${product ? ` ${product['Product Name']} is rendered in the same hand-tinted linework style, its container/shape/color still clearly identifiable, positioned so the eye lands on it first. The man — full body, head to toe, face fully visible and expressive — is caught mid-beat with it.` : ' Build the composition around the man, full body, face fully visible and expressive, caught mid-beat.'} Write ONE scene description, 3-5 sentences, depicting the one specific absurd beat. ${COMEDIC_REGISTER} REJECTED without appeal if: fully flat cutout style, fully photorealistic with no illustrated quality, multiple frames, any text or logo, the man's full body or face not visible, or the scene doesn't match the caption's specific beat${product ? `, or the product missing/not the clear focal point` : ''}.`
+    : visualApproach === 'hand-tinted-photograph'
+    ? `Gemini Imagen 4. Square 1:1. No text, no logos. Hand-tinted photograph aesthetic — mostly photographic and realistic with a thin nostalgic color-grade overlay, the same proven style used in public/crawl/midcentury.jpg. Kodachrome warmth, fine film grain, gentle vignette, photographic depth and realism dominate with only a faint vintage-illustration quality at the edges. Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette. ${PRIORITY_ORDER} ${STORY_COHESION}${product ? ` ${product['Product Name']} sits sharp and identifiable in the frame, its actual container/shape/color described in specific detail. The man — full body, head to toe, face fully visible — is caught mid-beat with it.` : ' Build the composition around the man, full body, face fully visible, caught mid-beat.'} Write ONE scene description, 3-5 sentences, depicting the one specific absurd beat. ${COMEDIC_REGISTER} REJECTED without appeal if: fully flat illustration, no vintage color-grade/grain quality at all, multiple frames, any text or logo, the man's full body or face not visible, or the scene doesn't match the caption's specific beat${product ? `, or the product missing/not the clear focal point` : ''}.`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY. Fully photorealistic 35mm cinematic film still — no illustration, no animation, no stylization whatsoever, the same proven register used in public/crawl/modern.jpg and public/crawl/beach.jpg. Cinematic grain, shallow depth of field, lived-in not staged. Warm amber (#C17D2E) and deep navy (#0D1B2A) accents within a natural palette. ${PRIORITY_ORDER} ${STORY_COHESION}${product ? ` ${product['Product Name']} must be physically visible and identifiable in the scene — describe its actual container, shape, and color; give it a specific place in frame.` : ' No product placement.'} Write ONE complete scene description — 4 to 8 sentences — depicting the one specific absurd beat the caption tells. Describe the exact setting, the time of day and light, what the man is wearing, what he is doing, his face and expression${product ? `, exactly where and how the product appears as the visual focus` : ''}. ${COMEDIC_REGISTER} Write it as a film still — specific enough that a DP could light it from this description alone. Do not describe multiple panels or angles. REJECTED without appeal if: no human subject, the man's full body or face not visible head-to-toe, multiple frames, collage layout, stock photo energy, or the scene doesn't match the caption's specific beat${product ? `, the assigned product (${product['Product Name']}) missing or not visually identifiable, or the setting defaulting to a generic template unconnected to this product's story` : ''}.`
 
   const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
 

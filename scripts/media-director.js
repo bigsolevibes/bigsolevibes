@@ -176,27 +176,40 @@ const SOCIAL_FORMAT_MAP = {
 }
 
 // ─── Visual approach rotation ──────────────────────────────────────────────────
-// Added 2026-07-02. Photorealistic-human-in-scene generation was fighting Imagen
-// all night (framing, product legibility, setting drift) — verified via repeated
-// live tests, not a one-off. The site's actual proven-successful images
-// (public/brand/bsv-hero-foundation.png, public/crawl/*.jpg) never asked for that:
-// one is a still-life with no human figure, the others are flat 2D illustration
-// (the Monty Python cutout style already built in gen-crawl-images.js). Per BSV's
-// own visual philosophy ("illustration mix welcome" — image poses a question,
-// never answers it), those styles were always allowed; the daily pipeline just
-// never used them. This rotation weights toward the styles that are actually
-// reliable, keeping photorealistic scenes as an occasional option rather than
-// the only one. creative-agent.js branches its IMAGE BRIEF instruction on
+// REVISED 2026-07-10 per Big D: the still-life "boots and bourbon" object-only
+// shot (public/brand/bsv-hero-foundation.png) is the old default — he wants it
+// retired, not held up as a reference. The actual target is the OpeningCrawl
+// sequence (public/crawl/*.jpg, built one-off in gen-crawl-images.js /
+// gen-beach-image.js): a deliberate style *gradient* across real technique
+// references — flat cutout collage (Monty Python) → hand-tinted engraving
+// (Victorian linework) → hand-tinted photograph (1950s Kodachrome) → full
+// photorealistic cinematic — each with a full human figure, face visible, feet
+// visible. People are welcome; the nuance is in the rendering technique, not in
+// hiding anyone. creative-agent.js branches its IMAGE BRIEF instruction on
 // whichever approach is assigned here.
+//
+// Weighted toward the more stylized/painterly end (matches Big D's stated
+// preference) with full photorealism kept as the occasional option, same ratio
+// the crawl sequence itself uses (2 stylized eras : 2 semi-stylized : 1 fully
+// photorealistic, roughly).
 const VISUAL_APPROACH_POOL = [
-  'illustration', 'illustration', 'still-life', 'still-life', 'photorealistic-scene',
+  'illustration', 'illustration',
+  'hand-tinted-engraving', 'hand-tinted-engraving',
+  'hand-tinted-photograph', 'hand-tinted-photograph',
+  'photorealistic-cinematic',
 ]
 
-function pickVisualApproach(slug) {
-  // Deterministic per-slot pick (not random) so re-runs for the same slot are
-  // stable — hash the slot slug into the pool.
+function pickVisualApproach(slug, date = new Date()) {
+  // FIXED 2026-07-10: hashing on the slug alone meant every "sat-am"-type slot
+  // was permanently glued to the same style forever (verified: sat-am/sat-pm
+  // hashed to photorealistic-scene every single week, no actual rotation over
+  // time) — a likely contributor to "the same strange man" recurring. Folding
+  // in the ISO week number makes the pick vary week to week while staying
+  // deterministic within a given week (re-runs on the same day don't flip).
+  const week = getISOWeek(date)
+  const key = `${slug}-w${week}`
   let hash = 0
-  for (const ch of slug) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
+  for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
   return VISUAL_APPROACH_POOL[hash % VISUAL_APPROACH_POOL.length]
 }
 
