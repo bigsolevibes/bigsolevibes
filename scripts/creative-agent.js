@@ -277,9 +277,7 @@ function buildSceneBlock(product) {
 
 The setting must come from the product's own story — its category, its Narrative above, the specific moment it belongs to. A body wash belongs in a bathroom at a particular hour. A cologne belongs at the mirror before he walks out. A recovery tool belongs wherever recovery actually happens. Do not reach for a default setting — build the one this product earns.
 
-HEAD TO TOE RULE: full body in frame — head, torso, hands, feet, the whole man. Not a close-up on any one part of him. His face is visible — this is not about hiding him.
-
-VISUAL FOCUS: The product is the reason for the scene. He is reaching for it, holding it, mid-use, or has just set it down. His expression reacts to that beat — the image poses a question; it does not answer one.
+VISUAL FOCUS: The product and its story are the anchor — the image exists to make someone stop and want to know what this is. A person may appear if the story calls for one — full figure, partial, just hands, face shown or not — but a person is a possibility here, not a requirement. An object, a detail, a scene with no one in it can tell the story just as well if that's what this specific product earns. Whatever you choose, the image poses a question; it does not answer one.
 
 ${COMEDIC_REGISTER}`
   }
@@ -288,9 +286,7 @@ ${COMEDIC_REGISTER}`
 
 Build a scene that makes the man stop scrolling — not because it shows him anything explicit, but because it poses a question. The image opens a door; the caption is the handle.
 
-HEAD TO TOE RULE: The full body must be visible in frame — head, torso, hands, feet, the whole man. His face is visible — this is not about hiding him.
-
-The foot can carry the recognition beat in product-free posts — but only if the scene genuinely calls for it. Do not default to a foot close-up.
+A person may or may not appear, and if one does, however much of them the scene calls for — full figure, partial, a hand, a foot. That's a creative choice serving the story, not a checklist item.
 
 ${COMEDIC_REGISTER}`
 }
@@ -458,12 +454,17 @@ ${COMEDIC_REGISTER}`
   // through — it picks, blends, or invents beyond it, based on what this
   // specific product's story actually needs to say without words.
   //
-  // Two things stay non-negotiable regardless of technique chosen:
-  // PRIORITY_ORDER (product legible, man's full body and face in frame) and
-  // STORY_COHESION (the image depicts the exact beat the caption tells, not
-  // a separately invented scene). COMEDIC_REGISTER (defined above) carries
-  // the absurdist-deadpan-sarcastic-not-mean tone into the image too.
-  const PRIORITY_ORDER = `PRIORITY ORDER — both required: (1) the product physically visible and legible — the eye lands on it first. (2) the man's full body, head to toe, visible in the same frame, face included — this is a head-to-toe brand, not a product-only shot and not a hidden-face shot. Neither priority is optional.`
+  // FURTHER CORRECTED same day, same conversation: Big D also didn't want a
+  // human figure mandated in every frame ("i dont think we need full body or
+  // face in each pic... its a possibility... its about the product and the
+  // story and the picture that tells the compelling story"). Dropped that
+  // requirement entirely — a person, and how much of one, is now a creative
+  // choice like everything else. What's non-negotiable: the product (when
+  // one's assigned) and STORY_COHESION (the image depicts the exact beat the
+  // caption tells, not a separately invented scene). COMEDIC_REGISTER
+  // (defined above) carries the absurdist-deadpan-sarcastic-not-mean tone
+  // into the image too.
+  const PRIORITY_ORDER = `THE ANCHOR: the product and the story it's telling — that's what has to land, and what makes someone want to go see it for themselves.${product ? ` ${product['Product Name']} should be physically visible and identifiable somewhere in the frame — the eye should find it.` : ''} Whether a person appears at all, how much of them, whether a face is shown — all of that is a creative choice serving the story, not a fixed requirement in either direction.`
 
   const STORY_COHESION = `STORY COHESION: This image must depict the exact same specific comedic beat/moment that the INSTAGRAM caption below tells — not a separately invented scene. Decide the one moment first, then write both around it. If someone could read the caption and look at this image and not immediately recognize them as the same joke, this fails.`
 
@@ -476,7 +477,7 @@ Whichever technique you land on, anchor it in the warm amber (#C17D2E) and deep 
 
   const imageBriefInstruction = editionVignette
     ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. ${PRIORITY_ORDER} ${STORY_COHESION} Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
-    : `Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY — one scene, no panels, no collage layout of multiple moments. ${VISUAL_TECHNIQUE_RANGE} ${PRIORITY_ORDER} ${STORY_COHESION} Write the scene depicting the one specific absurd beat — describe the exact setting, light, what the man is wearing and doing, his face and expression${product ? `, and exactly where and how ${product['Product Name']} appears (its actual container, shape, color) as the visual focus` : ''}. Specific enough that whoever renders it could light it from this description alone. ${COMEDIC_REGISTER} REJECTED without appeal if: multiple frames or panels, any text or logo, the man's full body or face not visible, the scene doesn't match the caption's specific beat${product ? `, or the product missing/not identifiable in the chosen style` : ''}.`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY — one scene, no panels, no collage layout of multiple moments. ${VISUAL_TECHNIQUE_RANGE} ${PRIORITY_ORDER} ${STORY_COHESION} Write the scene depicting the one specific absurd beat — describe the exact setting, the light, and whatever is actually in it (a person and how much of them, an object, a detail — whichever tells this story)${product ? `, including exactly where and how ${product['Product Name']} appears (its actual container, shape, color) as the visual focus` : ''}. Specific enough that whoever renders it could light it from this description alone. ${COMEDIC_REGISTER} REJECTED without appeal if: multiple frames or panels, any text or logo, the scene doesn't match the caption's specific beat${product ? `, or the product missing/not identifiable in the chosen style` : ''}.`
 
   const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
 
@@ -502,9 +503,9 @@ One job: write the brief. Everything you produce must align with the Proprietor'
 
 ## Standing Rules (apply to every brief regardless of voice)
 
-- Feet appear as evidence of the standard — never the subject
-- No empty rooms. No objects without a person. No stock photo compositions. No generic lifestyle.
-- Every image has a person, a story, a specific moment
+- A person is a possibility in the image, never a requirement — the product and the story are what has to be there. Don't default to including a man just because that's been the habit, and don't ban one either. Feet, hands, a full figure, no one at all — whichever tells this specific story.
+- No stock photo compositions. No generic lifestyle. No empty, meaningless scenes.
+- Every image has a story and a specific moment — that's the requirement.
 - Four hashtag cap — #BigSoleVibes counts as one
 - Banned phrases (never use): "Start from the ground up" / "stopped settling for average" / "you put in the work" / "the grind is real"
 
