@@ -132,17 +132,22 @@ const LOUNGE_SOCIAL_CADENCE = [
   { week: 6, format: 'Tall Tale',         chapter: 2, articleType: 'spoke', ref: 'why-cologne-smells-different', angle: 'Same bottle. Different result on you. He thought that was coincidence. It was chemistry.' },
 ]
 
+// Weeks elapsed since Lounge launch (week 0 = launch week). Shared by the
+// Wednesday campfire cadence lookup and the chapter-arc resolver below, so
+// both stay locked to the same calendar math instead of drifting apart.
+function getWeeksSinceLaunch(date = new Date()) {
+  const monday = new Date(date)
+  const dow = monday.getDay()
+  monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1))
+  monday.setHours(0, 0, 0, 0)
+  const diffMs = monday.getTime() - LOUNGE_LAUNCH_MONDAY.getTime()
+  return Math.floor(diffMs / (7 * 24 * 3600 * 1000))
+}
+
 function getLoungeWedCadence(targetDateStr) {
   // targetDateStr is the day being briefed (e.g. "wed")
   if (targetDateStr !== 'wed') return null
-  // Compute which Lounge week we're in based on today's date
-  const today = new Date()
-  const todayMonday = new Date(today)
-  const dow = todayMonday.getDay()
-  todayMonday.setDate(todayMonday.getDate() - (dow === 0 ? 6 : dow - 1))
-  todayMonday.setHours(0, 0, 0, 0)
-  const diffMs    = todayMonday.getTime() - LOUNGE_LAUNCH_MONDAY.getTime()
-  const diffWeeks = Math.floor(diffMs / (7 * 24 * 3600 * 1000))
+  const diffWeeks = getWeeksSinceLaunch()
   if (diffWeeks < 0 || diffWeeks >= LOUNGE_SOCIAL_CADENCE.length) return null
   return LOUNGE_SOCIAL_CADENCE[diffWeeks]
 }
@@ -196,25 +201,54 @@ function pickVisualApproach(slug) {
 }
 
 // ─── Chapter state ────────────────────────────────────────────────────────────
-// media-director owns _chapter_state: reads on run, writes back at completion.
+// FIXED 2026-07-10: chapterState used to be treated as persisted state — loaded
+// from watch-drive-state.json._chapter_state and saved back completely
+// unchanged every run. Nothing anywhere ever advanced `active`, so it was
+// permanently stuck on the Chapter 1 default (13 days and counting). Worse,
+// that persistence round-trip fed a separate bug in watch-drive.js's
+// loadState() legacy-format detector, which wipes the *entire* state file
+// whenever it sees a top-level object with non-underscore string fields —
+// exactly the shape of _chapter_state. Every ~15-minute poll was silently
+// erasing it before it could ever be advanced (see watch-drive.js fix, same
+// date, same audit entry).
+//
+// Chapter is now a pure function of the calendar, using the same
+// weeks-since-launch math as the Wednesday campfire cadence above — they were
+// always meant to track the same arc, just never wired together. CHAPTER_ARCS
+// holds the narrative content per chapter (Chapter 2's name/lounge URL/product
+// tease are sourced from the existing Chapter 2 hub article "The One Bottle" in
+// lounge-reconcile.js's ARTICLE_CONFIGS — campfireFormat rotation Confession →
+// Observation is a Big C content call, flag if wrong). resolveActiveChapter()
+// maps the current week to a chapter via LOUNGE_SOCIAL_CADENCE, clamped to the
+// last chapter that actually has content — it will not invent a chapter The
+// Lounge hasn't written yet. State is still written to watch-drive-state.json
+// for audit/observability, but nothing depends on that write surviving anymore.
 
-const CHAPTER_STATE_DEFAULTS_MD = {
-  active:         1,
-  name:           'The Bathroom Cabinet',
-  productTease:   'The soap story. The man looked at it and for the first time actually looked at it.',
-  campfireFormat: 'The Confession',
-  loungeUrl:      'bigsolevibes.com/the-lounge/the-upgrade-path',
+const CHAPTER_ARCS = {
+  1: {
+    name:           'The Bathroom Cabinet',
+    productTease:   'The soap story. The man looked at it and for the first time actually looked at it.',
+    campfireFormat: 'The Confession',
+    loungeUrl:      'bigsolevibes.com/the-lounge/the-upgrade-path',
+  },
+  2: {
+    name:           'The One Bottle',
+    productTease:   'The cologne story. One bottle, chosen once — not researched, not compared. The Romans understood this before he did.',
+    campfireFormat: 'The Observation',
+    loungeUrl:      'bigsolevibes.com/the-lounge/the-one-bottle',
+  },
+}
+
+function resolveActiveChapter() {
+  const diffWeeks = getWeeksSinceLaunch()
+  const idx = diffWeeks < 0 ? 0 : Math.min(diffWeeks, LOUNGE_SOCIAL_CADENCE.length - 1)
+  return LOUNGE_SOCIAL_CADENCE[idx].chapter
 }
 
 function loadChapterState() {
-  try {
-    const p = path.join(ROOT, 'logs', 'watch-drive-state.json')
-    if (!fs.existsSync(p)) return { ...CHAPTER_STATE_DEFAULTS_MD }
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8'))
-    return raw._chapter_state
-      ? { ...CHAPTER_STATE_DEFAULTS_MD, ...raw._chapter_state }
-      : { ...CHAPTER_STATE_DEFAULTS_MD }
-  } catch { return { ...CHAPTER_STATE_DEFAULTS_MD } }
+  const chapterNum = resolveActiveChapter()
+  const arc = CHAPTER_ARCS[chapterNum] || CHAPTER_ARCS[Math.max(...Object.keys(CHAPTER_ARCS).map(Number))]
+  return { active: chapterNum, ...arc }
 }
 
 function saveChapterState(cs) {

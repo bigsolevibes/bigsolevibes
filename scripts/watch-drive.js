@@ -41,8 +41,18 @@ function loadState() {
   try {
     const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
     if (Array.isArray(raw.distributed)) return {}  // legacy array format
-    // Detect old string-value format (pre-per-platform-object model) — discard
-    for (const val of Object.values(raw)) {
+    // Detect old string-value format (pre-per-platform-object model) — discard.
+    // FIXED 2026-07-10: this used to descend into every top-level value,
+    // including underscore-prefixed metadata objects owned by other agents
+    // (_chapter_state, _sole_report_state, _cultural_override). Those objects'
+    // own fields (name, productTease, etc.) are legitimately strings on
+    // non-underscore keys, which this check misread as "legacy slot data" and
+    // wiped the entire state file to {} roughly every 15-minute poll — which is
+    // why media-director's chapter state could never persist long enough to
+    // advance. Top-level keys starting with _ are never slot entries — skip
+    // them entirely instead of inspecting their contents.
+    for (const [topKey, val] of Object.entries(raw)) {
+      if (topKey.startsWith('_')) continue
       if (val && typeof val === 'object') {
         for (const [k, v] of Object.entries(val)) {
           if (!k.startsWith('_') && typeof v === 'string') return {}
