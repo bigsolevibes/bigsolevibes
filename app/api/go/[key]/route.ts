@@ -20,6 +20,7 @@ const ALLOWED_HOSTS = [
   'dpbolvw.net', 'anrdoezrs.net', 'jdoqocy.com', 'tkqlhce.com', 'kqzyfj.com', // CJ affiliate redirect domains
   'impact.com',
   'flexoffers.com',
+  'spongelle.com', // direct affiliate override, see scripts/data/affiliate-overrides.json
 ]
 
 function isAllowedHost(hostname: string): boolean {
