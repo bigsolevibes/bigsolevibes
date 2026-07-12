@@ -287,15 +287,23 @@ function checkAgentHealth() {
     const logPath = path.join(ROOT, 'logs', `${agent.name}.log`)
 
     if (!fs.existsSync(logPath)) {
-      if (agent.essential) {
-        issues.push({ name: agent.name, severity: 'error', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
-      }
+      issues.push({ name: agent.name, severity: agent.essential ? 'error' : 'warning', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
       continue
     }
 
     const ageMins  = (now - fs.statSync(logPath).mtimeMs) / 60000
     const staleMins = agent.weekly ? 7 * 24 * 60 : agent.daily ? 25 * 60 : 120
-    const isStale  = ageMins > staleMins && agent.essential
+    // FIXED 2026-07-11: isStale used to require agent.essential, so every
+    // non-essential roster entry (all weekly agents — brand-manager,
+    // social-listening, product-research, etc.) could never be flagged stale
+    // no matter how long since it last ran — it just silently landed in `ok`
+    // and got reported "Healthy" in the standup. brand-manager went 26 days
+    // silent and was never caught by this check (see bigc-brief.md 2026-07-11).
+    // Telegram alerting is already gated on essential+error separately below
+    // (~line 1106), so removing the essential gate here doesn't add alert
+    // noise — it just makes the `ok`/`issues` split (and the standup's
+    // "Healthy" list) honest for non-essential agents too.
+    const isStale  = ageMins > staleMins
 
     // Read last 60 lines for errors and output signal
     let lastLines = []

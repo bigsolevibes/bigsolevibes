@@ -58,8 +58,23 @@ function rotateOne(logPath) {
   log(`Found ${logFiles.length} log file(s) to rotate`)
 
   for (const f of logFiles) {
+    const p = path.join(LOGS_DIR, f)
+    // FIXED 2026-07-11: this used to rotate every log unconditionally, including
+    // already-empty ones — fs.writeFileSync(base, '') on a 0-byte file still
+    // resets its mtime to "now" every single day. chief-of-staff.js's agent
+    // health check uses log mtime to detect stale agents, so a silent agent's
+    // log looked freshly-touched every morning and never tripped staleness —
+    // exactly how brand-manager went 26 days without running while still
+    // showing "Healthy" (see bigc-brief.md 2026-07-11, chief-of-staff.js fix
+    // same date). Skipping empty files preserves the true last-activity mtime.
+    let size = 0
+    try { size = fs.statSync(p).size } catch { /* doesn't exist yet — nothing to rotate */ }
+    if (size === 0) {
+      log(`Skipping ${f} — already empty, no new content since last rotation`)
+      continue
+    }
     log(`Rotating ${f}`)
-    rotateOne(path.join(LOGS_DIR, f))
+    rotateOne(p)
   }
 
   log('━━━ log-rotate complete ━━━\n')
