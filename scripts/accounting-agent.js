@@ -32,17 +32,31 @@ async function fetchCJRevenue() {
   const token = process.env.CJ_API_TOKEN
   const cid   = process.env.CJ_CID
   if (!token || !cid) { log('WARNING: CJ credentials not set'); return { amount: 0, note: 'CJ credentials not configured' } }
+  // Fixed 2026-07-13: this was still hitting CJ's retired REST v3 endpoint
+  // (every request 404'd — "CJ API 404" in the logs) after chief-of-staff.js's
+  // checkRevenue() was already migrated to CJ's GraphQL endpoint on 2026-07-02.
+  // Same fix, applied here: single query endpoint, GraphQL body instead of a
+  // REST querystring. See BSV-BigC-Audit-Log.md 2026-07-13.
   const now   = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  const end   = now.toISOString().slice(0, 10)
-  const url   = 'https://commissions.api.cj.com/v3/commissions?date-type=posting&start-date=' + start + '&end-date=' + end + '&website-id=' + cid
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const iso   = d => d.toISOString().slice(0, 19) + 'Z'
+  const query = `{publisherCommissions(forPublishers: ["${cid}"], sincePostingDate: "${iso(start)}", beforePostingDate: "${iso(now)}") { count records { pubCommissionAmountUsd } } }`
   try {
-    const res   = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/xml' }, signal: AbortSignal.timeout(10000) })
-    const xml   = await res.text()
-    if (!res.ok) { log('CJ API ' + res.status); return { amount: 0, note: 'CJ API ' + res.status } }
-    const tm     = xml.match(/total-matched="(\d+)"/)
-    const count  = tm ? parseInt(tm[1]) : 0
-    const amount = [...xml.matchAll(/<commission-amount>([\d.]+)<\/commission-amount>/g)].reduce((s, m) => s + parseFloat(m[1]), 0)
+    const res  = await fetch('https://commissions.api.cj.com/query', {
+      method:  'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ query }),
+      signal:  AbortSignal.timeout(10000),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json || json.errors) {
+      const detail = json?.errors ? JSON.stringify(json.errors).slice(0, 200) : ('HTTP ' + res.status)
+      log('CJ API error: ' + detail)
+      return { amount: 0, note: 'CJ API error: ' + detail }
+    }
+    const pc     = json.data?.publisherCommissions
+    const count  = pc?.count ?? 0
+    const amount = (pc?.records ?? []).reduce((s, r) => s + (parseFloat(r.pubCommissionAmountUsd) || 0), 0)
     log('CJ revenue: ' + fmt(amount) + ' (' + count + ' commissions)')
     return { amount, count, note: count === 0 ? 'CJ: no commissions this month' : null }
   } catch (err) { log('CJ exception: ' + err.message); return { amount: 0, note: 'CJ exception: ' + err.message } }
