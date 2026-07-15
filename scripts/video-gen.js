@@ -4,7 +4,6 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { sendTelegram } = require('./telegram')
 const { addPendingItem } = require('./telegram-queue')
 
 const ROOT                 = path.join(__dirname, '..')
@@ -208,10 +207,12 @@ async function generateVideo(ai, apiKey, prompt) {
       )
       log(`    ✓ staged → Video Review/${outFilename} (${Math.round(buf.length / 1024)}KB) — awaiting approval`)
 
+      // Telegram notification removed 2026-07-15 per Big D: "the approval is
+      // always on dashboard from now on" — /dashboard/video-review reads this
+      // same addPendingItem() queue directly (app/api/dashboard/video-review),
+      // so the item shows up there with no Telegram round-trip needed. Keeping
+      // addPendingItem() below — that's the actual queue write, not a nag.
       const promptSnippet = videoPrompt.slice(0, 180).replace(/[_*`[\]]/g, '').trim()
-      await sendTelegram(
-        `🎬 *VIDEO GENERATED — REVIEW REQUIRED*\n*Slot:* \`${slot}\`\n*Prompt:*\n${promptSnippet}${videoPrompt.length > 180 ? '…' : ''}\n\n📁 Drive: Big Sole Vibes/Video Review/${outFilename}\n\nReply \`approve\` or \`deny\` to release or delete this video.`
-      )
       addPendingItem({
         type:     'video-gate',
         id:       `video-gate-${slot}`,

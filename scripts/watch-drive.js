@@ -615,20 +615,31 @@ async function run() {
         delete state[base]._hold_since
       }
 
-      // Content approval gate — nothing distributes without Big D's explicit approval
+      // Content approval gate — nothing distributes without Big D's explicit approval.
+      // Changed 2026-07-15 per Big D: "the approval is always on dashboard from now
+      // on, where I can see the media and see the copy" — Telegram was "too much."
+      // Previously this fired a Telegram message + addPendingItem() on first sight
+      // of a slot, and relied on telegram-webhook.js to receive an approve/deny
+      // reply. That inbound listener was down for an extended period (confirmed via
+      // logs/telegram-webhook.log: continuous "Poll error: fetch failed"), so every
+      // gated slot piled up unanswered with no way for Big D to actually clear it —
+      // a 23-item content-gate backlog going back to 2026-06-12 that nobody could
+      // see without digging through logs/telegram-pending.json by hand.
+      // The dashboard's /dashboard/approvals page (app/api/dashboard/approve+deny,
+      // StateAdapter.getApprovalItems) already reads `_approval_requested` directly
+      // from this same state file — it does not depend on Telegram at all. So the
+      // fix isn't a new feature, it's removing the Telegram dependency from a gate
+      // that already has a working, direct path: just set the flag; the dashboard
+      // picks it up on its own next load. No outbound nag, no inbound listener to
+      // keep alive, one less thing that can silently break.
       const approvedSlots = loadApprovedSlots()
       if (!approvedSlots[base]) {
         if (!state[base]._approval_requested) {
-          const preview = captionText.slice(0, 200).replace(/[_*`[\]]/g, '').trim()
-          sendTelegram(
-            `🔒 *CONTENT GATE — REVIEW REQUIRED*\n*Slot:* \`${base}\`\n*Caption:*\n${preview}\n\nReply \`approve\` or \`deny\` to release or hold this slot.`
-          ).catch(() => {})
-          addPendingItem({ type: 'content-gate', id: `content-gate-${base}`, metadata: { slot: base } })
           state[base]._approval_requested = true
           saveState(state)
-          log(`${base}: content gate — held, approval requested via Telegram`)
+          log(`${base}: content gate — held, awaiting approval on dashboard (/dashboard/approvals)`)
         } else {
-          log(`${base}: content gate — awaiting Big D approval`)
+          log(`${base}: content gate — awaiting Big D approval on dashboard`)
         }
         continue
       }

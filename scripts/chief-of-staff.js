@@ -471,12 +471,42 @@ function buildAgentOutputDigest() {
   return rows
 }
 
+// Added 2026-07-15 per Big D: "the approval is always on dashboard from now
+// on" — and a separate complaint that agents "know about" problems (like a
+// growing approval backlog) that nobody surfaces until he goes searching for
+// them. Content-gate approval (`_approval_requested` in watch-drive-state.json)
+// is read directly by /dashboard/approvals — no Telegram involved as of the
+// same-day watch-drive.js fix. Video-gate approval lives in
+// logs/telegram-pending.json, read directly by /dashboard/video-review. Both
+// counts belong in the digest header so a growing backlog is visible here
+// instead of only discoverable by grepping raw state files by hand.
+function checkPendingApprovals() {
+  let contentGate = 0
+  try {
+    const state = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'watch-drive-state.json'), 'utf8'))
+    contentGate = Object.values(state).filter(s => s && s._approval_requested === true).length
+  } catch {}
+
+  let videoGate = 0
+  try {
+    const pending = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'telegram-pending.json'), 'utf8'))
+    videoGate = pending.filter(i => i.type === 'video-gate').length
+  } catch {}
+
+  return { contentGate, videoGate, total: contentGate + videoGate }
+}
+
 function writeAgentOutputDigest() {
   const rows = buildAgentOutputDigest()
+  const approvals = checkPendingApprovals()
   const lines = [
     `# BSV Agent Output Digest — ${DAY_NAME} ${DATE_STAMP}`,
     ``,
     `Local log parsing only — no API call, survives a credit outage. Read out at the start of each Big C session per CLAUDE.md.`,
+    ``,
+    approvals.total
+      ? `**Pending Dashboard Approvals: ${approvals.total}** (${approvals.contentGate} content-gate, ${approvals.videoGate} video-gate) — review at /dashboard/approvals${approvals.videoGate ? ' and /dashboard/video-review' : ''}.`
+      : `**Pending Dashboard Approvals: 0** — queue is clear.`,
     ``,
     `| Agent | Status | Last Run | What it produced |`,
     `|-------|--------|----------|-------------------|`,
