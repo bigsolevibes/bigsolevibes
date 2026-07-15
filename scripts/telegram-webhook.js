@@ -66,8 +66,25 @@ function saveState(state) {
 // ─── Telegram API helpers ─────────────────────────────────────────────────────
 
 async function getUpdates(token, offset, timeout) {
-  const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=${timeout}&allowed_updates=["message"]`
-  const res  = await fetch(url, { signal: AbortSignal.timeout((timeout + 5) * 1000) })
+  // allowed_updates was interpolated as a raw, unencoded JSON array
+  // (`["message"]`) directly into the query string — `[`, `"`, `]` are not
+  // valid unencoded query characters. Most URL parsers tolerate it, but it's
+  // a real bug regardless of whether it's the cause of the ongoing "fetch
+  // failed" — fixed 2026-07-16 alongside better error diagnostics below.
+  const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=${timeout}&allowed_updates=${encodeURIComponent(JSON.stringify(['message']))}`
+  let res
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout((timeout + 5) * 1000) })
+  } catch (err) {
+    // Fixed 2026-07-16 — Node's fetch throws a bare "TypeError: fetch
+    // failed" with the real network-level reason (ECONNRESET, ENOTFOUND,
+    // certificate error, etc.) tucked inside err.cause, which was never
+    // logged. Every one of the 36 "Poll error: fetch failed" entries in the
+    // eng backlog was this exact message with zero diagnostic value — this
+    // surfaces the cause so the next occurrence is actually debuggable.
+    const cause = err.cause ? ` — cause: ${err.cause.code || err.cause.message || JSON.stringify(err.cause)}` : ' — no cause reported by fetch'
+    throw new Error(`${err.message}${cause}`)
+  }
   if (!res.ok) throw new Error(`getUpdates HTTP ${res.status}`)
   const data = await res.json()
   if (!data.ok) throw new Error(`getUpdates error: ${data.description}`)

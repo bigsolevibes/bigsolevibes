@@ -249,6 +249,14 @@ function extractFailures(logContent, source) {
     if (isLogRotationLine(line)) continue
     // Success metric lines like "END branded=N failed=0" contain "failed" but are not failures
     if (/\bfailed=0\b/i.test(line)) continue
+    // Fixed 2026-07-16 — image-gen's own completion summary, e.g.
+    // "━━━ image-gen complete — 4 generated, 10 skipped, 0 failed ━━━", uses
+    // "N failed" (space, no equals sign) rather than "failed=N", so the
+    // failed=0 exclusion above never matched it. Every single successful
+    // image-gen run was getting queued as a Big D decision — roughly 25 of
+    // the 215-item eng backlog were this one false-positive pattern. Only
+    // suppresses the zero-failure case; "1 failed" or higher still escalates.
+    if (/\bcomplete\b.*\b0\s+failed\b/i.test(line)) continue
     // Require a real failure signal — bare "error" matches filenames like media-director-error.log
     if (
       !line.includes('✗') &&
