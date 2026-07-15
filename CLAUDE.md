@@ -1,16 +1,18 @@
 ## Pre-Session Protocol — Read Before Responding
 
-Read **one file**: `logs/bigc-brief.md`
+Read **two files**: `logs/bigc-brief.md` and `logs/agent-output-digest.md`
 
-Chief-of-staff.js writes it every morning from all live data sources. It contains the full standup (revenue, posts, agents, cost, growth, BIG D action items, BIG C action items) plus a compact session-context block (last 3 audit log headlines, hard rules, precedence). One read, everything you need.
+Chief-of-staff.js writes bigc-brief.md every morning from all live data sources — full standup (revenue, posts, agents, cost, growth, BIG D action items, BIG C action items) plus a compact session-context block (last 3 audit log headlines, hard rules, precedence).
 
-**If `logs/bigc-brief.md` is missing or its mtime is >24h:** fall back to the latest `standup-YYYY-MM-DD.md` in Drive's `Reports/` folder.
+`agent-output-digest.md` (added 2026-07-15, per Big D: "everything is running using tokens and I'm not getting any of it") is a per-agent readout — status, last run, and a one-line finding of what each agent in AGENT_ROSTER actually produced, not just whether it errored. Local log parsing only, no API call, so it's written every run regardless of Claude credit state — it's the one artifact guaranteed to reflect reality even during an outage like 07-01 to 07-15. Written by `writeAgentOutputDigest()` in chief-of-staff.js, same run as the standup.
+
+**If `logs/bigc-brief.md` is missing or its mtime is >24h:** fall back to the latest `standup-YYYY-MM-DD.md` in Drive's `Reports/` folder. `agent-output-digest.md` has no Drive fallback yet (local-only) — if it's stale too, say so rather than presenting silence as "nothing happened."
 
 `MEMORY.md` is auto-loaded — cross-session context is already in scope.
 
-**Present the stand-up to Big D as the opening of every session** — Revenue, Posts, Agent health, Cost, Growth. Skip only if Big D says "skip the brief."
+**Present the readout to Big D as the opening of every session** — Revenue, Posts, Agent health, Cost, Growth (from bigc-brief.md), then what each agent actually produced or found, and flag anything erroring/stale/never-run (from agent-output-digest.md). This replaces Telegram as the primary channel for agent findings — per Big D 2026-07-15, Telegram digests are "too much at the moment," revisit later. Skip only if Big D says "skip the brief."
 
-**The stand-up is non-negotiable.** If Big D opens with anything other than "skip the brief" — present it first, then address their message.
+**The readout is non-negotiable.** If Big D opens with anything other than "skip the brief" — present it first, then address their message.
 
 **Read on demand only — do NOT read at startup:**
 - `BSV-BigC-Audit-Log.md` — only when appending at end of session, or investigating a specific past decision

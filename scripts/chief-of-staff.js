@@ -389,6 +389,108 @@ function checkAgentHealth() {
   return { ok, issues, paused }
 }
 
+// ─── Agent Output Digest ───────────────────────────────────────────────────
+// Added 2026-07-15 per Big D: "everything is running using tokens and I'm not
+// getting any of it." checkAgentHealth() above already reports whether an
+// agent is erroring or stale — it does NOT report what the agent actually
+// PRODUCED on its last run, so a quiet-but-not-technically-broken agent
+// (blog-agent: 59 days no output; sole-report-agent: ran clean, logged
+// "complete (no brief)") reads as "healthy" with nothing to show for it.
+// This closes that gap with a one-line finding per agent.
+//
+// Deliberately local log parsing only, no API call — this must survive a
+// credit outage, since that's exactly when Big D most needs to know what did
+// and didn't happen. Written to its own file (see writeAgentOutputDigest
+// below) rather than folded into standup-*.txt, because that file has a
+// strict dashboard-parsed format (BLOCKERS must be the last section — see
+// the 2026-06-28 postmortem in the comment above) that this must not disturb.
+// Big C reads this file at the start of each session per CLAUDE.md and reads
+// it out directly — Telegram is intentionally not in this loop per Big D
+// 2026-07-15 ("telegram is too much at the moment").
+
+function lastRunBlock(content) {
+  if (!content) return []
+  const lines = content.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/start\s*(━━━|---)/.test(lines[i])) return lines.slice(i)
+  }
+  return lines.slice(-30) // no start marker found — fall back to tail
+}
+
+function extractFinding(lines) {
+  // Negative lookahead excludes false positives like "accounting-agent-error.log"
+  // in eng-bot's own "Scanning N log file(s): ...-error.log, ..." listing line —
+  // a filename containing "error" isn't an error report.
+  const errorLine = lines.find(l => /\b(ERROR|CRASH|FATAL)\b(?!\.log)/i.test(l))
+  if (errorLine) return `ERROR — ${errorLine.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160)}`
+
+  const boilerplate = /injected env|^\s*Loading |start\s*(━━━|---)|complete\s*(━━━|---)|^\s*$/i
+  const content = lines.filter(l => !boilerplate.test(l) && l.trim())
+  if (!content.length) return '(no output logged this run)'
+
+  return content.slice(-2).map(l => l.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160)).join(' — ')
+}
+
+function buildAgentOutputDigest() {
+  const now  = Date.now()
+  const rows = []
+
+  for (const agent of AGENT_ROSTER) {
+    if (agent.paused) {
+      rows.push({ name: agent.name, status: 'PAUSED', last: '—', finding: 'Paused, not resumed' })
+      continue
+    }
+
+    const logPath  = path.join(ROOT, 'logs', `${agent.name}.log`)
+    const logPath1 = path.join(ROOT, 'logs', `${agent.name}.log.1`)
+    let content = ''
+    try { content = fs.readFileSync(logPath, 'utf8') } catch {}
+    if (!content.trim()) { try { content = fs.readFileSync(logPath1, 'utf8') } catch {} }
+
+    if (!content.trim()) {
+      rows.push({ name: agent.name, status: 'NEVER RUN', last: '—', finding: '(no log on disk)' })
+      continue
+    }
+
+    const block   = lastRunBlock(content)
+    const tsLine  = block.find(l => /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/.test(l))
+    const ts      = tsLine ? tsLine.match(/^\[([^\]]+)\]/)[1] : null
+    const ageHrs  = ts ? (now - new Date(ts).getTime()) / 3600000 : Infinity
+    const staleHrs = agent.weekly ? 7 * 24 : agent.daily ? 25 : 2
+    const finding = extractFinding(block)
+    const status  = finding.startsWith('ERROR') ? 'ERROR' : (ageHrs > staleHrs ? 'STALE' : 'OK')
+
+    rows.push({
+      name: agent.name,
+      status,
+      last: ts ? new Date(ts).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '?',
+      finding,
+    })
+  }
+
+  return rows
+}
+
+function writeAgentOutputDigest() {
+  const rows = buildAgentOutputDigest()
+  const lines = [
+    `# BSV Agent Output Digest — ${DAY_NAME} ${DATE_STAMP}`,
+    ``,
+    `Local log parsing only — no API call, survives a credit outage. Read out at the start of each Big C session per CLAUDE.md.`,
+    ``,
+    `| Agent | Status | Last Run | What it produced |`,
+    `|-------|--------|----------|-------------------|`,
+    ...rows.map(r => `| ${r.name} | ${r.status} | ${r.last} | ${r.finding} |`),
+  ]
+  try {
+    fs.writeFileSync(path.join(ROOT, 'logs', 'agent-output-digest.md'), lines.join('\n'))
+    log(`Agent output digest written → logs/agent-output-digest.md (${rows.length} agents, ${rows.filter(r => r.status === 'ERROR').length} error, ${rows.filter(r => r.status === 'STALE').length} stale)`)
+  } catch (err) {
+    log(`WARNING: failed to write agent output digest — ${err.message}`)
+  }
+  return rows
+}
+
 // ─── Sprawl check: scripts producing logs that nobody is tracking ────────────
 // Added 2026-07-01. AGENT_ROSTER is a hand-maintained list — it drifts. This scans
 // what's actually producing log activity on disk and diffs it against the roster,
@@ -1042,6 +1144,7 @@ function buildBigCContext() {
 
   log('P3: Agent health...')
   const agents = checkAgentHealth()
+  const outputDigest = writeAgentOutputDigest()
 
   const untrackedAgents = findUntrackedAgents()
   if (untrackedAgents.length) {
