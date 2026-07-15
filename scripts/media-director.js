@@ -421,8 +421,20 @@ Respond in JSON only:
   "proprietor_take": "two sentence Proprietor voice take on the moment — deadpan, no product, or null if no override",
   "hashtags": "5 relevant hashtags or null"
 }`)
-    const cleaned = response.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-    const parsed = JSON.parse(cleaned)
+    // Fixed 2026-07-16 — the old regex-only fence strip
+    // (/^```json\s*/ + /```\s*$/) only worked if the ENTIRE response was
+    // exactly one fenced block with nothing else. Any trailing prose after
+    // the closing fence (which Claude adds often enough) left stray
+    // characters after the JSON and threw "Unexpected non-whitespace
+    // character after JSON at position N" — recurring since at least
+    // 2026-06-06, ~13 times in the eng backlog, every one silently falling
+    // back to override:false. Switched to the same indexOf('{')/
+    // lastIndexOf('}') extraction generateSoleReportBrief() already uses
+    // below — robust to anything before/after the JSON object itself.
+    const start  = response.indexOf('{')
+    const end    = response.lastIndexOf('}')
+    if (start === -1 || end === -1) throw new Error('no JSON object in response')
+    const parsed = JSON.parse(response.slice(start, end + 1))
     return { source: 'claude', ...parsed }
   } catch (err) {
     log(`WARNING: cultural override check failed — ${err.message}`)
@@ -507,7 +519,7 @@ function pickEditionVignette(editionState) {
   return vignette
 }
 
-async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory }) {
+async function generateSoleReportBrief({ bsvDirective, socialReport, bsvMemory, weekStrategy }) {
   const weekNum   = getISOWeek(new Date())
   const statePath = path.join(ROOT, 'logs', 'watch-drive-state.json')
 
@@ -793,9 +805,18 @@ Return JSON only — no markdown fences:
   if (targetDay === 'sat') {
     log('Saturday run — generating Sole Report brief...')
     try {
-      await generateSoleReportBrief({ bsvDirective: dailyDirective?.content, socialReport, bsvMemory })
+      await generateSoleReportBrief({ bsvDirective: dailyDirective?.content, socialReport, bsvMemory, weekStrategy })
     } catch (err) {
-      log(`WARNING: Sole Report brief Drive upload failed — ${err.message} — continuing to gemini-bridge`)
+      // Fixed 2026-07-16 — this warning's own message was mislabeling the real
+      // bug: generateSoleReportBrief() referenced `weekStrategy` internally
+      // (line ~534) without it ever being passed in or in scope there, so
+      // this threw "weekStrategy is not defined" (a plain JS ReferenceError,
+      // not a Drive upload problem) on every single Saturday run since at
+      // least 2026-06-19 — the brief was never generated, which is why
+      // blog-agent --sole-report kept finding "no brief with status BRIEFED"
+      // every Sunday night. Passing weekStrategy through now; log message
+      // corrected so a real future failure here isn't similarly mislabeled.
+      log(`WARNING: Sole Report brief generation failed — ${err.message} — continuing to gemini-bridge`)
     }
   }
 
