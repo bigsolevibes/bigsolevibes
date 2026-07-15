@@ -262,7 +262,13 @@ crossover_signal: [true / false]
 Products flagged for Track 2 shelf consideration: [list names, or "none this week"]`
 
   log('Calling Claude API with web search...')
-  const client = new Anthropic({ apiKey })
+  // timeout/maxRetries added 2026-07-16 — this is the heaviest API call in
+  // the pipeline (up to 12 turns, up to 18 web searches per turn), and was
+  // using the SDK default, which produced "Request timed out" 10 times over
+  // the last ~6 weeks — by far the most of any script in the eng backlog.
+  // Explicit generous timeout + retries gives a genuinely long research call
+  // room to finish instead of getting cut off mid-run.
+  const client = new Anthropic({ apiKey, timeout: 10 * 60 * 1000, maxRetries: 3 })
 
   let messages = [{ role: 'user', content: userPrompt }]
   let fullText = ''

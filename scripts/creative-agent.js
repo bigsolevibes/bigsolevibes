@@ -648,13 +648,28 @@ One line only. No explanation unless it's a CONCERN.`,
   const draftName   = `social-draft-${dateStamp}-${slot}.md`
   const draftLocal  = path.join(TEMP_DIR, draftName)
   fs.writeFileSync(draftLocal, brief)
-  try {
-    execSync(`rclone copyto "${draftLocal}" "${REMOTE}/Lounge/Social Drafts/${draftName}"`, {
-      stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000,
-    })
-    log(`Drive: saved social draft → Lounge/Social Drafts/${draftName}`)
-  } catch (err) {
-    log(`WARNING: Drive save failed — ${err.message}`)
+  // Retry + longer timeout added 2026-07-16 — this was a single attempt at
+  // 30s, which produced 9 "spawnSync /bin/sh ETIMEDOUT" warnings over the
+  // last ~5 weeks (roughly weekly). This save is non-critical (an editorial
+  // record copy, not the post itself), so a slow rclone/Drive-API moment
+  // shouldn't need a person's attention — one retry after a short pause and
+  // a longer ceiling covers the transient case without masking a real outage
+  // (it'll still warn if both attempts fail).
+  let driveSaveOk = false
+  for (let attempt = 1; attempt <= 2 && !driveSaveOk; attempt++) {
+    try {
+      execSync(`rclone copyto "${draftLocal}" "${REMOTE}/Lounge/Social Drafts/${draftName}"`, {
+        stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000,
+      })
+      log(`Drive: saved social draft → Lounge/Social Drafts/${draftName}`)
+      driveSaveOk = true
+    } catch (err) {
+      if (attempt === 1) {
+        await new Promise(r => setTimeout(r, 3000))
+      } else {
+        log(`WARNING: Drive save failed — ${err.message}`)
+      }
+    }
   }
 
   log(`━━━ creative-agent complete: ${slot} / ${voiceDef.name} ━━━\n`)

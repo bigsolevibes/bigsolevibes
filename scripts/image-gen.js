@@ -75,7 +75,7 @@ function scanPromptFiles() {
 
 // ─── Gemini image generation ──────────────────────────────────────────────────
 
-async function generateImage(apiKey, prompt) {
+async function generateImageOnce(apiKey, prompt) {
   const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:predict?key=${apiKey}`
   const body = {
     instances:  [{ prompt }],
@@ -92,9 +92,35 @@ async function generateImage(apiKey, prompt) {
   }
   const prediction = data?.predictions?.[0]
   if (!prediction?.bytesBase64Encoded) {
-    throw new Error(`No image in response — keys: ${JSON.stringify(Object.keys(prediction || data))}`)
+    // Fixed 2026-07-16 — the old error only logged Object.keys(), which for a
+    // genuinely empty `{}` body (the actual, repeated failure mode for this
+    // slot) always printed the useless "keys: []" seen ~8x in the eng
+    // backlog with zero diagnostic value. Logging the raw body (truncated)
+    // instead so a persistent failure is actually debuggable next time —
+    // e.g. distinguishing a real empty response from a safety-filter block
+    // (which Imagen sometimes reports via predictions[0].raiFilteredReason
+    // rather than omitting bytesBase64Encoded outright).
+    throw new Error(`No image in response — raw body: ${JSON.stringify(data).slice(0, 300)}`)
   }
   return Buffer.from(prediction.bytesBase64Encoded, 'base64')
+}
+
+// Retry wrapper added 2026-07-16 — generateImageOnce() previously had zero
+// retries, so any transient API hiccup was indistinguishable in the logs
+// from a deterministic failure (e.g. a persistently safety-filtered prompt).
+// One retry after a short delay is enough to tell the two apart without
+// meaningfully slowing down a run that's mostly succeeding.
+async function generateImage(apiKey, prompt, attempts = 2) {
+  let lastErr
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await generateImageOnce(apiKey, prompt)
+    } catch (err) {
+      lastErr = err
+      if (i < attempts) await new Promise(r => setTimeout(r, 2000))
+    }
+  }
+  throw lastErr
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

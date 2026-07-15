@@ -150,11 +150,22 @@ function listDrive(remotePath) {
   }
 }
 
-function downloadFile(remotePath, localDir) {
+// Retry added 2026-07-16 — this was a single attempt, no retry, which
+// produced 5 "download failed, skipping" warnings over ~5 weeks (transient
+// rclone/Drive-API errors, not a pattern tied to any one slot). watch-drive's
+// 15-min poll would eventually retry the same file on its own, but that
+// means a real post could sit an extra cycle over a one-off network blip.
+// One immediate retry after a short pause resolves the common transient
+// case in-cycle; a real outage still surfaces the same log line as before.
+function downloadFile(remotePath, localDir, attempt = 1) {
   try {
     execSync(`rclone copy "${remotePath}" "${localDir}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
     return true
   } catch (err) {
+    if (attempt < 2) {
+      try { execSync('sleep 2') } catch {}
+      return downloadFile(remotePath, localDir, attempt + 1)
+    }
     log(`ERROR: rclone copy failed for ${remotePath}: ${err.stderr?.toString().trim() || err.message}`)
     return false
   }
