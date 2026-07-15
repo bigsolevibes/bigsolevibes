@@ -9,6 +9,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { sendTelegram } = require('./telegram')
+const { connect: connectSheet, readAllRows } = require('./sheets-client')
 const {
   addPendingItem,
   readDecisionFromDrive,
@@ -70,6 +71,41 @@ function loadLatestReport(prefix, folder = 'Reports') {
     const content = loadDriveFile(`${REMOTE}/${folder}/${latest}`, TEMP_DIR)
     return content ? { filename: latest, content } : null
   } catch { return null }
+}
+
+// Fixed 2026-07-13 (see BSV-BigC-Audit-Log.md): the standup's Pending
+// Candidates section used to rely entirely on `latestResearch.content.slice(
+// 0, 2000)` — the first 2000 characters of the raw multi-phase Drive
+// research report — and ask the standup LLM to fish the current pick's name
+// and reasoning out of that free text. When the actual queued candidate's
+// writeup fell past the 2000-char cutoff (a near-certainty on any report
+// with multiple phases before the pick), the standup surfaced stale/wrong
+// candidate names with no real reasoning attached — confirmed live on
+// 2026-07-13: the brief named "Buly 1803" and "Nécessaire", but the row
+// actually queued to the Sheet that cycle was "Aesop Resolute Hydrating Body
+// Balm". Big D had already asked for real reasoning here on 2026-07-10; this
+// was the plumbing gap that broke it. Reads the Sheet directly instead —
+// the same structured Reasoning/Brand Story/Narrative columns
+// product-research.js already writes (sheets-client.js HEADERS) — so the
+// standup names the product that's actually pending, with its actual case.
+async function loadPendingProductCandidates() {
+  try {
+    const conn = await connectSheet()
+    const rows = await readAllRows(conn)
+    return rows
+      .filter(r => (r['Status'] || '').trim().toLowerCase() === 'pending')
+      .map(r => ({
+        name:      r['Product Name'] || '(unnamed)',
+        category:  r['Category'] || '',
+        score:     r['Score'] || '',
+        price:     r['Price'] || '',
+        reasoning: r['Reasoning'] || '',
+        brandStory: r['Brand Story'] || '',
+      }))
+  } catch (err) {
+    log(`WARNING: could not read product Sheet for standup — ${err.message}`)
+    return []
+  }
 }
 
 function loadLatestHandoff() {
@@ -247,7 +283,11 @@ const AGENT_ROSTER = [
   { name: 'drive-sync',        essential: false, weekly: false },
   { name: 'gemini-bridge',     essential: false, weekly: false },
   { name: 'image-gen',         essential: false, weekly: false },
-  { name: 'video-gen',         essential: false, weekly: false },
+  // paused 2026-07-13 per Big D: video is intentionally on hold, not resumed
+  // yet — this stopped video-gen's staleness from being flagged as a warning
+  // every day for something that isn't actually broken, just not started.
+  // Remove `paused: true` (or delete this comment) once video work resumes.
+  { name: 'video-gen',         essential: false, weekly: false, paused: true },
   { name: 'cost-report',       essential: false, weekly: false },
   { name: 'accounting-agent',  essential: false, weekly: false },
   { name: 'reddit-agent',      essential: false, weekly: false },
@@ -282,8 +322,17 @@ function checkAgentHealth() {
   const now    = Date.now()
   const issues = []
   const ok     = []
+  const paused = []
 
   for (const agent of AGENT_ROSTER) {
+    // Paused agents (e.g. video-gen, on hold per Big D 2026-07-13) are
+    // intentionally not running — skip the staleness/error check entirely so
+    // a deliberate pause doesn't get reported as a broken agent every day.
+    if (agent.paused) {
+      paused.push({ name: agent.name, msg: 'Paused — not resumed yet' })
+      continue
+    }
+
     const logPath = path.join(ROOT, 'logs', `${agent.name}.log`)
 
     if (!fs.existsSync(logPath)) {
@@ -337,7 +386,7 @@ function checkAgentHealth() {
 
   log(`Agent health: ${ok.length} OK, ${issues.length} issue(s)`)
   for (const i of issues) log(`  [${i.severity}] ${i.name}: ${i.msg}`)
-  return { ok, issues }
+  return { ok, issues, paused }
 }
 
 // ─── Sprawl check: scripts producing logs that nobody is tracking ────────────
@@ -627,32 +676,93 @@ function buildTokenBudget() {
 // ─── Weekly agent efficiency audit (Sunday only) ──────────────────────────────
 // Reads logs to surface which agents ran, token usage, and whether model tier
 // matches task complexity. No API call — all local log parsing.
+//
+// 2026-07-15: replaced the hand-maintained MODEL_MAP with a live scan of
+// scripts/*.js. Root cause of the affiliate-scout/opus miss — that script was
+// added 2026-06-10, five days after this audit shipped (2026-06-05), and
+// never got a MODEL_MAP entry, so the loop below (which only iterated
+// MODEL_MAP's keys) silently skipped it forever. A hand-maintained allowlist
+// can't catch a script nobody remembered to list. This scans every script
+// that actually calls the API, so a new script is visible the first Sunday
+// it exists, with or without anyone updating a map.
+
+const MODEL_TIER = { 'opus': 3, 'sonnet': 2, 'haiku': 1 }
+function modelTier(modelStr) {
+  const m = (modelStr || '').toLowerCase()
+  if (m.includes('opus'))   return 3
+  if (m.includes('sonnet')) return 2
+  if (m.includes('haiku'))  return 1
+  return 0 // unknown model string — still worth a look
+}
+
+// Curated notes for agents we've already reviewed — shown when the script's
+// current model matches what was reviewed. If the code has since drifted to
+// a different model, the curated note is dropped and a drift flag fires
+// instead, so a stale "Sonnet correct" note can never mask a silent bump to Opus.
+const REVIEWED = {
+  'creative-agent':     { model: 'sonnet-4-6',  type: 'creative',   note: 'Brand voice captions — Sonnet correct' },
+  'media-director':     { model: 'haiku-4-5',   type: 'brief',      note: 'Persona/brief assignment — Haiku correct' },
+  'blog-agent':         { model: 'sonnet-4-6',  type: 'creative',   note: 'Long-form articles — Sonnet correct' },
+  'brand-manager':      { model: 'sonnet-4-6',  type: 'qa',         note: 'Editorial QA — Sonnet correct; watch continuation calls' },
+  'strategist':         { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Weekly strategy — Sonnet correct; runs Sunday only' },
+  'chief-of-staff':     { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Daily standup — Sonnet correct' },
+  'eng-bot':            { model: 'haiku-4-5',   type: 'triage',     note: 'Error triage — Haiku correct' },
+  'social-listening':   { model: 'haiku-4-5',   type: 'synthesis',  note: 'Signal extraction — Haiku correct' },
+  'marketing-manager':  { model: 'haiku-4-5',   type: 'report',     note: 'Audience analysis — Haiku correct' },
+  'product-development':{ model: 'sonnet-4-6',  type: 'research',   note: 'Live web research — Sonnet correct; state now local' },
+  'product-research':   { model: 'sonnet-4-6',  type: 'research',   note: 'Live product discovery — Sonnet correct' },
+  'reddit-agent':       { model: 'haiku-4-5',   type: 'creative',   note: 'Reddit post copy — Haiku acceptable' },
+  'lounge-reconcile':   { model: 'sonnet-4-6',  type: 'editorial',  note: 'Article rewrite — Sonnet correct; runs on-demand' },
+  'edition-agent':      { model: 'sonnet-4-6',  type: 'creative',   note: 'Monthly edition story — Sonnet correct' },
+  'affiliate-scout':    { model: 'sonnet-4-6',  type: 'research',   note: 'Factual program/URL lookup — downgraded from Opus 2026-07-15, no reasoning-depth need' },
+  'update-handoff':     { model: 'none',        type: 'template',   note: 'Template render — no API call ✓' },
+}
+
+// Live-scan scripts/ for every script that actually calls the Anthropic API,
+// and every model string it uses. This is the source of truth — REVIEWED is
+// just annotation on top of it, never a gate on what gets checked.
+function scanClaudeScripts() {
+  const scriptsDir = path.join(ROOT, 'scripts')
+  const found = {}
+  let files = []
+  try { files = fs.readdirSync(scriptsDir).filter(f => f.endsWith('.js')) } catch { return found }
+
+  for (const file of files) {
+    let content = ''
+    try { content = fs.readFileSync(path.join(scriptsDir, file), 'utf8') } catch { continue }
+    // .create() and .stream() are both real API calls (chief-of-staff's own
+    // standup doc uses .stream()) — matching only .create() would blind-spot
+    // this exact file the same way MODEL_MAP blind-spotted affiliate-scout.
+    if (!content.includes('messages.create') && !content.includes('messages.stream')) continue
+
+    const agent  = file.replace(/\.js$/, '')
+    const models = new Set()
+    // Scan model: values that sit close to an actual .messages.create(/.stream( call,
+    // not just anywhere in the file — avoids picking up unrelated string literals
+    // (e.g. this very file's REVIEWED map, which has its own `model: '...'` entries).
+    for (const call of content.matchAll(/\.messages\.(?:create|stream)\(\s*\{/g)) {
+      const window = content.slice(call.index, call.index + 600)
+      const m = window.match(/model:\s*['"]([^'"]+)['"]/)
+      if (m) models.add(m[1])
+    }
+    if (!models.size) continue
+
+    found[agent] = Array.from(models)
+  }
+  return found
+}
 
 function buildAgentEfficiencyAudit() {
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000
   const cutoff  = new Date(Date.now() - WEEK_MS)
 
-  // Known model assignments per agent (update when scripts change)
-  const MODEL_MAP = {
-    'creative-agent':     { model: 'sonnet-4-6',  type: 'creative',   note: 'Brand voice captions — Sonnet correct' },
-    'media-director':     { model: 'haiku-4-5',   type: 'brief',      note: 'Persona/brief assignment — Haiku correct' },
-    'blog-agent':         { model: 'sonnet-4-6',  type: 'creative',   note: 'Long-form articles — Sonnet correct' },
-    'brand-manager':      { model: 'sonnet-4-6',  type: 'qa',         note: 'Editorial QA — Sonnet correct; watch continuation calls' },
-    'strategist':         { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Weekly strategy — Sonnet correct; runs Sunday only' },
-    'chief-of-staff':     { model: 'sonnet-4-6',  type: 'synthesis',  note: 'Daily standup — Sonnet correct' },
-    'eng-bot':            { model: 'haiku-4-5',   type: 'triage',     note: 'Error triage — Haiku correct' },
-    'social-listening':   { model: 'haiku-4-5',   type: 'synthesis',  note: 'Signal extraction — Haiku correct' },
-    'marketing-manager':  { model: 'haiku-4-5',   type: 'report',     note: 'Audience analysis — Haiku correct' },
-    'product-development':{ model: 'sonnet-4-6',  type: 'research',   note: 'Live web research — Sonnet correct; state now local' },
-    'product-research':   { model: 'sonnet-4-6',  type: 'research',   note: 'Live product discovery — Sonnet correct' },
-    'reddit-agent':       { model: 'haiku-4-5',   type: 'creative',   note: 'Reddit post copy — Haiku acceptable' },
-    'lounge-reconcile':   { model: 'sonnet-4-6',  type: 'editorial',  note: 'Article rewrite — Sonnet correct; runs on-demand' },
-    'update-handoff':     { model: 'none',         type: 'template',   note: 'Template render — no API call ✓' },
-  }
-
+  const liveScripts = scanClaudeScripts()
   const results = []
+  const driftFlags  = []
+  const opusFlags   = []
+  const unreviewedFlags = []
 
-  for (const [agent, meta] of Object.entries(MODEL_MAP)) {
+  for (const [agent, models] of Object.entries(liveScripts)) {
     const logFile  = path.join(ROOT, 'logs', `${agent}.log`)
     const logFile1 = path.join(ROOT, 'logs', `${agent}.log.1`)
 
@@ -660,34 +770,51 @@ function buildAgentEfficiencyAudit() {
     try { content += fs.readFileSync(logFile, 'utf8') } catch {}
     try { content += fs.readFileSync(logFile1, 'utf8') } catch {}
 
-    if (!content) continue
-
     // Find runs in the last 7 days
-    const lines = content.split('\n').filter(l => {
+    const lines = content ? content.split('\n').filter(l => {
       const m = l.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]/)
       if (!m) return false
       return new Date(m[1]) >= cutoff
-    })
+    }) : []
 
-    if (!lines.length) continue
-
-    // Count runs (start markers)
     const runs = lines.filter(l => l.includes('start ━━━') || l.includes('start ---')).length
-
-    // Sum tokens from "Done — N tokens" or "N tokens" patterns
     let tokens = 0
     for (const line of lines) {
       const m = line.match(/(\d+)\s+(?:output\s+)?tokens/)
       if (m) tokens += parseInt(m[1])
     }
-
-    // Flag continuation calls (brand-manager overflow)
     const continuations = lines.filter(l => l.includes('continuation') || l.includes('max_tokens')).length
 
-    results.push({ agent, runs, tokens, continuations, ...meta })
+    // Highest-cost model actually present in the script today
+    const liveModel = models.sort((a, b) => modelTier(b) - modelTier(a))[0]
+    const reviewed  = REVIEWED[agent]
+    const drifted   = reviewed && reviewed.model && !liveModel.includes(reviewed.model.split('-')[0]) // rough family check (opus/sonnet/haiku)
+
+    let type, note
+    if (reviewed && !drifted) {
+      type = reviewed.type
+      note = reviewed.note
+    } else if (reviewed && drifted) {
+      type = reviewed.type
+      note = `⚠ DRIFT — reviewed as ${reviewed.model}, code now shows ${models.join(', ')}`
+      driftFlags.push(`${agent}: model changed from reviewed ${reviewed.model} to ${models.join(', ')} — re-review needed`)
+    } else {
+      type = 'unreviewed'
+      note = `Not yet reviewed — found via live scan, using ${models.join(', ')}`
+      unreviewedFlags.push(`${agent}: new/unreviewed script calling Claude (${models.join(', ')}) — confirm model tier matches task complexity`)
+    }
+
+    if (modelTier(liveModel) === 3) {
+      opusFlags.push(`${agent}: running on Opus (highest cost tier) — confirm this genuinely needs frontier-level reasoning, not just the strongest available model`)
+    }
+
+    // Only list in the weekly table if it ran in the window, OR it's flagged (opus/drift/unreviewed) — surface problems even if quiet
+    if (!lines.length && reviewed && !drifted && modelTier(liveModel) < 3) continue
+
+    results.push({ agent, model: models.join(', '), runs, tokens, continuations, type, note })
   }
 
-  if (!results.length) return '(no agent activity in the last 7 days)'
+  if (!results.length) return '(no agent activity or flags in the last 7 days)'
 
   const lines = [
     '| Agent | Model | Runs | Tokens | Type | Notes |',
@@ -698,13 +825,13 @@ function buildAgentEfficiencyAudit() {
     lines.push(`| ${r.agent} | ${r.model} | ${r.runs} | ${r.tokens || '—'} | ${r.type} | ${r.note}${flag} |`)
   }
 
-  // Flags for chief to surface
   const flags = []
   for (const r of results) {
     if (r.continuations > 0) flags.push(`${r.agent}: hit max_tokens ${r.continuations}x this week — prompt is too long, trim input context`)
-    if (r.model === 'sonnet-4-6' && r.type === 'report' && r.tokens < 500) flags.push(`${r.agent}: Sonnet generating <500 tokens — consider Haiku`)
-    if (r.model === 'sonnet-4-6' && r.type === 'triage') flags.push(`${r.agent}: triage task on Sonnet — should be Haiku`)
+    if (modelTier(r.model) === 2 && r.type === 'report' && r.tokens < 500) flags.push(`${r.agent}: Sonnet generating <500 tokens — consider Haiku`)
+    if (modelTier(r.model) === 2 && r.type === 'triage') flags.push(`${r.agent}: triage task on Sonnet — should be Haiku`)
   }
+  flags.push(...opusFlags, ...driftFlags, ...unreviewedFlags)
 
   return lines.join('\n') + (flags.length ? '\n\n**Flags:**\n' + flags.map(f => `- ${f}`).join('\n') : '\n\n**No flags.**')
 }
@@ -933,6 +1060,16 @@ function buildBigCContext() {
       agents: {}
     }
     for (const agent of AGENT_ROSTER) {
+      if (agent.paused) {
+        orgState.agents[agent.name] = {
+          essential: agent.essential,
+          weekly:    agent.weekly,
+          status:    'paused',
+          msg:       'Paused — not resumed yet',
+          fix:       null,
+        }
+        continue
+      }
       const issue = agents.issues.find(i => i.name === agent.name)
       const isOk  = agents.ok.includes(agent.name)
       orgState.agents[agent.name] = {
@@ -1014,6 +1151,7 @@ function buildBigCContext() {
   const latestResearch = (() => {
     try { return loadLatestReport('research', 'Product Research') } catch { return null }
   })()
+  const pendingCandidates = await loadPendingProductCandidates()
   const productDevState = (() => {
     try {
       const p = path.join(ROOT, 'logs', 'product-development-state.json')
@@ -1213,7 +1351,14 @@ ${brandAuditLog ? `## Brand Manager Running Log (last 3 weeks)\nWhat brand-manag
 
 ${mediaDirAuditLog ? `## Media Director Running Log (last 3 runs)\nWhat media-director has been tracking — slot assignments, edition state, strategy alignment.\n${mediaDirAuditLog}\n\n---\n` : ''}
 
-${latestResearch ? `## Latest Product Research (${latestResearch.filename})\nCHANGED 2026-07-10 per Big D: research now surfaces at most 1-2 Pending candidates per cycle (not a long list), and this section's job is to present them as a discussion item, not a status line. For each Pending candidate: name it, give its actual Proprietor's Audit reasoning (why it fits the standard — pull it from the research below, don't summarize it away), and frame it as something for Big D and Big C to talk through and decide together in this standup — not a pre-made yes/no. If there are zero Pending candidates this cycle, say so plainly; that's a fine outcome, not a gap. Separately: if the shelf has picks that haven't been published in the Locker Room yet, flag that in Agent Briefings. If the research flagged a trending product with a time-sensitive signal, escalate it to BIG D — DO THIS TODAY.\n${latestResearch.content.slice(0, 2000)}\n\n---\n` : ''}
+## Pending Product Candidates
+CHANGED 2026-07-13 per Big D — fixed the plumbing on a 2026-07-10 request that wasn't actually working: this section used to be built by asking you to fish a candidate's name and reasoning out of the first 2000 characters of the raw research report, which frequently named the wrong product entirely (the actual pending pick's writeup lived past the cutoff). This is now read directly from the product Sheet's Pending rows — the exact product(s) actually sitting in the queue, with their real Proprietor's Audit reasoning, not a summary of it.
+For each candidate below: name it, quote its reasoning and brand story close to verbatim (this is Big D's actual review context, don't compress it away), and frame it as a discussion item for Big D and Big C to decide together in this standup — how it was found, why it fits the standard, not a pre-made yes/no. If the list below is empty, say so plainly; that's a fine outcome, not a gap.
+${pendingCandidates.length ? pendingCandidates.map(c => `- **${c.name}** (${c.category}${c.price ? `, ${c.price}` : ''}${c.score ? `, score ${c.score}` : ''})\n  Reasoning: ${c.reasoning || '(none recorded)'}\n  Brand story: ${c.brandStory || '(none recorded)'}`).join('\n') : '(none pending)'}
+
+---
+
+${latestResearch ? `## Latest Product Research Report (${latestResearch.filename}, background context only — trending signals, phase notes; the Pending Product Candidates section above is the source of truth for what's actually queued)\n${latestResearch.content.slice(0, 1200)}\n\n---\n` : ''}
 
 ${denialCount > 0 ? `## Content Denials (last 7 days): ${denialCount} slot(s) denied by Big D\nDenials are the strongest quality signal. If denials are rising or repeating, brief quality is not improving — surface this in Org Recommendations.\n\n---\n` : ''}
 ## Revenue

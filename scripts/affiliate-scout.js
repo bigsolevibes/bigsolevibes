@@ -89,7 +89,7 @@ Return ONLY valid JSON:
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-4-6', // downgraded from opus-4-8 2026-07-15 — factual lookup task, doesn't need opus-tier reasoning; was the one script in the pipeline off the Sonnet/Haiku pattern
       max_tokens: 1000,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
       messages: [{ role: 'user', content: prompt }]
