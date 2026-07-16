@@ -308,9 +308,9 @@ const AGENT_ROSTER = [
   // Added 2026-07-01 — both had rotating logs and were being called "Healthy" in the
   // standup with zero backing check (see BSV-BigC-Audit-Log.md same date). affiliate-scout
   // is a real committed script (scripts/affiliate-scout.js) — weekly audit cadence.
-  // cj-research is NOT in this repo at all (no .js file in git history) despite active
-  // logs on the machine — tracked here for honest staleness reporting only; Big D still
-  // needs to decide whether to commit its source or retire it.
+  // cj-research.js was written 2026-07-16 (see BSV-BigC-Audit-Log.md same date) —
+  // until then the launchd job existed but the script never did, so every run
+  // failed at "Cannot find module" before it could try anything CJ-related.
   { name: 'affiliate-scout',   essential: false, weekly: true  },
   { name: 'cj-research',       essential: false, weekly: true  },
   // Added 2026-07-16: real, committed, actively-running scripts that
