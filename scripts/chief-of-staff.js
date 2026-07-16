@@ -278,16 +278,40 @@ const AGENT_ROSTER = [
   { name: 'creative-agent',    essential: true,  weekly: false, daily: true  },
   { name: 'distribute',        essential: true,  weekly: false, daily: true  },
   { name: 'update-handoff',    essential: true,  weekly: false, daily: true  },
-  // ── Supporting — non-essential, expected every 2h ─────────────────────────
-  { name: 'org-chart-agent',   essential: false, weekly: false },
+  // ── Supporting — genuinely continuous (drive-sync runs on watch-drive's
+  // ~15min poll cadence) — expected every 2h ───────────────────────────────
   { name: 'drive-sync',        essential: false, weekly: false },
-  { name: 'gemini-bridge',     essential: false, weekly: false },
-  { name: 'image-gen',         essential: false, weekly: false },
+  // Fixed 2026-07-16 (see BSV-BigC-Audit-Log.md): these three were misclassified
+  // as "continuous, expected every 2h" alongside drive-sync, but none of them
+  // actually run on a 2-hourly cadence — org-chart-agent is spawned exactly
+  // once by chief-of-staff.js's own once-per-morning run (spawnSync call
+  // ~line 1250); gemini-bridge is spawned once by media-director.js's nightly
+  // run ('--day' arg, ~line 827); image-gen is spawned once by gemini-bridge
+  // right after it finishes. All three finish their one run for the day by
+  // mid-morning and then correctly have nothing to do — but the 120min default
+  // staleness window flagged all three as "stale" every single afternoon
+  // regardless, which is what was showing up as dashboard noise Big D asked
+  // about 2026-07-16. Reclassified as daily (25h window) to match their real
+  // once-a-day cadence — same category as media-director/creative-agent above.
+  { name: 'org-chart-agent',   essential: false, weekly: false, daily: true },
+  { name: 'gemini-bridge',     essential: false, weekly: false, daily: true },
+  { name: 'image-gen',         essential: false, weekly: false, daily: true },
   // paused 2026-07-13 per Big D: video is intentionally on hold, not resumed
   // yet — this stopped video-gen's staleness from being flagged as a warning
   // every day for something that isn't actually broken, just not started.
   // Remove `paused: true` (or delete this comment) once video work resumes.
   { name: 'video-gen',         essential: false, weekly: false, paused: true },
+  // Left at the 120min/2h threshold 2026-07-16 — unlike org-chart-agent/
+  // gemini-bridge/image-gen above, cost-report has its own independent
+  // launchd job (com.bsv.cost-report) and isn't spawned by another script, so
+  // it's a genuine candidate for a 2-hourly schedule. But its actual log shows
+  // 3 runs clustered overnight (23:04, 01:38, 04:24) then nothing for the rest
+  // of the day — worth confirming with Big D whether com.bsv.cost-report's
+  // launchd interval is really every 2h (in which case something stopped it
+  // firing today) or only scheduled for a few early-morning times (in which
+  // case this threshold needs the same daily-style fix as the three above).
+  // Not changed here because I don't have visibility into the actual plist
+  // from this session — flagging instead of guessing.
   { name: 'cost-report',       essential: false, weekly: false },
   { name: 'accounting-agent',  essential: false, weekly: false },
   { name: 'reddit-agent',      essential: false, weekly: false },
