@@ -17,6 +17,7 @@ const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 const { addPendingItem, readDecisionFromDrive } = require('./telegram-queue')
 const { sendTelegram } = require('./telegram')
+const { PERSON_OPTIONAL } = require('./lib/visual-doctrine')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'blog-agent.log')
@@ -809,7 +810,7 @@ Fixed 2026-07-16 per Big D: images kept coming back as the same generic "man in 
 
 The setting must come from the post's own argument and the products it references — not a menu to pick from. What is this post actually about? Build the one scene that earns that, the way a specific product earns a specific bathroom counter or locker room, not a generic stand-in for "a man who has had a long day."
 
-A person may appear if the post's argument calls for one — full figure, partial, just hands, face shown or not — but a person is a possibility, not a requirement. A product referenced in the post (with Proprietor's Notes or not) may be the visual anchor if that fits the argument better than a person would; "no product in frame" is not a rule here, it's one option among several. Whatever you choose, the image poses a question about the argument just made — it does not illustrate a generic mood.
+${PERSON_OPTIONAL} A product referenced in the post (with Proprietor's Notes or not) may be the visual anchor if that fits the argument better than a person would; "no product in frame" is not a rule here, it's one option among several.
 
 The brief must specify: the setting and why it's the right one for this specific argument, the specific light quality, what's actually in frame, the exact moment being captured, and the emotional register. One paragraph. Cinematographer's eye.
 

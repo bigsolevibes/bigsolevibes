@@ -3,6 +3,7 @@ const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { PALETTE, BRAND_TONE, PERSON_OPTIONAL, FOOT_CAMEO, precedence } = require('./lib/visual-doctrine')
 
 const ROOT       = path.join(__dirname, '..')
 const BRIEFS_DIR = path.join(ROOT, 'posts', 'briefs')
@@ -94,36 +95,21 @@ function buildCaptionMd(fields) {
 }
 
 // ─── BSV visual preamble ──────────────────────────────────────────────────────
-// Prepended to every image and video prompt before it reaches Gemini/Imagen.
+// Prepended to every image prompt before it reaches Gemini/Imagen.
 // ONE scene only. The brief selects the scene — this preamble sets the rules.
 //
-// Fixed 2026-06-29 (see BSV-BigC-Audit-Log.md): this preamble used to assert
-// "the product... is a prop, not the hero" and "Dark wood, leather, low light"
-// as flat, unconditional rules — directly contradicting per-slot briefs from
-// creative-agent.js that name a specific product and explicitly require it to
-// be the visual focus in a specific (often non-leather) setting. Confirmed via
-// tue-pm-brief.txt: the brief correctly demanded the Brickell Clarifying Gel
-// Face Wash bottle be the hero on a bathroom counter, but the rendered image
-// came back as a generic dark-leather-chair scene with no product visible —
-// because this preamble's flat rules sat upstream of the brief and won. Big D
-// had already filed three corrections on this exact symptom via learn.js
-// (2026-06-13, 06-20, 06-28) that all reached creative-agent.js's brief
-// quality but never this file, which is why the actual images never improved.
-// Both rules below are now explicitly conditional, and a precedence statement
-// makes the brief authoritative whenever it conflicts with this preamble.
-//
-// Fixed 2026-07-13 (see BSV-BigC-Audit-Log.md): a second, separate instance
-// of the same bug class — this preamble also mandated a full human figure in
-// every shot ("ONE person" in the unconditional anti-collage block, "the man
-// is the subject, head to toe in frame wherever possible," and a "HEAD TO
-// TOE... the whole man. This is a head-to-toe brand" rule with no real
-// fallback). creative-agent.js's Standing Rules were already corrected on
-// this exact point ("a person is a possibility in the image, never a
-// requirement") but this file never got the matching fix, so briefs that
-// deliberately called for no person, or hands/feet only, were still fighting
-// a person-mandate baked in upstream of the assignment. video-gen.js got
-// this same fix for video on 2026-07-01 (foot-cameo made conditional) — this
-// brings the still-image preamble in line with it and with creative-agent.js.
+// Refactored 2026-07-16 (see BSV-BigC-Audit-Log.md): the shared doctrine
+// paragraphs (precedence, person-optional, brand tone, foot cameo, palette)
+// used to be hardcoded here AND separately in video-gen.js AND separately in
+// blog-agent.js. Each had drifted from the others and each had to be found
+// and fixed independently, three separate times (2026-06-29, 2026-07-01,
+// 2026-07-13) after Big D kept seeing the same "leather chair" symptom — his
+// point exactly: "we shouldnt have direction in each file or agent...it
+// should be its own single file or agent that they are linked to." Those
+// shared paragraphs now live once in ./lib/visual-doctrine.js; everything
+// below that's still local to this file is genuinely image-specific
+// mechanics (text-free/single-frame rules, the cinematic-still framing, the
+// visual-language/grain details) that don't apply to video or blog.
 
 const BSV_VISUAL_PREAMBLE = `TEXT-FREE IMAGE. Zero letters, words, captions, labels, or writing of any kind anywhere in the photograph — not as a title card, not as an overlay, not written on any object. If a word could appear anywhere in the frame, remove it. This rule has no exceptions.
 
@@ -133,17 +119,17 @@ DO NOT show more than one version of the same scene. If you are about to produce
 
 BIG SOLE VIBES — VISUAL STANDARD
 
-PRECEDENCE: The assignment below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including whether a person appears at all, the product's role in the shot, or the setting described — the assignment below wins. Everything in this standard is a fallback for when the assignment doesn't specify otherwise, not a rule layered on top of it. The setting described in the assignment below (bathroom counter, locker room, kitchen, office, outdoors, wherever it says) must be the setting shown — do not substitute a leather chair, dark wood study, or any other generic environment unless the assignment itself describes that setting.
+${precedence('The assignment below')}
 
-The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. When a man appears in frame, he has already made up his mind — caught mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The humor is in the recognition, not the joke.
+${BRAND_TONE}
 
-WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. A person is a possibility in the frame, never a requirement — the product and the story are what has to be there. Don't default to a full figure just because that's been the habit, and don't ban one either. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted.
+WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. ${PERSON_OPTIONAL} Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted.
 
-VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain, 35mm editorial feel when the assignment calls for a photographic technique — follow the assignment's technique exactly when it specifies illustration, engraving, cutout collage, or anything else instead. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
+VISUAL LANGUAGE: Warm amber (${PALETTE.AMBER}) and deep navy (${PALETTE.NAVY}) anchor the palette in every shot, regardless of setting. Cinematic grain, 35mm editorial feel when the assignment calls for a photographic technique — follow the assignment's technique exactly when it specifies illustration, engraving, cutout collage, or anything else instead. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
 
 TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. If a man appears, he looks like he just thought of something — not like he is being photographed.
 
-THE FOOT CAMEO (fallback only, and only if a person is already in the shot): A bare foot may enter the frame naturally — edge of shot, soft focus, corner — as the quiet punchline. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. This is never a reason to add a person who wasn't otherwise called for.
+THE FOOT CAMEO (fallback only, and only if a person is already in the shot): ${FOOT_CAMEO}
 
 THE ASSIGNMENT — this is what you are actually generating. Everything above is fallback context only. The setting and product named below are mandatory, not optional:
 `
