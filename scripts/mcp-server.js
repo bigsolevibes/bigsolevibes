@@ -1117,6 +1117,47 @@ server.tool(
   }
 )
 
+// ── install_health_check_schedule ──────────────────────────────────────────────
+// Added 2026-07-16 per Big D: "we need to make the dashboard live...i cant be
+// looking at 8 hour old data." Installs health-check.js (local log scanning
+// only, no API calls) on a 5-minute interval so logs/org-chart-state.json —
+// what the dashboard's Blockers panel and public/org-chart.html both read —
+// stops being an artifact of chief-of-staff.js's single once-a-day run.
+server.tool(
+  'install_health_check_schedule',
+  'One-time setup: install the launchd plist so health-check.js refreshes agent status (org-chart-state.json + org-chart.html) every 5 minutes, instead of only once a day via chief-of-staff. Safe to call multiple times.',
+  {},
+  async () => {
+    const plist = path.join(ROOT, 'config', 'com.bsv.health-check.plist')
+    const dest  = path.join(process.env.HOME, 'Library', 'LaunchAgents', 'com.bsv.health-check.plist')
+
+    if (!fs.existsSync(plist)) {
+      return { content: [{ type: 'text', text: `✗ Plist not found at ${plist} — make sure config/com.bsv.health-check.plist exists.` }] }
+    }
+
+    try { fs.copyFileSync(plist, dest) } catch (e) {
+      return { content: [{ type: 'text', text: `✗ Copy failed: ${e.message}` }] }
+    }
+
+    sh(`launchctl unload "${dest}" 2>/dev/null || true`)
+    const loadResult = sh(`launchctl load "${dest}"`)
+    const status     = sh(`launchctl list | grep com.bsv.health-check`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Health-check schedule installed.`,
+          `Plist: ${dest}`,
+          `Runs: every 5 minutes (RunAtLoad — first refresh happens immediately)`,
+          loadResult ? `launchctl: ${loadResult}` : null,
+          status     ? `Status: ${status}` : null,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
+  }
+)
+
 // ── get_research_summary ──────────────────────────────────────────────────────
 server.tool(
   'get_research_summary',

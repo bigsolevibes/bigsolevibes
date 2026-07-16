@@ -267,174 +267,17 @@ function checkPosts() {
 // ─── Priority 3: Agent health ─────────────────────────────────────────────────
 // Scans every agent log for errors and staleness. Returns issues with fix
 // commands. Essential agents get Telegram alerts on error.
-
-const AGENT_ROSTER = [
-  // ── Core pipeline — continuous, expected every 2h ─────────────────────────
-  { name: 'watch-drive',       essential: true,  weekly: false, daily: false },
-  { name: 'eng-bot',           essential: true,  weekly: false, daily: false },
-  { name: 'change-agent',      essential: true,  weekly: false, daily: false },
-  // ── Daily agents — run once per night via launchd, stale window = 25h ─────
-  { name: 'media-director',    essential: true,  weekly: false, daily: true  },
-  { name: 'creative-agent',    essential: true,  weekly: false, daily: true  },
-  { name: 'distribute',        essential: true,  weekly: false, daily: true  },
-  { name: 'update-handoff',    essential: true,  weekly: false, daily: true  },
-  // ── Supporting — genuinely continuous (drive-sync runs on watch-drive's
-  // ~15min poll cadence) — expected every 2h ───────────────────────────────
-  { name: 'drive-sync',        essential: false, weekly: false },
-  // Fixed 2026-07-16 (see BSV-BigC-Audit-Log.md): these three were misclassified
-  // as "continuous, expected every 2h" alongside drive-sync, but none of them
-  // actually run on a 2-hourly cadence — org-chart-agent is spawned exactly
-  // once by chief-of-staff.js's own once-per-morning run (spawnSync call
-  // ~line 1250); gemini-bridge is spawned once by media-director.js's nightly
-  // run ('--day' arg, ~line 827); image-gen is spawned once by gemini-bridge
-  // right after it finishes. All three finish their one run for the day by
-  // mid-morning and then correctly have nothing to do — but the 120min default
-  // staleness window flagged all three as "stale" every single afternoon
-  // regardless, which is what was showing up as dashboard noise Big D asked
-  // about 2026-07-16. Reclassified as daily (25h window) to match their real
-  // once-a-day cadence — same category as media-director/creative-agent above.
-  { name: 'org-chart-agent',   essential: false, weekly: false, daily: true },
-  { name: 'gemini-bridge',     essential: false, weekly: false, daily: true },
-  { name: 'image-gen',         essential: false, weekly: false, daily: true },
-  // paused 2026-07-13 per Big D: video is intentionally on hold, not resumed
-  // yet — this stopped video-gen's staleness from being flagged as a warning
-  // every day for something that isn't actually broken, just not started.
-  // Remove `paused: true` (or delete this comment) once video work resumes.
-  { name: 'video-gen',         essential: false, weekly: false, paused: true },
-  // Left at the 120min/2h threshold 2026-07-16 — unlike org-chart-agent/
-  // gemini-bridge/image-gen above, cost-report has its own independent
-  // launchd job (com.bsv.cost-report) and isn't spawned by another script, so
-  // it's a genuine candidate for a 2-hourly schedule. But its actual log shows
-  // 3 runs clustered overnight (23:04, 01:38, 04:24) then nothing for the rest
-  // of the day — worth confirming with Big D whether com.bsv.cost-report's
-  // launchd interval is really every 2h (in which case something stopped it
-  // firing today) or only scheduled for a few early-morning times (in which
-  // case this threshold needs the same daily-style fix as the three above).
-  // Not changed here because I don't have visibility into the actual plist
-  // from this session — flagging instead of guessing.
-  { name: 'cost-report',       essential: false, weekly: false },
-  { name: 'accounting-agent',  essential: false, weekly: false },
-  { name: 'reddit-agent',      essential: false, weekly: false },
-  // ── Weekly agents — expected once per week ────────────────────────────────
-  { name: 'strategist',        essential: false, weekly: true  },
-  { name: 'brand-manager',     essential: false, weekly: true  },
-  // paused 2026-07-15 per Big D: no email list to report on yet ("we dont have
-  // any users") — Klaviyo creds are valid and the script works, it's just not
-  // useful pre-audience. Revisit once Lounge/Drop signups exist to analyze.
-  { name: 'marketing-manager', essential: false, weekly: true,  paused: true },
-  { name: 'social-listening',  essential: false, weekly: true  },
-  { name: 'product-research',  essential: false, weekly: true  },
-  // paused 2026-07-15 per Big D: product dev intentionally on hold — last real
-  // output was 2026-05-24 (logs/product-development-state.json), nothing since.
-  { name: 'product-development',essential: false, weekly: true, paused: true },
-  { name: 'blog-agent',        essential: false, weekly: true  },
-  { name: 'sole-report-agent', essential: false, weekly: true  },
-  // Added 2026-07-01 — both had rotating logs and were being called "Healthy" in the
-  // standup with zero backing check (see BSV-BigC-Audit-Log.md same date). affiliate-scout
-  // is a real committed script (scripts/affiliate-scout.js) — weekly audit cadence.
-  // cj-research.js was written 2026-07-16 (see BSV-BigC-Audit-Log.md same date) —
-  // until then the launchd job existed but the script never did, so every run
-  // failed at "Cannot find module" before it could try anything CJ-related.
-  { name: 'affiliate-scout',   essential: false, weekly: true  },
-  { name: 'cj-research',       essential: false, weekly: true  },
-  // Added 2026-07-16: real, committed, actively-running scripts that
-  // findUntrackedAgents() was catching every day (see BSV-BigC-Audit-Log.md
-  // same date) — genuine roster gaps, not sprawl. edition-agent.js runs
-  // monthly (com.bsv.edition-agent launchd job); newsletter-agent.js backs
-  // both com.bsv.newsletter-drop and com.bsv.newsletter-lounge; telegram-webhook
-  // is the inbound approve/deny listener whose past outages (see BSV-BigC-
-  // Audit-Log.md, "Telegram webhook down" incidents) went undetected precisely
-  // because it had no roster entry / staleness check of its own.
-  { name: 'edition-agent',     essential: false, weekly: true  },
-  { name: 'newsletter-agent',  essential: false, weekly: true  },
-  { name: 'telegram-webhook',  essential: true,  weekly: false, daily: false },
-]
-
-// Scripts with their own log file that are intentionally NOT tracked as recurring
-// agents — one-off/manual/utility scripts, not part of the scheduled pipeline.
-// findUntrackedAgents() below uses this to avoid false-flagging them as sprawl.
-const KNOWN_NON_AGENT_LOGS = new Set([
-  'run-now', 'seed-products', 'regen-4', 'generate-all-scenes', 'generate-locker-image',
-  'promote-sole-report', 'log-rotate', 'dashboard', 'telegram-inbox', 'brand-image',
-  // Added 2026-07-16 alongside the roster additions above and the -error.log
-  // regex fix in findUntrackedAgents(): these are real one-off/utility/launchd-
-  // wrapper logs, not independent scheduled agents, and were part of the same
-  // "35+ untracked agent logs" over-report Big D flagged.
-  'backup-scripts', 'learn', 'sync-shop', 'resize-post',
-  'product-research-launchd', 'edition-agent-launchd', 'fetch-reddit',
-  'chief-of-staff', // the monitor itself — not something it should flag as sprawl
-])
-
-function checkAgentHealth() {
-  const now    = Date.now()
-  const issues = []
-  const ok     = []
-  const paused = []
-
-  for (const agent of AGENT_ROSTER) {
-    // Paused agents (e.g. video-gen, on hold per Big D 2026-07-13) are
-    // intentionally not running — skip the staleness/error check entirely so
-    // a deliberate pause doesn't get reported as a broken agent every day.
-    if (agent.paused) {
-      paused.push({ name: agent.name, msg: 'Paused — not resumed yet' })
-      continue
-    }
-
-    const logPath = path.join(ROOT, 'logs', `${agent.name}.log`)
-
-    if (!fs.existsSync(logPath)) {
-      issues.push({ name: agent.name, severity: agent.essential ? 'error' : 'warning', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
-      continue
-    }
-
-    const ageMins  = (now - fs.statSync(logPath).mtimeMs) / 60000
-    const staleMins = agent.weekly ? 7 * 24 * 60 : agent.daily ? 25 * 60 : 120
-    // FIXED 2026-07-11: isStale used to require agent.essential, so every
-    // non-essential roster entry (all weekly agents — brand-manager,
-    // social-listening, product-research, etc.) could never be flagged stale
-    // no matter how long since it last ran — it just silently landed in `ok`
-    // and got reported "Healthy" in the standup. brand-manager went 26 days
-    // silent and was never caught by this check (see bigc-brief.md 2026-07-11).
-    // Telegram alerting is already gated on essential+error separately below
-    // (~line 1106), so removing the essential gate here doesn't add alert
-    // noise — it just makes the `ok`/`issues` split (and the standup's
-    // "Healthy" list) honest for non-essential agents too.
-    const isStale  = ageMins > staleMins
-
-    // Read last 60 lines for errors and output signal
-    let lastLines = []
-    let errors    = []
-    try {
-      const content = fs.readFileSync(logPath, 'utf8')
-      lastLines = content.trim().split('\n').slice(-60)
-      errors    = lastLines.filter(l => /^\[[^\]]+\]\s*(ERROR|CRASH|FATAL)/i.test(l))
-    } catch {}
-
-    if (isStale) {
-      issues.push({ name: agent.name, severity: 'warning', msg: `stale — ${Math.round(ageMins / 60)}h since last activity`, fix: `node scripts/${agent.name}.js` })
-    } else if (errors.length) {
-      const msg = errors[errors.length - 1].replace(/^\[[^\]]+\]\s*/, '').slice(0, 140)
-      issues.push({ name: agent.name, severity: 'error', msg, fix: `node scripts/${agent.name}.js` })
-    } else {
-      ok.push(agent.name)
-    }
-  }
-
-  // change-agent heartbeat check (separate from log error — it can log clean but go silent)
-  try {
-    const cs = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'change-state.json'), 'utf8'))
-    const heartbeat  = cs.last_heartbeat ? new Date(cs.last_heartbeat) : null
-    const hoursSince = heartbeat ? (now - heartbeat.getTime()) / 3600000 : Infinity
-    if (hoursSince > 25 && !issues.find(i => i.name === 'change-agent')) {
-      issues.push({ name: 'change-agent', severity: 'warning', msg: `heartbeat ${Math.round(hoursSince)}h ago — change monitoring stale`, fix: 'node scripts/change-agent.js' })
-      ok.splice(ok.indexOf('change-agent'), 1)
-    }
-  } catch {}
-
-  log(`Agent health: ${ok.length} OK, ${issues.length} issue(s)`)
-  for (const i of issues) log(`  [${i.severity}] ${i.name}: ${i.msg}`)
-  return { ok, issues, paused }
-}
+//
+// AGENT_ROSTER, checkAgentHealth, findUntrackedAgents, and buildOrgState now
+// live in ./lib/agent-health.js — extracted 2026-07-16 so health-check.js (a
+// new lightweight, no-API-call script that re-checks agent health every few
+// minutes) can share the exact same roster/logic instead of drifting from a
+// second copy. See that file's header comment for why: Big D flagged the
+// dashboard showing ~8h-stale agent status since org-chart-state.json only
+// used to get rewritten once a day, as part of this (chief-of-staff's) own
+// once-per-morning run.
+const { AGENT_ROSTER, checkAgentHealth: _checkAgentHealth, findUntrackedAgents, buildOrgState } = require('./lib/agent-health')
+const checkAgentHealth = () => _checkAgentHealth(log)
 
 // ─── Agent Output Digest ───────────────────────────────────────────────────
 // Added 2026-07-15 per Big D: "everything is running using tokens and I'm not
@@ -568,42 +411,8 @@ function writeAgentOutputDigest() {
   return rows
 }
 
-// ─── Sprawl check: scripts producing logs that nobody is tracking ────────────
-// Added 2026-07-01. AGENT_ROSTER is a hand-maintained list — it drifts. This scans
-// what's actually producing log activity on disk and diffs it against the roster,
-// so a script can't silently run untracked (and get called "Healthy" with zero
-// backing check, which is exactly what happened with affiliate-scout/cj-research
-// before they were added above). Recency-gated so retired scripts' old logs don't
-// nag forever.
-function findUntrackedAgents() {
-  const rosterNames = new Set(AGENT_ROSTER.map(a => a.name))
-  const now = Date.now()
-  const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-
-  let files = []
-  try { files = fs.readdirSync(path.join(ROOT, 'logs')) } catch { return [] }
-
-  const untracked = []
-  for (const f of files) {
-    // Fixed 2026-07-16: the comment here always claimed this skipped -error.log
-    // files, but the regex never actually excluded the "-error" suffix — hyphens
-    // are valid in [a-z0-9-]+, so "accounting-agent-error.log" matched with name
-    // "accounting-agent-error" and was flagged as a brand-new untracked agent
-    // every single day. That's the real source of the "35+ untracked agent logs"
-    // Big D flagged (see BSV-BigC-Audit-Log.md 2026-07-16) — most weren't sprawl,
-    // they were the same already-tracked agents' error logs double-counted.
-    const m = f.match(/^([a-z0-9-]+?)(?:-error)?\.log$/i)
-    if (!m) continue // skip .log.1/.log.2 rotations, non-log files
-    const name = m[1]
-    if (rosterNames.has(name) || KNOWN_NON_AGENT_LOGS.has(name)) continue
-    let mtime
-    try { mtime = fs.statSync(path.join(ROOT, 'logs', f)).mtimeMs } catch { continue }
-    if (now - mtime <= ACTIVE_WINDOW_MS) {
-      untracked.push({ name, lastActivityHoursAgo: Math.round((now - mtime) / 3600000) })
-    }
-  }
-  return untracked
-}
+// findUntrackedAgents (sprawl check) now lives in ./lib/agent-health.js —
+// see AGENT_ROSTER import above.
 
 // ─── Domain conflict check: hardcoded content/style overrides outside their owner ──
 // Added 2026-07-02, after Big D found the same bug in 4 different files in one
@@ -1241,32 +1050,9 @@ function buildBigCContext() {
   }
 
   // ── Update org chart state — chief owns this ──────────────────────────────
+  // (buildOrgState is shared with health-check.js — see ./lib/agent-health.js)
   try {
-    const orgState = {
-      lastUpdated: new Date().toISOString(),
-      agents: {}
-    }
-    for (const agent of AGENT_ROSTER) {
-      if (agent.paused) {
-        orgState.agents[agent.name] = {
-          essential: agent.essential,
-          weekly:    agent.weekly,
-          status:    'paused',
-          msg:       'Paused — not resumed yet',
-          fix:       null,
-        }
-        continue
-      }
-      const issue = agents.issues.find(i => i.name === agent.name)
-      const isOk  = agents.ok.includes(agent.name)
-      orgState.agents[agent.name] = {
-        essential: agent.essential,
-        weekly:    agent.weekly,
-        status:    issue ? (issue.severity === 'error' ? 'error' : 'warning') : isOk ? 'ok' : 'unknown',
-        msg:       issue ? issue.msg : null,
-        fix:       issue ? issue.fix : null,
-      }
-    }
+    const orgState = buildOrgState(agents)
     fs.writeFileSync(path.join(ROOT, 'logs', 'org-chart-state.json'), JSON.stringify(orgState, null, 2))
     log('Org chart state updated')
     // Spawn org-chart-agent to rebuild the HTML
