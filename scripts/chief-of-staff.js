@@ -294,10 +294,15 @@ const AGENT_ROSTER = [
   // ── Weekly agents — expected once per week ────────────────────────────────
   { name: 'strategist',        essential: false, weekly: true  },
   { name: 'brand-manager',     essential: false, weekly: true  },
-  { name: 'marketing-manager', essential: false, weekly: true  },
+  // paused 2026-07-15 per Big D: no email list to report on yet ("we dont have
+  // any users") — Klaviyo creds are valid and the script works, it's just not
+  // useful pre-audience. Revisit once Lounge/Drop signups exist to analyze.
+  { name: 'marketing-manager', essential: false, weekly: true,  paused: true },
   { name: 'social-listening',  essential: false, weekly: true  },
   { name: 'product-research',  essential: false, weekly: true  },
-  { name: 'product-development',essential: false, weekly: true },
+  // paused 2026-07-15 per Big D: product dev intentionally on hold — last real
+  // output was 2026-05-24 (logs/product-development-state.json), nothing since.
+  { name: 'product-development',essential: false, weekly: true, paused: true },
   { name: 'blog-agent',        essential: false, weekly: true  },
   { name: 'sole-report-agent', essential: false, weekly: true  },
   // Added 2026-07-01 — both had rotating logs and were being called "Healthy" in the
