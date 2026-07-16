@@ -3,6 +3,8 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { TAGLINE } = require('./lib/brand-copy')
+const { PALETTE } = require('./lib/visual-doctrine')
 
 const ROOT           = path.join(__dirname, '..')
 const LOG_FILE       = path.join(ROOT, 'logs', 'update-handoff.log')
@@ -283,8 +285,8 @@ function buildHandoff({
     `## Phase 2 — Product Strategy`,
     ``,
     `- **First product:** Proprietor\\u2019s Foot Balm — private label, custom formulation`,
-    `- **Packaging:** Midnight #0D1B2A + Bourbon #C17D2E colorway`,
-    `- **Tagline:** "Nothing goes on this shelf that hasn't earned its place. This earned it."`,
+    `- **Packaging:** Midnight ${PALETTE.NAVY} + Bourbon ${PALETTE.AMBER} colorway`,
+    `- **Tagline:** "${TAGLINE} This earned it."`,
     `- **Price target:** $35–50 retail`,
     `- **Launch condition:** 10K+ engaged followers AND affiliate revenue flowing`,
     `- **Revenue path:** Amazon Associates → CJ/Impact affiliate → private label → full BSV line`,

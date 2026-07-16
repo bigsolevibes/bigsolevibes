@@ -17,6 +17,7 @@ const { execSync }     = require('child_process')
 const fs               = require('fs')
 const path             = require('path')
 const os               = require('os')
+const { TAGLINE, VOICE } = require('./lib/brand-copy')
 
 const ROOT                = path.join(__dirname, '..')
 const LOG_FILE            = path.join(ROOT, 'logs', 'edition-agent.log')
@@ -105,7 +106,7 @@ function buildEditionPrompt(products, editionNumber, monthYear) {
 
   return `You are writing the BSV Monthly Edition — a J. Peterman-style catalog story for Big Sole Vibes.
 
-BSV is a premium men's grooming and lifestyle brand. Voice: deadpan, confident, slightly amused. The man in every scene has already made up his mind. We are catching him mid-thought. Think Monty Python logic applied to grooming — the humor is in the recognition, not the joke. No fluff. No cheerleading. Every word earns its place.
+BSV is a premium men's grooming and lifestyle brand. Voice: ${VOICE} No fluff. No cheerleading. Every word earns its place.
 
 EDITION: #${editionNumber} — ${monthYear}
 PRODUCTS THIS EDITION (${products.length} products):
@@ -304,7 +305,7 @@ function buildEditionPageHtml(state, dateStr) {
     </article>
     <aside class="edition-shelf">
       <h2>Everything in This Edition</h2>
-      <p>Nothing goes on this shelf that hasn't earned its place.</p>
+      <p>${TAGLINE}</p>
       <ul>
             ${productListHtml}
       </ul>

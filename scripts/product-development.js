@@ -4,6 +4,8 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { TAGLINE } = require('./lib/brand-copy')
+const { PALETTE } = require('./lib/visual-doctrine')
 
 const ROOT      = path.join(__dirname, '..')
 const LOG_FILE  = path.join(ROOT, 'logs', 'product-development.log')
@@ -113,9 +115,9 @@ Every manufacturer, every formulation choice, every packaging decision must serv
 
 ## Product Vision
 - **Name:** Proprietor's Foot Balm
-- **Positioning:** "Nothing goes on this shelf that hasn't earned its place. This earned it."
+- **Positioning:** "${TAGLINE} This earned it."
 - **Target retail price:** $35–$50
-- **Packaging:** Midnight (#0D1B2A) and Bourbon (#C17D2E) colorway. Heavy, substantial packaging. Not disposable-feeling.
+- **Packaging:** Midnight (${PALETTE.NAVY}) and Bourbon (${PALETTE.AMBER}) colorway. Heavy, substantial packaging. Not disposable-feeling.
 - **Formulation:** Premium actives — shea butter, urea, tea tree, or equivalent. No synthetic fragrance as primary ingredient. Long-lasting moisture with fast absorption.
 - **Launch condition:** When BSV audience is proven (10K+ engaged followers) and affiliate revenue is flowing.
 

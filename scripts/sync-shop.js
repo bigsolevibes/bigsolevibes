@@ -3,6 +3,7 @@ const { execSync }  = require('child_process')
 const fs            = require('fs')
 const path          = require('path')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
+const { TAGLINE } = require('./lib/brand-copy')
 
 const ROOT         = path.join(__dirname, '..')
 const LOG_FILE     = path.join(ROOT, 'logs', 'sync-shop.log')
@@ -261,7 +262,7 @@ function buildShopPage(approvedProducts) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Locker Room — Big Sole Vibes</title>
-  <meta name="description" content="Proprietor-approved picks. Nothing goes on this shelf that hasn't earned its place.">
+  <meta name="description" content="Proprietor-approved picks. ${TAGLINE}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">

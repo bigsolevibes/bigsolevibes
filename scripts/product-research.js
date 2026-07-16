@@ -5,6 +5,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const { connect, ensureHeaders, readAllRows, appendPick, archiveApproved, rejectPending } = require('./sheets-client')
+const { VOICE } = require('./lib/brand-copy')
 
 // ─── BSV DUAL-TRACK MANDATE ───────────────────────────────────────────────────
 // The BSV man is the coal miner AND the CFO. The shelf serves both.
@@ -378,7 +379,7 @@ async function generateNarrative(client, productName) {
         role: 'user',
         content: `Write an 80–120 word narrative for the BSV Locker Room shelf about ${productName}.
 
-Voice: The Proprietor — deadpan, confident, slightly amused. Never preachy. Present tense.
+Voice: The Proprietor. ${VOICE} Never preachy. Present tense.
 The reader is already in the room. This is a scene, not a description.
 
 PRODUCT INTEGRATION RULE: The product is never the subject. It is the detail that completes the man.

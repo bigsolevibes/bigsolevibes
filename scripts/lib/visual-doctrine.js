@@ -25,14 +25,19 @@
 // other script should hardcode its own copy of any paragraph below — if the
 // doctrine needs to change, it changes here once, for every medium at once.
 
+const { VOICE } = require('./brand-copy')
+
 const PALETTE = {
   AMBER: '#C17D2E',
   NAVY:  '#0D1B2A',
 }
 
-// The brand's tone — identical across image, video, and blog. Shared verbatim
-// on purpose so "what does BSV sound/feel like" can't drift between media.
-const BRAND_TONE = `The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. When a man appears in frame, he has already made up his mind — caught mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The humor is in the recognition, not the joke.`
+// The brand's tone — identical across image, video, blog, and any other
+// prose (edition stories, product narratives). Sourced from brand-copy.js
+// (added 2026-07-16) so this paragraph has exactly one home instead of the
+// three independent copies it used to have (here, edition-agent.js,
+// product-research.js).
+const BRAND_TONE = VOICE
 
 // The core fix, stated once: a person is a possibility, never a requirement.
 // This is the exact doctrine that had to be independently re-fixed in
