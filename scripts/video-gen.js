@@ -177,12 +177,16 @@ async function generateVideo(ai, apiKey, prompt) {
     const outFilename = `${slot}.mp4`
     const localPath   = path.join(TEMP_DIR, outFilename)
 
-    const alreadyInDrive = listDriveFiles(
-      `${GDRIVE_REMOTE}:Big Sole Vibes/Ready to Post`
-    ).includes(outFilename)
+    // Fixed 2026-07-16: this used to check Ready to Post for outFilename, but
+    // generated videos are staged to Video Review (line below), never to Ready
+    // to Post — so this check could never match and video-gen would happily
+    // regenerate (and re-spend ~$0.15/sec of Veo cost on) a slot that was
+    // already sitting in Video Review awaiting Big D's approval. Now checks
+    // the folder the video actually lands in.
+    const alreadyStaged = listDriveFiles(VIDEO_REVIEW_REMOTE).includes(outFilename)
 
-    if (alreadyInDrive) {
-      log(`  ${slot}: already in Ready to Post — skipping`)
+    if (alreadyStaged) {
+      log(`  ${slot}: already staged in Video Review — skipping`)
       skipped++
       continue
     }
@@ -206,6 +210,25 @@ async function generateVideo(ai, apiKey, prompt) {
         { stdio: 'pipe' }
       )
       log(`    ✓ staged → Video Review/${outFilename} (${Math.round(buf.length / 1024)}KB) — awaiting approval`)
+
+      // Fixed 2026-07-16: the source *-flow-prompt.txt (and its sibling -prompt.txt)
+      // was never removed from Drive's Ready to Post/ after being consumed here —
+      // rclone copy (not move) in syncFromDrive() only ever added a local copy.
+      // The file then sat in Ready to Post indefinitely: still physically present
+      // (so it kept showing up in chief-of-staff's raw Ready to Post listing) while
+      // functionally done/orphaned (video already generated and moved on to Video
+      // Review) — the "shows up in both Ready to Post and stale" report Big D
+      // flagged for tue-am-flow-prompt.txt / tue-pm-flow-prompt.txt. Clearing it
+      // from Drive here mirrors how distribute.js archives consumed post assets.
+      try {
+        execSync(
+          `rclone delete "${GDRIVE_REMOTE}:Big Sole Vibes/Ready to Post" --include "${slot}-flow-prompt.txt" --include "${slot}-prompt.txt"`,
+          { stdio: 'pipe' }
+        )
+        log(`    cleared ${slot}-flow-prompt.txt (+ -prompt.txt) from Ready to Post`)
+      } catch (err) {
+        log(`    WARNING: could not clear ${slot} prompt file(s) from Drive — ${err.message}`)
+      }
 
       // Telegram notification removed 2026-07-15 per Big D: "the approval is
       // always on dashboard from now on" — /dashboard/video-review reads this

@@ -313,6 +313,17 @@ const AGENT_ROSTER = [
   // needs to decide whether to commit its source or retire it.
   { name: 'affiliate-scout',   essential: false, weekly: true  },
   { name: 'cj-research',       essential: false, weekly: true  },
+  // Added 2026-07-16: real, committed, actively-running scripts that
+  // findUntrackedAgents() was catching every day (see BSV-BigC-Audit-Log.md
+  // same date) — genuine roster gaps, not sprawl. edition-agent.js runs
+  // monthly (com.bsv.edition-agent launchd job); newsletter-agent.js backs
+  // both com.bsv.newsletter-drop and com.bsv.newsletter-lounge; telegram-webhook
+  // is the inbound approve/deny listener whose past outages (see BSV-BigC-
+  // Audit-Log.md, "Telegram webhook down" incidents) went undetected precisely
+  // because it had no roster entry / staleness check of its own.
+  { name: 'edition-agent',     essential: false, weekly: true  },
+  { name: 'newsletter-agent',  essential: false, weekly: true  },
+  { name: 'telegram-webhook',  essential: true,  weekly: false, daily: false },
 ]
 
 // Scripts with their own log file that are intentionally NOT tracked as recurring
@@ -321,6 +332,13 @@ const AGENT_ROSTER = [
 const KNOWN_NON_AGENT_LOGS = new Set([
   'run-now', 'seed-products', 'regen-4', 'generate-all-scenes', 'generate-locker-image',
   'promote-sole-report', 'log-rotate', 'dashboard', 'telegram-inbox', 'brand-image',
+  // Added 2026-07-16 alongside the roster additions above and the -error.log
+  // regex fix in findUntrackedAgents(): these are real one-off/utility/launchd-
+  // wrapper logs, not independent scheduled agents, and were part of the same
+  // "35+ untracked agent logs" over-report Big D flagged.
+  'backup-scripts', 'learn', 'sync-shop', 'resize-post',
+  'product-research-launchd', 'edition-agent-launchd', 'fetch-reddit',
+  'chief-of-staff', // the monitor itself — not something it should flag as sprawl
 ])
 
 function checkAgentHealth() {
@@ -543,8 +561,15 @@ function findUntrackedAgents() {
 
   const untracked = []
   for (const f of files) {
-    const m = f.match(/^([a-z0-9-]+)\.log$/i)
-    if (!m) continue // skip .log.1/.log.2 rotations, -error.log, non-log files
+    // Fixed 2026-07-16: the comment here always claimed this skipped -error.log
+    // files, but the regex never actually excluded the "-error" suffix — hyphens
+    // are valid in [a-z0-9-]+, so "accounting-agent-error.log" matched with name
+    // "accounting-agent-error" and was flagged as a brand-new untracked agent
+    // every single day. That's the real source of the "35+ untracked agent logs"
+    // Big D flagged (see BSV-BigC-Audit-Log.md 2026-07-16) — most weren't sprawl,
+    // they were the same already-tracked agents' error logs double-counted.
+    const m = f.match(/^([a-z0-9-]+?)(?:-error)?\.log$/i)
+    if (!m) continue // skip .log.1/.log.2 rotations, non-log files
     const name = m[1]
     if (rosterNames.has(name) || KNOWN_NON_AGENT_LOGS.has(name)) continue
     let mtime
