@@ -214,6 +214,37 @@ server.tool(
   }
 )
 
+// ── record_credit_topup ──────────────────────────────────────────────────────
+// Added 2026-07-16: Big D flagged manually editing ANTHROPIC_CREDIT_BALANCE /
+// ANTHROPIC_CREDIT_TOPUP_DATE in .env every time he adds Anthropic credit as
+// too much friction. There's still no live balance API (confirmed again
+// 2026-07-15 — Console billing page is the only real-time source), so
+// cost-report.js still needs a topup snapshot to subtract spend from. The fix
+// is just moving that snapshot out of .env: it's not a credential, so it can
+// live in a plain gitignored JSON file that Claude writes directly whenever
+// Big D reports a new balance in chat. cost-report.js reads this file first,
+// falling back to the legacy .env vars if it's ever missing.
+server.tool(
+  'record_credit_topup',
+  "Record Big D's current Anthropic API credit balance so cost-report.js can track spend-down without him editing .env. Call this whenever Big D tells you a new balance (e.g. after a top-up). Writes to logs/credit-topup.json.",
+  {
+    amount: z.number().min(0).describe('Current credit balance in dollars, e.g. 50 for $50.00'),
+    date:   z.string().optional().describe('Date this balance is accurate as of, YYYY-MM-DD. Defaults to today.'),
+  },
+  async ({ amount, date }) => {
+    const topupDate = date || new Date().toISOString().slice(0, 10)
+    const filePath = path.join(LOGS_DIR, 'credit-topup.json')
+    const record = { amount, date: topupDate, recorded_at: new Date().toISOString() }
+    fs.writeFileSync(filePath, JSON.stringify(record, null, 2))
+    return {
+      content: [{
+        type: 'text',
+        text: `✓ Recorded: $${amount.toFixed(2)} balance as of ${topupDate}\nlogs/credit-topup.json updated — cost-report.js will use this on its next run (no .env edit needed).`,
+      }],
+    }
+  }
+)
+
 // ── get_launchd_status ───────────────────────────────────────────────────────
 server.tool(
   'get_launchd_status',
@@ -296,12 +327,30 @@ server.tool(
 // ── deny_slot ─────────────────────────────────────────────────────────────────
 server.tool(
   'deny_slot',
-  'Deny a content slot — removes from approved-slots.json and clears pipeline state so it can be re-uploaded.',
+  'Deny a content slot — removes from approved-slots.json, clears its files from Drive "Ready to Post/", and clears pipeline state.',
   {
     slot:   z.string().describe('Slot name, e.g. fri-am, mon-pm'),
     reason: z.string().optional().describe('Optional reason for denial'),
   },
   async ({ slot, reason }) => {
+    // Fixed 2026-07-13 (see BSV-BigC-Audit-Log.md): denial used to only clear
+    // local pipeline state — it never touched the actual files in Drive's
+    // "Ready to Post/" folder. Since the source files never went away,
+    // watch-drive's next poll (every ~15 min) just found them again and
+    // re-queued the same denied content as if it were new — a denial never
+    // actually stuck. Big D: "if its denied then it should be cleared."
+    // Mirrors the clear_drive_slot tool's Drive-clearing step, folded into
+    // deny itself so it's automatic rather than a separate manual action.
+    const DRIVE_REMOTE = 'big sole vibes:Big Sole Vibes/Ready to Post'
+    try {
+      execSync(
+        `rclone delete "${DRIVE_REMOTE}" --include "${slot}.*" --include "${slot}-flow.*" --include "${slot}-*prompt*"`,
+        { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
+      )
+    } catch (err) {
+      console.error(`[deny_slot] Drive clear warning: ${err.stderr?.toString().trim() || err.message}`)
+    }
+
     // Remove from approved-slots
     const filePath = path.join(LOGS_DIR, 'approved-slots.json')
     let existing = {}
@@ -309,10 +358,11 @@ server.tool(
     delete existing[slot]
     fs.writeFileSync(filePath, JSON.stringify(existing, null, 2))
 
-    // Clear from pipeline state
+    // Clear from pipeline state (both the slot and its -flow variant)
     const state = readState()
     const cleared = !!state[slot]
     delete state[slot]
+    delete state[`${slot}-flow`]
     writeState(state)
 
     // ── Capture brief for denial learning ─────────────────────────────────────

@@ -254,21 +254,44 @@ function sumCostReportTotal(data) {
 }
 
 // Computed balance: there is no live "remaining credit" API at all (confirmed
-// against current Anthropic docs 2026-06-28 — Console billing page is the
-// only real-time source). Best available approximation: Big D reports the
-// balance at his last topup (ANTHROPIC_CREDIT_BALANCE) and the date of that
-// topup (ANTHROPIC_CREDIT_TOPUP_DATE); we subtract real spend since then via
-// the Cost Report API. Falls back to the raw static env value (old behavior)
-// if there's no topup date or the Admin key/call isn't working — and that
-// fallback is logged explicitly as a snapshot, not live data, so a degraded
-// number can't masquerade as a real one again.
+// against current Anthropic docs 2026-06-28, re-confirmed 2026-07-15 — Console
+// billing page is the only real-time source). Best available approximation:
+// Big D reports the balance at his last topup and the date of that topup; we
+// subtract real spend since then via the Cost Report API.
+//
+// Source of the topup amount/date, in priority order:
+//   1. logs/credit-topup.json — written by the `record_credit_topup` MCP tool
+//      (Big D just tells Claude the new balance in chat, no file editing).
+//      Added 2026-07-16 after Big D flagged manually editing .env every
+//      topup as too much friction — this value isn't a credential, so it
+//      doesn't need to live in .env or fall under the "never write .env" rule.
+//   2. ANTHROPIC_CREDIT_BALANCE / ANTHROPIC_CREDIT_TOPUP_DATE in .env — legacy
+//      fallback, kept working in case the JSON file is ever missing/corrupt.
+// Whichever source wins is logged explicitly so a degraded number can't
+// masquerade as a real one.
+function readTopupState() {
+  const jsonPath = path.join(ROOT, 'logs', 'credit-topup.json')
+  try {
+    const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+    const amount = parseFloat(raw.amount)
+    if (!isNaN(amount) && amount >= 0 && raw.date) {
+      return { amount, date: raw.date, source: 'logs/credit-topup.json' }
+    }
+  } catch {}
+  const amount = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
+  const date    = process.env.ANTHROPIC_CREDIT_TOPUP_DATE
+  if (!isNaN(amount) && amount >= 0) return { amount, date, source: '.env (legacy)' }
+  return null
+}
+
 async function fetchAnthropicBalance() {
-  const topupAmount = parseFloat(process.env.ANTHROPIC_CREDIT_BALANCE)
-  const topupDate    = process.env.ANTHROPIC_CREDIT_TOPUP_DATE
+  const topupState = readTopupState()
+  if (!topupState) return null
+  const { amount: topupAmount, date: topupDate, source } = topupState
   if (isNaN(topupAmount) || topupAmount < 0) return null
 
   if (!topupDate) {
-    log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — ANTHROPIC_CREDIT_TOPUP_DATE not set, not decremented for spend since topup)`)
+    log(`Credit balance: $${topupAmount.toFixed(2)} (static snapshot from ${source} — no topup date set, not decremented for spend since topup)`)
     return topupAmount
   }
 
@@ -294,12 +317,12 @@ async function fetchAnthropicBalance() {
   }
   const spendSinceTopup = await fetchCostReportTotal(topupDate, isoDate(new Date()))
   if (spendSinceTopup === null) {
-    log(`Credit balance: $${topupAmount.toFixed(2)} (static env snapshot — Cost Report API unavailable, couldn't subtract spend since topup ${topupDate})`)
+    log(`Credit balance: $${topupAmount.toFixed(2)} (static snapshot from ${source} — Cost Report API unavailable, couldn't subtract spend since topup ${topupDate})`)
     return topupAmount
   }
 
   const balance = Math.max(0, topupAmount - spendSinceTopup)
-  log(`Credit balance: $${balance.toFixed(4)} = $${topupAmount.toFixed(2)} topup (${topupDate}) − $${spendSinceTopup.toFixed(4)} real spend since`)
+  log(`Credit balance: $${balance.toFixed(4)} = $${topupAmount.toFixed(2)} topup (${topupDate}, via ${source}) − $${spendSinceTopup.toFixed(4)} real spend since`)
   return balance
 }
 
@@ -538,7 +561,7 @@ async function loadMemory() {
   log(`Burn history (${burnHistory.length}d): ${burnHistory.map(d => `${d.date}=${fmt(d.cost)}`).join(', ') || 'unavailable'}`)
   log(`Avg daily burn: ${fmt(avgDailyBurn)} (${burnHistory.length || 1}-day basis)`)
   if (balance !== null)  log(`Credit balance: $${balance.toFixed(4)}`)
-  else                   log('Credit balance: unknown — add ANTHROPIC_CREDIT_BALANCE=$X.XX to .env after top-ups')
+  else                   log('Credit balance: unknown — tell Claude the current balance (record_credit_topup) or set ANTHROPIC_CREDIT_BALANCE in .env')
   if (runwayHours !== null) log(`Projected runway: ${runwayHours.toFixed(1)} hours`)
 
   // Determine balance alert state before writing cost-state.json
@@ -549,13 +572,14 @@ async function loadMemory() {
   const shouldSendBalanceAlert = balanceNowLow && (!prevAlertSentAt || wasAboveThreshold)
 
   // Write cost-state.json so chief-of-staff can read runway into the stand-up
-  const hasAdminKey = !!process.env.ANTHROPIC_ADMIN_API_KEY
-  const hasTopupDate = !!process.env.ANTHROPIC_CREDIT_TOPUP_DATE
+  const hasAdminKey  = !!process.env.ANTHROPIC_ADMIN_API_KEY
+  const topupForState = readTopupState()
+  const hasTopupDate = !!topupForState?.date
   const balanceSource = !hasAdminKey
-    ? 'static env (no ANTHROPIC_ADMIN_API_KEY)'
+    ? 'static (no ANTHROPIC_ADMIN_API_KEY)'
     : !hasTopupDate
-      ? 'static env (no ANTHROPIC_CREDIT_TOPUP_DATE)'
-      : 'computed (topup − real spend via Cost Report API)'
+      ? 'static (no topup date recorded)'
+      : `computed (topup via ${topupForState.source} − real spend via Cost Report API)`
 
   const costState = {
     date:                   reportDate,

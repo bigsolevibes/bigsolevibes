@@ -111,26 +111,39 @@ function buildCaptionMd(fields) {
 // quality but never this file, which is why the actual images never improved.
 // Both rules below are now explicitly conditional, and a precedence statement
 // makes the brief authoritative whenever it conflicts with this preamble.
+//
+// Fixed 2026-07-13 (see BSV-BigC-Audit-Log.md): a second, separate instance
+// of the same bug class — this preamble also mandated a full human figure in
+// every shot ("ONE person" in the unconditional anti-collage block, "the man
+// is the subject, head to toe in frame wherever possible," and a "HEAD TO
+// TOE... the whole man. This is a head-to-toe brand" rule with no real
+// fallback). creative-agent.js's Standing Rules were already corrected on
+// this exact point ("a person is a possibility in the image, never a
+// requirement") but this file never got the matching fix, so briefs that
+// deliberately called for no person, or hands/feet only, were still fighting
+// a person-mandate baked in upstream of the assignment. video-gen.js got
+// this same fix for video on 2026-07-01 (foot-cameo made conditional) — this
+// brings the still-image preamble in line with it and with creative-agent.js.
 
 const BSV_VISUAL_PREAMBLE = `TEXT-FREE IMAGE. Zero letters, words, captions, labels, or writing of any kind anywhere in the photograph — not as a title card, not as an overlay, not written on any object. If a word could appear anywhere in the frame, remove it. This rule has no exceptions.
 
-SINGLE FRAME ONLY. ONE photograph. ONE person. ONE moment. ONE location.
+SINGLE FRAME ONLY. ONE photograph. ONE moment. ONE location.
 DO NOT generate a collage, grid, panel layout, mood board, contact sheet, or multiple images.
 DO NOT show more than one version of the same scene. If you are about to produce multiple frames, STOP and produce only the first.
 
 BIG SOLE VIBES — VISUAL STANDARD
 
-PRECEDENCE: The assignment below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including the product's role in the shot or the setting described — the assignment below wins. Everything in this standard is a fallback for when the assignment doesn't specify otherwise, not a rule layered on top of it. The setting described in the assignment below (bathroom counter, locker room, kitchen, office, outdoors, wherever it says) must be the setting shown — do not substitute a leather chair, dark wood study, or any other generic environment unless the assignment itself describes that setting.
+PRECEDENCE: The assignment below is written for this specific product and story. If anything in it conflicts with the defaults in this standard — including whether a person appears at all, the product's role in the shot, or the setting described — the assignment below wins. Everything in this standard is a fallback for when the assignment doesn't specify otherwise, not a rule layered on top of it. The setting described in the assignment below (bathroom counter, locker room, kitchen, office, outdoors, wherever it says) must be the setting shown — do not substitute a leather chair, dark wood study, or any other generic environment unless the assignment itself describes that setting.
 
-The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. The man has already made up his mind — we are catching him mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The gap is real. The man is real. The humor is in the recognition, not the joke.
+The brand is deadpan, confident, slightly amused. Not brooding. Not aspirational. When a man appears in frame, he has already made up his mind — caught mid-thought, not mid-pose. Think Monty Python seriousness applied to a very specific grooming gap. The humor is in the recognition, not the joke.
 
-WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. The man is the subject — head to toe in frame wherever possible. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted. The foot appears somewhere in frame — edge of shot, soft focus, corner — as the quiet punchline, unless the assignment calls for it to be the subject.
+WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. A person is a possibility in the frame, never a requirement — the product and the story are what has to be there. Don't default to a full figure just because that's been the habit, and don't ban one either. Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted.
 
-VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain. 35mm editorial feel. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
+VISUAL LANGUAGE: Warm amber (#C17D2E) and deep navy (#0D1B2A) anchor the palette in every shot, regardless of setting. Cinematic grain, 35mm editorial feel when the assignment calls for a photographic technique — follow the assignment's technique exactly when it specifies illustration, engraving, cutout collage, or anything else instead. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
 
-TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. The man looks like he just thought of something — not like he is being photographed.
+TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. If a man appears, he looks like he just thought of something — not like he is being photographed.
 
-HEAD TO TOE: The full body should be visible or strongly implied. Head, torso, hands, feet — the whole man. This is a head-to-toe brand. The foot is the wink at the bottom of the frame. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. Otherwise: foot is present, incidental, the period at the end of the sentence.
+THE FOOT CAMEO (fallback only, and only if a person is already in the shot): A bare foot may enter the frame naturally — edge of shot, soft focus, corner — as the quiet punchline. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. This is never a reason to add a person who wasn't otherwise called for.
 
 THE ASSIGNMENT — this is what you are actually generating. Everything above is fallback context only. The setting and product named below are mandatory, not optional:
 `

@@ -52,7 +52,7 @@ The standard source list (Grooming Lounge, MR PORTER, Kiehl's, Molton Brown, Art
 
 ### Specific Products to Hunt
 
-Auto-updated from research run 2026-06-21.
+Auto-updated from research run 2026-07-12.
 ### Amazon First
 
 All picks must have an Amazon ASIN and be available via tag bigsolevibes-20. No Amazon availability means hold until alternative affiliate channel is confirmed.

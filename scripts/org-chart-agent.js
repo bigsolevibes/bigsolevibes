@@ -28,6 +28,7 @@ const STATUS_COLOR = {
   warning: '#F59E0B',
   error:   '#EF4444',
   unknown: '#6B7280',
+  paused:  '#6B7280',
 }
 
 const STATUS_LABEL = {
@@ -35,6 +36,7 @@ const STATUS_LABEL = {
   warning: 'WARN',
   error:   'ERROR',
   unknown: 'UNKNOWN',
+  paused:  'PAUSED',
 }
 
 // Agent hierarchy — defines visual grouping in the chart
