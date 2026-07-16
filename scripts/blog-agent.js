@@ -803,21 +803,15 @@ If a section references multiple products, use the complaint from the one most c
 
 ## Image brief — one per post, required
 
-Every post ends with an imageBrief field. This is a scene direction for Gemini image generation. The product is never in the frame. The feeling always is.
+Every post ends with an imageBrief field. This is a scene direction for Gemini image generation.
 
-Choose exactly one of the four BSV visual scenes that fits the post's argument, then write a one-paragraph brief describing the scene, the mood, the light, and what the man in the frame looks like.
+Fixed 2026-07-16 per Big D: images kept coming back as the same generic "man in a leather chair" regardless of the post's actual argument — traced to this section forcing a pick from four fixed archetypes every time (see BSV-BigC-Audit-Log.md same date). This is the same bug class already fixed in gemini-bridge.js, creative-agent.js's real scene-builder, and image-gen.js — this file just never got the matching fix. Build the scene from THIS post's own argument instead:
 
-The four scenes:
+The setting must come from the post's own argument and the products it references — not a menu to pick from. What is this post actually about? Build the one scene that earns that, the way a specific product earns a specific bathroom counter or locker room, not a generic stand-in for "a man who has had a long day."
 
-1. **The Transition** — A man in a suit. Leather chair. Glass of whiskey or bourbon on a side table. City skyline through the window, dusk or night. One shoe is coming off. He is not looking at the camera. The moment between the day and whatever comes next. Mood: earned stillness. Light: warm amber interior against cool blue outside.
+A person may appear if the post's argument calls for one — full figure, partial, just hands, face shown or not — but a person is a possibility, not a requirement. A product referenced in the post (with Proprietor's Notes or not) may be the visual anchor if that fits the argument better than a person would; "no product in frame" is not a rule here, it's one option among several. Whatever you choose, the image poses a question about the argument just made — it does not illustrate a generic mood.
 
-2. **The Athlete's Toll** — Post-game or post-training locker room. Dirty uniform or kit visible. Cleats or athletic shoes pulled off. The man is alone, or nearly. He is not celebrating — he is accounting. Mood: quiet after effort. Light: institutional overhead with pockets of shadow. The weight of the day is on him and he is fine with it.
-
-3. **The Chef** — Still in chef's whites or a cook's apron, end of service. Recliner or battered sofa. Shoes on the floor beside him, feet up. Eyes possibly closed. He has fed other people for twelve hours. Mood: the specific exhaustion that comes from craft. Light: a single lamp, warm, late. The room is quiet for the first time all day.
-
-4. **The Intimate Moment** — Two people, close. A couple at the end of the day. Shoes off, feet visible. The scene is private without being explicit. The foot care gap is the unspoken thing in the frame — not a problem, just the next thing. Mood: quiet domesticity, warmth without sentimentality. Light: soft, natural or candlelit. The moment feels earned.
-
-The brief must specify: which scene, the specific light quality, what the man is wearing, the exact moment being captured, and the emotional register. One paragraph. Cinematographer's eye. No product in frame.
+The brief must specify: the setting and why it's the right one for this specific argument, the specific light quality, what's actually in frame, the exact moment being captured, and the emotional register. One paragraph. Cinematographer's eye.
 
 ## Legal compliance — non-negotiable, every post
 
@@ -870,7 +864,7 @@ Every post must:
     }
   ],
   "closingHtml": "<p>Final statement. Not a CTA. Not a summary. The Proprietor's last word on it.</p>",
-  "imageBrief": "One paragraph. Scene name (The Transition / The Athlete's Toll / The Chef / The Intimate Moment), then: the specific light, what the man is wearing, the exact moment being captured, the emotional register. The product is never in the frame. The feeling always is."
+  "imageBrief": "One paragraph. The scene built from this post's own argument (not a fixed template), the specific light, what's in frame (a person is optional, not required), the exact moment being captured, the emotional register."
 }`
 
   // ─── Check content calendar for queued pieces ─────────────────────────────

@@ -251,17 +251,15 @@ function buildDirectivesBlock(directives) {
   return lines.join('\n')
 }
 
-// ─── Four confirmed visual scenes ─────────────────────────────────────────────
-
-// Reference only — mood/tone/lighting inspiration. NOT a mandatory pick-one
-// template when a product is assigned (see buildSceneBlock below). Treating
-// these four as a checklist regardless of product is what kept producing
-// generalized leather-chair/shoeless-men imagery that says nothing about the
-// actual product — flagged by Big D 2026-06-13, 2026-06-20, and 2026-06-28.
-const CANONICAL_SCENES_REFERENCE = `(1) THE TRANSITION — suit, leather chair, end of day. One shoe off, resting where he left it. The city is visible behind him.
-(2) THE ATHLETE'S TOLL — post-game locker room. Cleats off on the bench. Still in uniform. Teammates visible in soft focus behind him.
-(3) THE CHEF — still in whites after long service. Shoes off, feet up on a beat-up chair or recliner. The kitchen is done. He's not, not quite.
-(4) THE INTIMATE MOMENT — couple close on a couch, evening. Shoes coming off, off to the side. The room is warm, evening light.`
+// Removed 2026-07-16: this file used to also define a CANONICAL_SCENES_REFERENCE
+// constant (the same four-archetype leather-chair/locker-room/chef/couple list
+// that was still live and forcing every blog post into one of four generic
+// scenes over in blog-agent.js — fixed there same day, see BSV-BigC-Audit-Log.md).
+// Here it was already dead code — declared but never referenced anywhere in
+// this file, so it wasn't actually influencing generation — just a leftover
+// landmine of exactly the pattern Big D keeps having to flag. Deleted rather
+// than left as an unused "reference." buildSceneBlock() below is the real,
+// active, product-first scene logic.
 
 // Added 2026-07-10 per Big D — the tone the image and caption both need to
 // land: absurdist, deadpan-committed, sarcastic but never mean, funny enough
