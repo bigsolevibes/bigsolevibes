@@ -23,6 +23,22 @@ function log(msg) {
 
 function uploadFile(localPath, remotePath) {
   execSync(`rclone copyto "${localPath}" "${remotePath}"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+
+  // Verify the file actually landed — added 2026-07-17 after tue-pm.md was
+  // logged as "✓ uploaded" (rclone copyto exited 0) but was never actually
+  // discoverable in Drive afterward, in either Ready to Post or the Posted
+  // archive. That silent Drive-side failure slipped past every caller's
+  // try/catch because copyto itself reported success — the caption was
+  // simply gone, and the slot sat stuck for 34+ hours with no visible error
+  // anywhere. Confirm the destination actually shows the file immediately
+  // after the copy; throw if it doesn't, so the caller's existing
+  // try/catch logs a real ERROR instead of trusting a false positive.
+  const verify = execSync(`rclone lsf "${remotePath}"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    .toString()
+    .trim()
+  if (!verify) {
+    throw new Error(`upload reported success but file not found at destination: ${remotePath}`)
+  }
 }
 
 // ─── Brief parser ─────────────────────────────────────────────────────────────
