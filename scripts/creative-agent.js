@@ -14,6 +14,16 @@ const DIRECTIVES_FILE  = path.join(ROOT, 'logs', 'creative-directives.json')
 
 const { VOICES, AM_VOICE_POOL, PM_VOICE_POOL } = require('../config/bsv-voices')
 const { connect: sheetConnect, readAllRows } = require('./sheets-client')
+// 2026-07-17: this file wrote its own inline copy of the person-optional /
+// no-default-setting doctrine instead of importing it, the same drift
+// pattern already caught and fixed in gemini-bridge.js and video-gen.js
+// (see lib/visual-doctrine.js's own header). creative-agent.js is the file
+// that actually authors each post's IMAGE BRIEF, so its copy was also the
+// one missing the "don't default to leather chair / dark wood study" line
+// entirely — a stale pre-fix blog draft ("The Seven Steps Stop at the
+// Ankle," generated 2026-07-13) showed exactly that failure mode. Wired in
+// here so any future doctrine change reaches this file automatically.
+const { PERSON_OPTIONAL, NO_DEFAULT_SETTING } = require('./lib/visual-doctrine')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -273,9 +283,9 @@ function buildSceneBlock(product) {
   if (product) {
     return `SCENE CONSTRUCTION — BUILD AROUND THE ASSIGNED PRODUCT.
 
-The setting must come from the product's own story — its category, its Narrative above, the specific moment it belongs to. A body wash belongs in a bathroom at a particular hour. A cologne belongs at the mirror before he walks out. A recovery tool belongs wherever recovery actually happens. Do not reach for a default setting — build the one this product earns.
+The setting must come from the product's own story — its category, its Narrative above, the specific moment it belongs to. A body wash belongs in a bathroom at a particular hour. A cologne belongs at the mirror before he walks out. A recovery tool belongs wherever recovery actually happens. Do not reach for a default setting — build the one this product earns. ${NO_DEFAULT_SETTING}
 
-VISUAL FOCUS: The product and its story are the anchor — the image exists to make someone stop and want to know what this is. A person may appear if the story calls for one — full figure, partial, just hands, face shown or not — but a person is a possibility here, not a requirement. An object, a detail, a scene with no one in it can tell the story just as well if that's what this specific product earns. Whatever you choose, the image poses a question; it does not answer one.
+VISUAL FOCUS: The product and its story are the anchor — the image exists to make someone stop and want to know what this is. ${PERSON_OPTIONAL}
 
 ${COMEDIC_REGISTER}`
   }
@@ -501,7 +511,8 @@ One job: write the brief. Everything you produce must align with the Proprietor'
 
 ## Standing Rules (apply to every brief regardless of voice)
 
-- A person is a possibility in the image, never a requirement — the product and the story are what has to be there. Don't default to including a man just because that's been the habit, and don't ban one either. Feet, hands, a full figure, no one at all — whichever tells this specific story.
+- ${PERSON_OPTIONAL}
+- ${NO_DEFAULT_SETTING}
 - No stock photo compositions. No generic lifestyle. No empty, meaningless scenes.
 - Every image has a story and a specific moment — that's the requirement.
 - Four hashtag cap — #BigSoleVibes counts as one
