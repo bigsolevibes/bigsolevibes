@@ -632,9 +632,15 @@ function buildTokenBudget() {
   const dayStart = new Date(_now)
   dayStart.setHours(0, 0, 0, 0)
 
-  const LOGS = ['eng-bot','social-listening','media-director','brand-manager','marketing-manager',
-    'product-development','product-research','change-agent','blog-agent','update-handoff','chief-of-staff',
-    'resize-post','brand-image','brand-video']
+  // 2026-07-22: was a hand-maintained 14-item list that silently missed
+  // creative-agent (the single heaviest per-post Claude caller) plus
+  // affiliate-scout, edition-agent, reddit-agent, sole-report-agent,
+  // strategist, lounge-reconcile — the same class of bug already fixed once
+  // in scanClaudeScripts() for the Sunday efficiency audit (affiliate-scout
+  // blind spot, fixed 2026-07-15) but never applied here. Now reuses that
+  // same live scan so a new script calling Claude shows up in the daily
+  // budget estimate automatically, with no second list to forget to update.
+  const LOGS = Object.keys(scanClaudeScripts())
   const breakdown = []
 
   for (const name of LOGS) {
