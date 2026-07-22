@@ -80,11 +80,44 @@ function scanPromptFiles() {
 
 // ─── Gemini image generation ──────────────────────────────────────────────────
 
-async function generateImageOnce(apiKey, prompt) {
+// Added 2026-07-22. Imagen's `personGeneration` parameter (documented at
+// ai.google.dev/gemini-api/docs/imagen) defaults to "allow_adult" and was
+// never set by this file — meaning every call has been implicitly *allowing*
+// a person the whole time, regardless of what the brief said. This reads the
+// one signal creative-agent.js's briefs already state reliably and literally
+// ("There is no person in the frame" / "No person in the frame" appear
+// verbatim in every brief that wants an empty scene — confirmed against
+// live sat-am/sun-am/mon-am briefs) and turns it into the real API-level
+// constraint instead of hoping Imagen honors prose buried in a long prompt.
+// This is reading what the brief already says, not deciding scene content —
+// creative-agent.js still owns whether a person appears; this just makes
+// that decision structurally enforced instead of merely requested.
+function detectPersonGeneration(prompt) {
+  const noPersonPattern = /no\s+(?:person|people|man|human|figure)s?\s+(?:in|appears?\s+in)\s+(?:the\s+)?(?:frame|scene|shot|image)/i
+  return noPersonPattern.test(prompt) ? 'dont_allow' : 'allow_adult'
+}
+
+// Added 2026-07-22. Imagen's documented input limit is 480 tokens (text) —
+// see ai.google.dev/gemini-api/docs/models/imagen. BSV's prompts are
+// BSV_VISUAL_PREAMBLE + a full narrative brief (tone, story cohesion, a
+// "REJECTED without appeal if" checklist) and routinely run long. If a hard
+// constraint like "no person in frame" sits near the end of that prompt and
+// the prompt is silently truncated at the API's token ceiling, the
+// constraint never reaches the model at all — which would look exactly like
+// the compliance failures Big D's been seeing. This is a rough proxy
+// (chars/4, the standard English approximation), not an exact tokenizer
+// count, so it's a warning threshold, not a hard gate — good enough to tell
+// "probably fine" from "almost certainly getting cut off."
+function estimateTokenCount(text) {
+  return Math.ceil(text.length / 4)
+}
+const IMAGEN_TOKEN_LIMIT = 480
+
+async function generateImageOnce(apiKey, prompt, personGeneration) {
   const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:predict?key=${apiKey}`
   const body = {
     instances:  [{ prompt }],
-    parameters: { sampleCount: 1 },
+    parameters: { sampleCount: 1, personGeneration },
   }
   const res  = await fetch(url, {
     method:  'POST',
@@ -115,11 +148,11 @@ async function generateImageOnce(apiKey, prompt) {
 // from a deterministic failure (e.g. a persistently safety-filtered prompt).
 // One retry after a short delay is enough to tell the two apart without
 // meaningfully slowing down a run that's mostly succeeding.
-async function generateImage(apiKey, prompt, attempts = 2) {
+async function generateImage(apiKey, prompt, personGeneration, attempts = 2) {
   let lastErr
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await generateImageOnce(apiKey, prompt)
+      return await generateImageOnce(apiKey, prompt, personGeneration)
     } catch (err) {
       lastErr = err
       if (i < attempts) await new Promise(r => setTimeout(r, 2000))
@@ -270,8 +303,24 @@ function recordQaFlag(slot, reason, briefSnippet) {
     // hardcoded block here is the hardest one to notice and the most damaging.
     const finalPrompt = visualPrompt
 
+    // personGeneration: read from the brief's own stated intent (see
+    // detectPersonGeneration above) rather than leaving it at the API
+    // default, which allows a person unconditionally.
+    const personGeneration = detectPersonGeneration(finalPrompt)
+    log(`    personGeneration: ${personGeneration}`)
+
+    // Prompt-length check against Imagen's documented 480-token input limit —
+    // see estimateTokenCount above. A prompt over the limit means whatever's
+    // near the end (often the hard constraints) may never reach the model.
+    const estTokens = estimateTokenCount(finalPrompt)
+    if (estTokens > IMAGEN_TOKEN_LIMIT) {
+      const reason = `PROMPT LENGTH: ~${estTokens} est. tokens, over Imagen's ${IMAGEN_TOKEN_LIMIT}-token input limit — instructions near the end of the brief (often "no person"/technique constraints) may be silently truncated before Imagen sees them`
+      log(`    WARNING: ${reason}`)
+      recordQaFlag(slot, reason, finalPrompt.slice(0, 200))
+    }
+
     try {
-      const buf = await generateImage(apiKey, finalPrompt)
+      const buf = await generateImage(apiKey, finalPrompt, personGeneration)
       fs.writeFileSync(localPath, buf)
 
       const qa = await visualQaCheck(process.env.ANTHROPIC_API_KEY, buf, finalPrompt)
