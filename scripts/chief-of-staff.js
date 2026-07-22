@@ -386,9 +386,24 @@ function checkPendingApprovals() {
   return { contentGate, videoGate, total: contentGate + videoGate }
 }
 
+// Visual QA flags — see visualQaCheck() in image-gen.js. Local file read only
+// (image-gen.js already did the Claude vision call at generation time; this
+// just surfaces what it found), so this survives a credit outage the same as
+// the rest of this digest. Added 2026-07-22 so a flagged image is visible
+// here before Big D approves it on the dashboard, instead of him being the
+// only thing that catches a brief/image mismatch.
+function readVisualQaFlags(hours = 48) {
+  try {
+    const flags = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'visual-qa-flags.json'), 'utf8'))
+    const cutoff = Date.now() - hours * 3600000
+    return flags.filter(f => new Date(f.flaggedAt).getTime() >= cutoff)
+  } catch { return [] }
+}
+
 function writeAgentOutputDigest() {
   const rows = buildAgentOutputDigest()
   const approvals = checkPendingApprovals()
+  const qaFlags = readVisualQaFlags()
   const lines = [
     `# BSV Agent Output Digest — ${DAY_NAME} ${DATE_STAMP}`,
     ``,
@@ -397,6 +412,10 @@ function writeAgentOutputDigest() {
     approvals.total
       ? `**Pending Dashboard Approvals: ${approvals.total}** (${approvals.contentGate} content-gate, ${approvals.videoGate} video-gate) — review at /dashboard/approvals${approvals.videoGate ? ' and /dashboard/video-review' : ''}.`
       : `**Pending Dashboard Approvals: 0** — queue is clear.`,
+    ``,
+    qaFlags.length
+      ? `**Visual QA Flags (last 48h): ${qaFlags.length}** — rendered image didn't match its own brief, per Claude vision check in image-gen.js:\n${qaFlags.map(f => `  - ${f.slot}: ${f.reason}`).join('\n')}`
+      : `**Visual QA Flags (last 48h): 0** — no rendered-image/brief mismatches caught.`,
     ``,
     `| Agent | Status | Last Run | What it produced |`,
     `|-------|--------|----------|-------------------|`,

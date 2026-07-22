@@ -3,6 +3,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const Anthropic = require('@anthropic-ai/sdk').default
 
 const ROOT                   = path.join(__dirname, '..')
 const LOG_FILE               = path.join(ROOT, 'logs', 'image-gen.log')
@@ -13,6 +14,10 @@ const READY_TO_POST_FOLDER   = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
 const IMAGE_MODEL = 'imagen-4.0-fast-generate-001'
 const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
+
+// QA_MODEL/QA_FLAGS_FILE — see "Visual QA" section below.
+const QA_MODEL     = 'claude-haiku-4-5-20251001'
+const QA_FLAGS_FILE = path.join(ROOT, 'logs', 'visual-qa-flags.json')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +128,93 @@ async function generateImage(apiKey, prompt, attempts = 2) {
   throw lastErr
 }
 
+// ─── Visual QA (Claude vision check) ───────────────────────────────────────────
+// Added 2026-07-22. Context: text briefs from creative-agent.js have been fully
+// doctrine-compliant since 06-13 (explicit "no person in frame", specific
+// technique instructions, etc. — verified against logs/creative-directives.json),
+// and this file passes that text to Imagen untouched (see finalPrompt note
+// above — no reference image, no override). But the *rendered* images kept
+// showing the exact pattern the briefs explicitly banned: a man's face,
+// wood-paneled study, leather chesterfield chair. Imagen 4 Fast has a strong
+// trained prior toward that composition that survives explicit negative
+// instructions when they're buried in a long narrative prompt.
+//
+// Nothing in the pipeline ever looked at the *rendered* image before this —
+// brand-manager.js's QA only ever reads brief text (see its
+// loadDenialPatterns/buildDirectivesBlock — image bytes never enter that
+// file), so Big D was the only visual QA gate, catching this by eye on the
+// dashboard every time. This closes that gap: right after Imagen returns
+// bytes, ask Claude (vision, Haiku — this is a classification/triage task,
+// not creative work, same tier as eng-bot's diagnosis) whether the image
+// actually complies with its own brief, and flag it if not.
+//
+// Deliberately does NOT block the upload or auto-retry generation — a
+// automated check can have false positives, and auto-retrying on every FAIL
+// risks burning Gemini image credits in a runaway loop for a slot that's
+// borderline. It flags, loudly, to logs/visual-qa-flags.json, which
+// chief-of-staff.js surfaces in agent-output-digest.md (local-only, so it
+// survives a credit outage same as everything else in that file) — so a
+// flagged image is visible before Big D approves it on the dashboard,
+// instead of silently shipping.
+async function visualQaCheck(anthropicKey, imageBuffer, brief) {
+  if (!anthropicKey) return { checked: false, reason: 'ANTHROPIC_API_KEY not set' }
+
+  try {
+    const client = new Anthropic({ apiKey: anthropicKey })
+    const base64Image = imageBuffer.toString('base64')
+
+    const response = await client.messages.create({
+      model: QA_MODEL,
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Image } },
+          {
+            type: 'text',
+            text: `You are checking whether a generated image complies with the brief that was used to generate it. Treat explicit negative instructions as hard constraints, not suggestions — for example "no person in frame," "no leather chair / dark wood study as a default setting," "no product-application gesture," or a specific visual technique like an engraving/illustration style instead of a photograph.
+
+BRIEF (this is exactly what was sent to the image model):
+${brief}
+
+Look at the attached image and check it against every explicit instruction above — especially whether a person appears when the brief said not to, whether a leather chair or wood-paneled study appears as a default the brief didn't call for, whether any banned product-application gesture appears, and whether the requested visual technique was actually used.
+
+Respond in exactly this format, nothing else:
+VERDICT: PASS or FAIL
+REASON: one sentence, specific about what matches or what's wrong`,
+          },
+        ],
+      }],
+    })
+
+    const text = response.content?.[0]?.text || ''
+    const verdictMatch = text.match(/VERDICT:\s*(PASS|FAIL)/i)
+    const reasonMatch  = text.match(/REASON:\s*(.+)/i)
+    return {
+      checked: true,
+      pass:    verdictMatch ? verdictMatch[1].toUpperCase() === 'PASS' : null,
+      reason:  reasonMatch ? reasonMatch[1].trim() : text.slice(0, 200) || '(empty response)',
+    }
+  } catch (err) {
+    // Anthropic credit-balance-exhausted and any other API failure land here —
+    // never let a QA failure block the actual image pipeline. Worst case an
+    // image ships unchecked, same as every run before this feature existed.
+    return { checked: false, reason: err.message }
+  }
+}
+
+function recordQaFlag(slot, reason, briefSnippet) {
+  let flags = []
+  try { flags = JSON.parse(fs.readFileSync(QA_FLAGS_FILE, 'utf8')) } catch {}
+  flags.unshift({ slot, reason, briefSnippet, flaggedAt: new Date().toISOString() })
+  flags = flags.slice(0, 100) // keep most recent 100 — this file is a rolling log, not an archive
+  try {
+    fs.writeFileSync(QA_FLAGS_FILE, JSON.stringify(flags, null, 2))
+  } catch (err) {
+    log(`    WARNING: failed to write visual-qa-flags.json — ${err.message}`)
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -181,6 +273,19 @@ async function generateImage(apiKey, prompt, attempts = 2) {
     try {
       const buf = await generateImage(apiKey, finalPrompt)
       fs.writeFileSync(localPath, buf)
+
+      const qa = await visualQaCheck(process.env.ANTHROPIC_API_KEY, buf, finalPrompt)
+      if (!qa.checked) {
+        log(`    visual QA: skipped — ${qa.reason}`)
+      } else if (qa.pass === false) {
+        log(`    visual QA: FAIL — ${qa.reason}`)
+        recordQaFlag(slot, qa.reason, finalPrompt.slice(0, 200))
+      } else if (qa.pass === true) {
+        log(`    visual QA: pass — ${qa.reason}`)
+      } else {
+        log(`    visual QA: unparseable response — ${qa.reason}`)
+      }
+
       execSync(
         `rclone copyto "${localPath}" "${GDRIVE_REMOTE}:${outFilename}" --drive-root-folder-id ${READY_TO_POST_FOLDER}`,
         { stdio: 'pipe' }
