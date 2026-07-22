@@ -12,8 +12,29 @@ const READY_DIR              = path.join(os.homedir(), 'tmp', 'bsv-ready')
 const GDRIVE_REMOTE          = 'big sole vibes'
 const READY_TO_POST_FOLDER   = '1WvLthTzvePf0GDJDDPPO3SkROyoFzhEI'
 
-const IMAGE_MODEL = 'imagen-4.0-fast-generate-001'
-const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
+// Migrated 2026-07-22 from imagen-4.0-fast-generate-001 (Imagen :predict REST
+// endpoint) to gemini-3.1-flash-image (Gemini generateContent endpoint).
+// Reason: even after fixing the 480-token truncation bug (see
+// project_bsv_imagen_token_truncation_fix memory / commits 9f3aa6d9,
+// deeb06ba, c2335ae5 same day), a live test on real credits showed Imagen 4
+// Fast still ignoring explicit technique instructions (hand-tinted engraving,
+// flat cutout collage — rendered photorealistic both times) and the
+// no-product-application-gesture constraint (rendered actively
+// holding/presenting both times), on 4/4 test images. Big D's call: skip
+// further Imagen-tier iteration and go straight to the model Google itself
+// recommends as Imagen 4's replacement (imagen-4.0-fast/standard/ultra all
+// share the same Aug 17 2026 shutdown date — ai.google.dev/gemini-api/docs/deprecations).
+// Confirmed via ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image +
+// ai.google.dev/gemini-api/docs/generate-content/image-generation (2026-07-22):
+// input token limit is 131,072 (vs Imagen's 480) — the truncation class of bug
+// is structurally gone, not just patched. Endpoint shape is different (Gemini
+// generateContent, not Imagen predict): no personGeneration parameter exists
+// on this endpoint, so person-presence enforcement is no longer an API-level
+// constraint — the prompt text (lib/visual-doctrine.js PERSON_OPTIONAL,
+// creative-agent.js's brief) is the only lever now. detectPersonGeneration()
+// below is kept for logging/observability only.
+const IMAGE_MODEL = 'gemini-3.1-flash-image'
+const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1'
 
 // QA_MODEL/QA_FLAGS_FILE — see "Visual QA" section below.
 const QA_MODEL     = 'claude-haiku-4-5-20251001'
@@ -80,67 +101,77 @@ function scanPromptFiles() {
 
 // ─── Gemini image generation ──────────────────────────────────────────────────
 
-// Added 2026-07-22. Imagen's `personGeneration` parameter (documented at
-// ai.google.dev/gemini-api/docs/imagen) defaults to "allow_adult" and was
-// never set by this file — meaning every call has been implicitly *allowing*
-// a person the whole time, regardless of what the brief said. This reads the
-// one signal creative-agent.js's briefs already state reliably and literally
-// ("There is no person in the frame" / "No person in the frame" appear
-// verbatim in every brief that wants an empty scene — confirmed against
-// live sat-am/sun-am/mon-am briefs) and turns it into the real API-level
-// constraint instead of hoping Imagen honors prose buried in a long prompt.
-// This is reading what the brief already says, not deciding scene content —
-// creative-agent.js still owns whether a person appears; this just makes
-// that decision structurally enforced instead of merely requested.
+// Added 2026-07-22, kept 2026-07-22 through the gemini-3.1-flash-image
+// migration as a LOG-ONLY signal. Originally this fed Imagen's
+// `personGeneration` API parameter directly. gemini-3.1-flash-image's
+// generateContent endpoint has no equivalent parameter (confirmed against
+// ai.google.dev/gemini-api/docs/generate-content/image-generation — no
+// personGeneration/safetyFilterLevel/negativePrompt field anywhere in its
+// request shape), so person-presence is no longer enforced at the API layer
+// at all — it lives entirely in the prompt text now (PERSON_OPTIONAL in
+// lib/visual-doctrine.js + the brief itself). This function still runs so
+// the log line stays useful for spotting a mismatch between what the brief
+// asked for and what got generated, cross-referenced against the visual QA
+// verdict below.
 function detectPersonGeneration(prompt) {
   const noPersonPattern = /no\s+(?:person|people|man|human|figure)s?\s+(?:in|appears?\s+in)\s+(?:the\s+)?(?:frame|scene|shot|image)/i
   return noPersonPattern.test(prompt) ? 'dont_allow' : 'allow_adult'
 }
 
-// Added 2026-07-22. Imagen's documented input limit is 480 tokens (text) —
-// see ai.google.dev/gemini-api/docs/models/imagen. BSV's prompts are
-// BSV_VISUAL_PREAMBLE + a full narrative brief (tone, story cohesion, a
-// "REJECTED without appeal if" checklist) and routinely run long. If a hard
-// constraint like "no person in frame" sits near the end of that prompt and
-// the prompt is silently truncated at the API's token ceiling, the
-// constraint never reaches the model at all — which would look exactly like
-// the compliance failures Big D's been seeing. This is a rough proxy
-// (chars/4, the standard English approximation), not an exact tokenizer
-// count, so it's a warning threshold, not a hard gate — good enough to tell
-// "probably fine" from "almost certainly getting cut off."
+// Updated 2026-07-22 for the gemini-3.1-flash-image migration. That model's
+// input token limit is 131,072 (vs Imagen's 480 —
+// ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image) — BSV's
+// longest real prompt (preamble + full brief) measures under 500 tokens, so
+// this can never realistically fire anymore. Left in at the new ceiling as a
+// cheap sanity check rather than removed outright — if creative-agent.js's
+// briefs ever grow dramatically (e.g. a future edition-story-length image
+// brief), this still catches it before assuming the whole prompt reached the
+// model. Rough proxy (chars/4), not an exact tokenizer count.
 function estimateTokenCount(text) {
   return Math.ceil(text.length / 4)
 }
-const IMAGEN_TOKEN_LIMIT = 480
+const MODEL_TOKEN_LIMIT = 131072
 
-async function generateImageOnce(apiKey, prompt, personGeneration) {
-  const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:predict?key=${apiKey}`
+async function generateImageOnce(apiKey, prompt) {
+  const url  = `${GEMINI_API}/models/${IMAGE_MODEL}:generateContent`
   const body = {
-    instances:  [{ prompt }],
-    parameters: { sampleCount: 1, personGeneration },
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ['IMAGE'],
+      imageConfig: { aspectRatio: '1:1' }, // matches Imagen's implicit square default — resize-post.js owns platform-variant cropping downstream
+    },
   }
   const res  = await fetch(url, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body:    JSON.stringify(body),
   })
   const data = await res.json()
   if (!res.ok) {
-    throw new Error(`Imagen API ${res.status}: ${data?.error?.message || JSON.stringify(data)}`)
+    throw new Error(`Gemini image API ${res.status}: ${data?.error?.message || JSON.stringify(data).slice(0, 300)}`)
   }
-  const prediction = data?.predictions?.[0]
-  if (!prediction?.bytesBase64Encoded) {
-    // Fixed 2026-07-16 — the old error only logged Object.keys(), which for a
-    // genuinely empty `{}` body (the actual, repeated failure mode for this
-    // slot) always printed the useless "keys: []" seen ~8x in the eng
-    // backlog with zero diagnostic value. Logging the raw body (truncated)
-    // instead so a persistent failure is actually debuggable next time —
-    // e.g. distinguishing a real empty response from a safety-filter block
-    // (which Imagen sometimes reports via predictions[0].raiFilteredReason
-    // rather than omitting bytesBase64Encoded outright).
-    throw new Error(`No image in response — raw body: ${JSON.stringify(data).slice(0, 300)}`)
+
+  const candidate = data?.candidates?.[0]
+  const blockReason = data?.promptFeedback?.blockReason
+  if (blockReason) {
+    throw new Error(`Prompt blocked — blockReason: ${blockReason}`)
   }
-  return Buffer.from(prediction.bytesBase64Encoded, 'base64')
+  if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+    throw new Error(`Generation stopped — finishReason: ${candidate.finishReason}`)
+  }
+
+  const imagePart = candidate?.content?.parts?.find(p => p.inlineData?.data)
+  if (!imagePart) {
+    // Same diagnosability principle as the pre-migration fix (2026-07-16,
+    // see prior git history on this function): log the actual response body,
+    // not just Object.keys(), so a real failure mode is debuggable instead
+    // of producing another useless "no image" entry in the eng backlog. A
+    // text-only part here usually means the model explained a refusal
+    // instead of generating — that text is worth seeing.
+    const textPart = candidate?.content?.parts?.find(p => p.text)?.text
+    throw new Error(`No image in response${textPart ? ` — model said: "${textPart.slice(0, 200)}"` : ` — raw body: ${JSON.stringify(data).slice(0, 300)}`}`)
+  }
+  return Buffer.from(imagePart.inlineData.data, 'base64')
 }
 
 // Retry wrapper added 2026-07-16 — generateImageOnce() previously had zero
@@ -148,11 +179,11 @@ async function generateImageOnce(apiKey, prompt, personGeneration) {
 // from a deterministic failure (e.g. a persistently safety-filtered prompt).
 // One retry after a short delay is enough to tell the two apart without
 // meaningfully slowing down a run that's mostly succeeding.
-async function generateImage(apiKey, prompt, personGeneration, attempts = 2) {
+async function generateImage(apiKey, prompt, attempts = 2) {
   let lastErr
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await generateImageOnce(apiKey, prompt, personGeneration)
+      return await generateImageOnce(apiKey, prompt)
     } catch (err) {
       lastErr = err
       if (i < attempts) await new Promise(r => setTimeout(r, 2000))
@@ -303,24 +334,22 @@ function recordQaFlag(slot, reason, briefSnippet) {
     // hardcoded block here is the hardest one to notice and the most damaging.
     const finalPrompt = visualPrompt
 
-    // personGeneration: read from the brief's own stated intent (see
-    // detectPersonGeneration above) rather than leaving it at the API
-    // default, which allows a person unconditionally.
+    // personGeneration is log-only now — see detectPersonGeneration comment
+    // above. The brief's stated intent no longer maps to an API parameter.
     const personGeneration = detectPersonGeneration(finalPrompt)
-    log(`    personGeneration: ${personGeneration}`)
+    log(`    person-intent (brief-detected, informational only): ${personGeneration}`)
 
-    // Prompt-length check against Imagen's documented 480-token input limit —
-    // see estimateTokenCount above. A prompt over the limit means whatever's
-    // near the end (often the hard constraints) may never reach the model.
+    // Prompt-length sanity check against gemini-3.1-flash-image's 131,072-token
+    // input limit — see estimateTokenCount/MODEL_TOKEN_LIMIT above.
     const estTokens = estimateTokenCount(finalPrompt)
-    if (estTokens > IMAGEN_TOKEN_LIMIT) {
-      const reason = `PROMPT LENGTH: ~${estTokens} est. tokens, over Imagen's ${IMAGEN_TOKEN_LIMIT}-token input limit — instructions near the end of the brief (often "no person"/technique constraints) may be silently truncated before Imagen sees them`
+    if (estTokens > MODEL_TOKEN_LIMIT) {
+      const reason = `PROMPT LENGTH: ~${estTokens} est. tokens, over gemini-3.1-flash-image's ${MODEL_TOKEN_LIMIT}-token input limit`
       log(`    WARNING: ${reason}`)
       recordQaFlag(slot, reason, finalPrompt.slice(0, 200))
     }
 
     try {
-      const buf = await generateImage(apiKey, finalPrompt, personGeneration)
+      const buf = await generateImage(apiKey, finalPrompt)
       fs.writeFileSync(localPath, buf)
 
       const qa = await visualQaCheck(process.env.ANTHROPIC_API_KEY, buf, finalPrompt)
