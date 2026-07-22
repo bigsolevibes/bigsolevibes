@@ -171,7 +171,18 @@ async function generateImageOnce(apiKey, prompt) {
     const textPart = candidate?.content?.parts?.find(p => p.text)?.text
     throw new Error(`No image in response${textPart ? ` — model said: "${textPart.slice(0, 200)}"` : ` — raw body: ${JSON.stringify(data).slice(0, 300)}`}`)
   }
-  return Buffer.from(imagePart.inlineData.data, 'base64')
+  // mimeType returned alongside the bytes — do NOT hardcode 'image/png'
+  // downstream. Found live 2026-07-22: gemini-3.1-flash-image actually
+  // returns image/jpeg by default, and Claude's vision API rejects a
+  // mismatched media_type outright (400, "specified using image/png ...
+  // appears to be image/jpeg"), which silently degraded every visual QA
+  // check to "skipped" on the first live test post-migration — the exact
+  // safety net built earlier today going dark without anyone noticing until
+  // the log was read line by line. Always trust what the API says it sent.
+  return {
+    buffer:   Buffer.from(imagePart.inlineData.data, 'base64'),
+    mimeType: imagePart.inlineData.mimeType || 'image/png',
+  }
 }
 
 // Retry wrapper added 2026-07-16 — generateImageOnce() previously had zero
@@ -220,7 +231,7 @@ async function generateImage(apiKey, prompt, attempts = 2) {
 // survives a credit outage same as everything else in that file) — so a
 // flagged image is visible before Big D approves it on the dashboard,
 // instead of silently shipping.
-async function visualQaCheck(anthropicKey, imageBuffer, brief) {
+async function visualQaCheck(anthropicKey, imageBuffer, mimeType, brief) {
   if (!anthropicKey) return { checked: false, reason: 'ANTHROPIC_API_KEY not set' }
 
   try {
@@ -233,7 +244,7 @@ async function visualQaCheck(anthropicKey, imageBuffer, brief) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Image } },
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
           {
             type: 'text',
             text: `You are checking whether a generated image complies with the brief that was used to generate it. Treat explicit negative instructions as hard constraints, not suggestions — for example "no person in frame," "no leather chair / dark wood study as a default setting," "no product-application gesture," or a specific visual technique like an engraving/illustration style instead of a photograph.
@@ -349,10 +360,10 @@ function recordQaFlag(slot, reason, briefSnippet) {
     }
 
     try {
-      const buf = await generateImage(apiKey, finalPrompt)
+      const { buffer: buf, mimeType } = await generateImage(apiKey, finalPrompt)
       fs.writeFileSync(localPath, buf)
 
-      const qa = await visualQaCheck(process.env.ANTHROPIC_API_KEY, buf, finalPrompt)
+      const qa = await visualQaCheck(process.env.ANTHROPIC_API_KEY, buf, mimeType, finalPrompt)
       if (!qa.checked) {
         log(`    visual QA: skipped — ${qa.reason}`)
       } else if (qa.pass === false) {
