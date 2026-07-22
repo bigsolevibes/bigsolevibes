@@ -3,7 +3,7 @@ const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const { PALETTE, BRAND_TONE, PERSON_OPTIONAL, FOOT_CAMEO, precedence } = require('./lib/visual-doctrine')
+const { PALETTE, PERSON_OPTIONAL, NO_DEFAULT_SETTING, FOOT_CAMEO, precedence } = require('./lib/visual-doctrine')
 
 const ROOT       = path.join(__dirname, '..')
 const BRIEFS_DIR = path.join(ROOT, 'posts', 'briefs')
@@ -127,27 +127,23 @@ function buildCaptionMd(fields) {
 // mechanics (text-free/single-frame rules, the cinematic-still framing, the
 // visual-language/grain details) that don't apply to video or blog.
 
-const BSV_VISUAL_PREAMBLE = `TEXT-FREE IMAGE. Zero letters, words, captions, labels, or writing of any kind anywhere in the photograph — not as a title card, not as an overlay, not written on any object. If a word could appear anywhere in the frame, remove it. This rule has no exceptions.
+// Rewritten 2026-07-22 for Imagen's 480-token input limit — see the note on
+// PERSON_OPTIONAL in lib/visual-doctrine.js for the measurement that drove
+// this. Old version alone was ~888 estimated tokens, before the per-post
+// assignment was even added; a real combined prompt measured ~1400 tokens,
+// ~3x the limit, meaning anything near the end (routinely the "no person in
+// frame" line) was very likely being silently truncated before Imagen ever
+// saw it. This version measures ~172 tokens, leaving the assignment below
+// enough of the 480-token budget to actually fit. Dropped BRAND_TONE and the
+// generic "cinematic/lived-in" mood language — that's caption voice, not
+// something a diffusion model reads as brand tone, and it's fallback-only
+// content the assignment overrides anyway; every consumer of this preamble
+// (image, video, blog) benefits from the cut, not just Imagen's token limit.
+const BSV_VISUAL_PREAMBLE = `TEXT-FREE. SINGLE FRAME — no panels, collage, or grid.
 
-SINGLE FRAME ONLY. ONE photograph. ONE moment. ONE location.
-DO NOT generate a collage, grid, panel layout, mood board, contact sheet, or multiple images.
-DO NOT show more than one version of the same scene. If you are about to produce multiple frames, STOP and produce only the first.
+${precedence('the assignment below')} ${PERSON_OPTIONAL} ${NO_DEFAULT_SETTING} Amber (${PALETTE.AMBER}) + navy (${PALETTE.NAVY}) palette. No stock-photo staging, no logos. ${FOOT_CAMEO}
 
-BIG SOLE VIBES — VISUAL STANDARD
-
-${precedence('The assignment below')}
-
-${BRAND_TONE}
-
-WHAT THE IMAGE IS: A single cinematic film still. The kind of frame that holds a full story in one shot. ${PERSON_OPTIONAL} Default: the product or category appears as a prop in the scene, not the hero of the shot. EXCEPTION: if the assignment below names a specific product and instructs that it be the visual focus, follow it — the product must be physically visible in the frame, composed so the eye lands on it first, clearly identifiable, never reduced to background dressing and never omitted.
-
-VISUAL LANGUAGE: Warm amber (${PALETTE.AMBER}) and deep navy (${PALETTE.NAVY}) anchor the palette in every shot, regardless of setting. Cinematic grain, 35mm editorial feel when the assignment calls for a photographic technique — follow the assignment's technique exactly when it specifies illustration, engraving, cutout collage, or anything else instead. No stock photo energy. No product labels unless the assignment calls for a specific product's label to be readable. No logos.
-
-TONE: Lived-in, not staged. Slightly caught, not posed. A story is happening just outside the frame. If a man appears, he looks like he just thought of something — not like he is being photographed.
-
-THE FOOT CAMEO (fallback only, and only if a person is already in the shot): ${FOOT_CAMEO}
-
-THE ASSIGNMENT — this is what you are actually generating. Everything above is fallback context only. The setting and product named below are mandatory, not optional:
+ASSIGNMENT (mandatory, follows):
 `
 
 // ─── Main ─────────────────────────────────────────────────────────────────────

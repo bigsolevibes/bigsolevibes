@@ -43,18 +43,29 @@ const BRAND_TONE = VOICE
 // This is the exact doctrine that had to be independently re-fixed in
 // gemini-bridge.js (2026-07-13), video-gen.js (2026-07-01), and blog-agent.js
 // (2026-07-16) because each file carried its own copy.
-const PERSON_OPTIONAL = `A person is a possibility in the scene, never a requirement — the product and the story are what has to be there. Don't default to a full figure just because that's been the habit, and don't ban one either. Whatever you choose, the scene poses a question — it does not answer one.`
+//
+// Shortened 2026-07-22 as part of the fix for Imagen's 480-token input
+// limit (ai.google.dev/gemini-api/docs/models/imagen) — a real prompt
+// (BSV_VISUAL_PREAMBLE + a live brief) measured at ~1400 estimated tokens,
+// ~3x the limit, with this doctrine's old wording alone accounting for
+// roughly 900 of those tokens before Imagen ever saw the actual per-post
+// assignment. This is fallback-only text (the assignment always wins on
+// conflict — see precedence() below), so it doesn't need the same narrative
+// weight as content that's actually supposed to win; conciseness here is a
+// straight improvement for every consumer (image, video, blog), not an
+// image-specific tradeoff.
+const PERSON_OPTIONAL = `A person is optional, never required — pick based on what the story needs. The scene poses a question, it doesn't answer one.`
 
 // The other half of the same recurring bug: a generic fallback setting
 // (leather chair, dark wood study) winning over whatever setting the actual
 // assignment describes.
-const NO_DEFAULT_SETTING = `Do not substitute a leather chair, dark wood study, or any other generic environment as a default — use the actual setting the assignment/brief describes. Dark wood, leather, low light is one recurring BSV environment, not the only one.`
+const NO_DEFAULT_SETTING = `No default leather chair or dark wood study — use the setting the assignment actually describes.`
 
 // Present across image and video (blog images don't feature it since blog
 // images are static product/scene compositions, not a moving foot-cameo beat)
 // — kept as its own export so image/video can compose it in, and so it never
 // needs re-copying by hand for a future medium.
-const FOOT_CAMEO = `A bare foot may enter the frame naturally — edge of shot, soft focus, corner — as the quiet punchline. When foot care is the featured product, bring the foot to center frame, sharp focus, fully lit. This is never a reason to add a person who wasn't otherwise called for.`
+const FOOT_CAMEO = `Foot cameo (only if a person's already in frame): a bare foot may enter softly at the edge as the quiet punchline; bring it to sharp, lit focus only when foot care is the featured product.`
 
 // Builds the shared precedence statement. `assignmentLabel` is how the
 // consumer refers to its own per-post content ("the assignment below",
@@ -63,7 +74,7 @@ const FOOT_CAMEO = `A bare foot may enter the frame naturally — edge of shot, 
 // fallback-only) must stay identical everywhere.
 function precedence(assignmentLabel) {
   const lower = assignmentLabel.charAt(0).toLowerCase() + assignmentLabel.slice(1)
-  return `PRECEDENCE: ${assignmentLabel} is written for this specific product and story. If anything in it conflicts with the defaults in this doctrine — including whether a person appears at all, the product's role in the scene, or the setting described — ${lower} wins. Everything here is a fallback for when it doesn't specify otherwise, not a rule layered on top of it. The setting described in ${lower} (bathroom counter, locker room, kitchen, office, outdoors, wherever it says) must be the setting shown. ${NO_DEFAULT_SETTING}`
+  return `PRECEDENCE: ${lower} wins on conflict (setting, person, product role) — these are fallbacks only.`
 }
 
 module.exports = { PALETTE, BRAND_TONE, PERSON_OPTIONAL, NO_DEFAULT_SETTING, FOOT_CAMEO, precedence }

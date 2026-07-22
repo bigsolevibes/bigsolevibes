@@ -483,9 +483,25 @@ ${COMEDIC_REGISTER}`
 - Full photorealistic cinematic, 35mm film still (public/crawl/modern.jpg, beach.jpg): cinematic grain, shallow depth of field, lived-in not staged. Suits a beat that's specific and modern, happening right now.
 Whichever technique you land on, anchor it in the warm amber (#C17D2E) and deep navy (#0D1B2A) palette.`
 
+  // HARD_CONSTRAINTS_LEAD / LENGTH_CAP — added 2026-07-22. Imagen's real
+  // input limit is 480 tokens (ai.google.dev/gemini-api/docs/models/imagen).
+  // A live prompt (BSV_VISUAL_PREAMBLE + a real brief) measured at ~1400
+  // estimated tokens — ~3x the limit — and the fact that appear/don't-appear
+  // instructions typically sat mid-to-late in the narrative meant they were
+  // very likely getting silently truncated before Imagen ever read them.
+  // gemini-bridge.js's preamble was cut from ~888 to ~172 estimated tokens
+  // for the same reason (see BSV_VISUAL_PREAMBLE there); at a 150-180 word
+  // cap this brief plus that preamble lands around 380-420 estimated
+  // tokens, leaving real margin under the 480 limit. This also forces the
+  // one fact that has to survive — does a person appear, and what's the
+  // technique — to the front of the prompt instead of buried after several
+  // sentences of scene-setting.
+  const HARD_CONSTRAINTS_LEAD = `Open the brief with one short imperative line, before any scene description — not narrative, just the facts: state plainly whether a person appears and how much (or "NO PERSON IN FRAME — [subject] only"), and the visual technique in 2-4 words (e.g. "PHOTOREALISTIC 35MM", "HAND-TINTED ENGRAVING", "FLAT CUTOUT COLLAGE"). This line is the part that has to survive if anything downstream gets cut — write the rest of the brief as if it might be all that reaches the model.`
+  const LENGTH_CAP = `Target 150-180 words total for this brief, no more — Imagen has a hard 480-token input limit shared with the preamble placed in front of it, and anything past that limit is silently cut off before Imagen ever sees it. Say less, more precisely, rather than covering every angle.`
+
   const imageBriefInstruction = editionVignette
-    ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. ${PRIORITY_ORDER} ${STORY_COHESION} Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact.`
-    : `Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY — one scene, no panels, no collage layout of multiple moments. ${VISUAL_TECHNIQUE_RANGE} ${PRIORITY_ORDER} ${STORY_COHESION} Write the scene depicting the one specific absurd beat — describe the exact setting, the light, and whatever is actually in it (a person and how much of them, an object, a detail — whichever tells this story)${product ? `, including exactly where and how ${product['Product Name']} appears (its actual container, shape, color) as the visual focus` : ''}. Specific enough that whoever renders it could light it from this description alone. ${COMEDIC_REGISTER} REJECTED without appeal if: multiple frames or panels, any text or logo, the scene doesn't match the caption's specific beat${product ? `, or the product missing/not identifiable in the chosen style` : ''}.`
+    ? `Use the Image Brief from the Edition Scene block above. Format it as a Gemini Imagen 4 prompt. Square 1:1. No text, no logos. ${HARD_CONSTRAINTS_LEAD} ${PRIORITY_ORDER} ${STORY_COHESION} Single frame only. Adapt wording for Imagen prompt style but keep the scene, mood, and composition intact. ${LENGTH_CAP}`
+    : `Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY — one scene, no panels, no collage layout of multiple moments. ${HARD_CONSTRAINTS_LEAD} ${VISUAL_TECHNIQUE_RANGE} ${PRIORITY_ORDER} ${STORY_COHESION} Write the scene depicting the one specific absurd beat — describe the exact setting, the light, and whatever is actually in it (a person and how much of them, an object, a detail — whichever tells this story)${product ? `, including exactly where and how ${product['Product Name']} appears (its actual container, shape, color) as the visual focus` : ''}. Specific enough that whoever renders it could light it from this description alone. ${COMEDIC_REGISTER} ${LENGTH_CAP} REJECTED without appeal if: multiple frames or panels, any text or logo, the scene doesn't match the caption's specific beat, the opening hard-constraints line is missing${product ? `, or the product missing/not identifiable in the chosen style` : ''}.`
 
   const roleInstructions = `${directivesBlock ? `${directivesBlock}\n\n---\n\n` : ''}## THE PROPRIETOR'S TEST — apply before writing a single word
 
