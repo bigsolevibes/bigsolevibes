@@ -228,7 +228,20 @@ function getPostedLastNDays(n = 7) {
     if (!dirs) return '(no posted content found)'
 
     const allFolders    = dirs.split('\n').map(l => l.trim().split(/\s+/).pop()).filter(Boolean)
-    const recentFolders = allFolders.filter(f => f >= cutoffStr)
+    // Only literal YYYY-MM-DD folders participate in the recency window.
+    // Non-date folders (e.g. "stale" — a catch-all archive for content
+    // swept aside outside the normal dated flow) must never enter this
+    // filter via plain string comparison: "stale" >= "2026-07-16" is TRUE
+    // as a lexical compare (any lowercase letter sorts after any digit),
+    // so before this fix Posted/stale was *always* included regardless of
+    // how old its contents actually were. Root-caused 2026-07-23: stale/
+    // holds tue-am/tue-pm content from 2026-05-27 (created during initial
+    // pipeline setup), which is why brand-manager's report flagged
+    // "tue-pm (x2 — duplicate slot)" / "tue-am (x2 — duplicate slot)" —
+    // it was diffing today's real 2026-07-23 post against a 7-week-old
+    // leftover in stale/, not a real media-director double-generation.
+    const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/
+    const recentFolders = allFolders.filter(f => DATE_FOLDER_RE.test(f) && f >= cutoffStr)
     // Progress logging added 2026-07-23 — this loop previously ran silently
     // between the "Loading memory..." and "Handoff:" log lines with no
     // visibility at all, which is exactly the gap where this function was
