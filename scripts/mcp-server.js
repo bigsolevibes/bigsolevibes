@@ -253,7 +253,13 @@ server.tool(
   'Get launchd service status for all BSV launchd agents.',
   {},
   async () => {
-    const list = sh('launchctl list | grep -i bsv')
+    // Fixed 2026-07-23: was `grep -i bsv`, which misses any label under the
+    // legacy `com.bigsolevibes.*` naming scheme (e.g. com.bigsolevibes.
+    // mediadirector, com.bigsolevibes.productdevelopment) since "bsv" is not
+    // a substring of "bigsolevibes". That blind spot is exactly how a
+    // duplicate media-director launchd job went unnoticed — see BSV-BigC-
+    // Audit-Log.md 2026-07-23 (duplicate-slot bug investigation).
+    const list = sh("launchctl list | grep -iE 'bsv|bigsolevibes'")
     return { content: [{ type: 'text', text: list || '(no BSV launchd agents found)' }] }
   }
 )
