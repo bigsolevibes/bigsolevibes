@@ -128,6 +128,21 @@ function checkAgentHealth(log = () => {}) {
 
     const logPath = path.join(ROOT, 'logs', `${agent.name}.log`)
 
+    // NOTE: do not add a "0-byte log = never run" check here. Tried that
+    // 2026-07-23 and reverted within the same session — log-rotate.js
+    // truncates every active log to 0 bytes as routine rotation (see its own
+    // 2026-07-11 fix comment: it explicitly skips already-empty files but
+    // still empties a file with content on its normal cycle), so right after
+    // any rotation, every genuinely-healthy agent's log reads as 0 bytes too.
+    // A size check here would have flagged media-director/creative-agent/etc.
+    // as "never run — error" immediately after rotation, which is worse than
+    // the bug it was trying to fix. The real fix for reddit-agent/edition-agent/
+    // newsletter-agent's stale placeholder logs (dated 2026-07-11, still 0
+    // bytes 12 days later because they've genuinely never run since) belongs
+    // in extractBlockers() on the dashboard side instead — see
+    // lib/dashboard/state-adapter.ts, which can reason about "never run AND
+    // non-essential" without needing to distinguish "just rotated" from
+    // "actually dormant" purely from file size.
     if (!fs.existsSync(logPath)) {
       issues.push({ name: agent.name, severity: agent.essential ? 'error' : 'warning', msg: 'never run — log missing', fix: `node scripts/${agent.name}.js` })
       continue

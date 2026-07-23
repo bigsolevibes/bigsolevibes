@@ -9,6 +9,8 @@ const fs                          = require('fs')
 const ROOT      = process.env.BSV_ROOT || path.join(__dirname, '..')
 const LOGS_DIR  = path.join(ROOT, 'logs')
 const STATE_FILE = path.join(LOGS_DIR, 'watch-drive-state.json')
+const { approveSlot, denySlot: denySlotFile } = require('./lib/approved-slots')
+const { clearSlotFiles } = require('./lib/clear-slot-files')
 
 console.error(`[bsv-mcp] Starting — ROOT: ${ROOT}`)
 
@@ -315,11 +317,7 @@ server.tool(
     slot: z.string().describe('Slot name, e.g. fri-am, mon-pm'),
   },
   async ({ slot }) => {
-    const filePath = path.join(LOGS_DIR, 'approved-slots.json')
-    let existing = {}
-    try { existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {}
-    existing[slot] = true
-    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2))
+    approveSlot(slot, { method: 'manual' })
     return { content: [{ type: 'text', text: `✓ Approved: ${slot}\nwatch-drive will release it on next poll (≤15 min).` }] }
   }
 )
@@ -341,22 +339,15 @@ server.tool(
     // actually stuck. Big D: "if its denied then it should be cleared."
     // Mirrors the clear_drive_slot tool's Drive-clearing step, folded into
     // deny itself so it's automatic rather than a separate manual action.
-    const DRIVE_REMOTE = 'big sole vibes:Big Sole Vibes/Ready to Post'
-    try {
-      execSync(
-        `rclone delete "${DRIVE_REMOTE}" --include "${slot}.*" --include "${slot}-flow.*" --include "${slot}-*prompt*"`,
-        { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
-      )
-    } catch (err) {
-      console.error(`[deny_slot] Drive clear warning: ${err.stderr?.toString().trim() || err.message}`)
-    }
+    // Clears both the Drive remote AND the local ~/tmp/bsv-ready/ mirror —
+    // see lib/clear-slot-files.js for why the local side matters (rclone copy
+    // never prunes locally on a remote delete, so a denied slot's stale local
+    // files were getting picked back up by the next watch-drive/image-gen poll).
+    const clearResult = clearSlotFiles(slot, { root: ROOT })
+    if (!clearResult.driveOk) console.error(`[deny_slot] ${clearResult.driveMsg}`)
 
     // Remove from approved-slots
-    const filePath = path.join(LOGS_DIR, 'approved-slots.json')
-    let existing = {}
-    try { existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {}
-    delete existing[slot]
-    fs.writeFileSync(filePath, JSON.stringify(existing, null, 2))
+    denySlotFile(slot)
 
     // Clear from pipeline state (both the slot and its -flow variant)
     const state = readState()
@@ -417,6 +408,9 @@ server.tool(
     const msg = [`✗ Denied: ${slot}`]
     if (reason) msg.push(`Reason: ${reason}`)
     msg.push(cleared ? 'Cleared from pipeline state — re-upload to Drive to reprocess.' : 'Not found in pipeline state.')
+    msg.push(clearResult.localRemoved.length
+      ? `Local mirror: removed ${clearResult.localRemoved.join(', ')}`
+      : 'Local mirror: nothing stale found.')
     msg.push('Brief captured in denial-log.json — agents will learn from this.')
     return { content: [{ type: 'text', text: msg.join('\n') }] }
   }
@@ -487,24 +481,20 @@ server.tool(
 // ── clear_drive_slot ──────────────────────────────────────────────────────────
 server.tool(
   'clear_drive_slot',
-  'Remove a slot\'s files from Drive "Ready to Post/" so watch-drive stops re-queuing old content. Also clears the slot and its -flow variant from pipeline state.',
+  'Remove a slot\'s files from Drive "Ready to Post/" AND the local ~/tmp/bsv-ready/ mirror, so watch-drive/image-gen stop re-queuing old content. Also clears the slot and its -flow variant from pipeline state.',
   {
     slot: z.string().describe('Slot name, e.g. fri-am, wed-pm'),
   },
   async ({ slot }) => {
-    const REMOTE = 'big sole vibes:Big Sole Vibes/Ready to Post'
     const msgs = []
 
-    // Clear Drive files matching slot* and slot-flow*
-    try {
-      execSync(
-        `rclone delete "${REMOTE}" --include "${slot}.*" --include "${slot}-flow.*" --include "${slot}-*prompt*"`,
-        { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 }
-      )
-      msgs.push(`Drive: cleared "${slot}*" from Ready to Post/`)
-    } catch (e) {
-      msgs.push(`Drive warning: ${e.stderr?.toString().trim() || e.message}`)
-    }
+    // Clear Drive files matching slot* and slot-flow*, plus the local mirror —
+    // see lib/clear-slot-files.js for why the local side is required too.
+    const clearResult = clearSlotFiles(slot, { root: ROOT })
+    msgs.push(clearResult.driveMsg)
+    msgs.push(clearResult.localRemoved.length
+      ? `Local mirror: removed ${clearResult.localRemoved.join(', ')}`
+      : 'Local mirror: nothing stale found.')
 
     // Clear from pipeline state
     const state = readState()

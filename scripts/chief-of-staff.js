@@ -189,9 +189,33 @@ async function checkRevenue() {
   }
 
   // Affiliate link presence in shop
+  //
+  // Fixed 2026-07-23: this regex looked for a raw, unencoded "amazon.com...tag="
+  // substring, which matched fine until sync-shop.js started routing every
+  // shelf link through /api/go/[key]?to=<percent-encoded-url> (2026-07-10, for
+  // per-product click counts — see app/api/go/[key]/route.ts). Percent-encoding
+  // turns "tag=" into "tag%3D", so this check has been silently returning
+  // false — and this standup reporting "Affiliate links not in shop — zero
+  // revenue possible" every day since — even though the live site verifiably
+  // has 15+ real Amazon links with the affiliate tag (confirmed by fetching
+  // https://bigsolevibes.com/shop/ directly). Now matches the /api/go/
+  // wrapper too, not just a direct unencoded URL.
+  //
+  // IMPORTANT — this only checks the link is *present* in the HTML, not that
+  // it actually works. Investigating this same day turned up a separate, more
+  // serious problem: /api/go/[key] is a Next.js API route, but next.config.js
+  // sets `output: 'export'` (fully static) whenever CF_PAGES=1 — Cloudflare
+  // Pages' static-export build strips API routes entirely. Confirmed live:
+  // https://bigsolevibes.com/api/go/test returns the same not-found response
+  // as a nonexistent path. So every "Get it on Amazon" click on the deployed
+  // site has likely been 404'ing instead of redirecting to Amazon since
+  // 2026-07-10 — a much more direct candidate for "zero revenue" than links
+  // never being deployed. Flagged to Big D; not touched here since fixing it
+  // means choosing between dropping click-tracking or rebuilding it in a way
+  // that survives static export, and that's his call.
   try {
     const shopHtml = fs.readFileSync(path.join(ROOT, 'public', 'shop', 'index.html'), 'utf8')
-    const matches  = shopHtml.match(/amazon\.com[^"']*tag=|impact\.com|shareasale\.com|cj\.com\/redir/g) || []
+    const matches  = shopHtml.match(/amazon\.com[^"']*tag(=|%3D)|impact\.com|shareasale\.com|cj\.com\/redir|\/api\/go\//g) || []
     result.shopLinkCount  = matches.length
     result.linksDeployed  = matches.length > 0
   } catch {
@@ -400,10 +424,25 @@ function readVisualQaFlags(hours = 48) {
   } catch { return [] }
 }
 
+// Auto-QA-approved slots — see recordAutoQaApproval() in image-gen.js. Added
+// 2026-07-23 alongside the auto-approve probation trial: a slot that skipped
+// the dashboard gate on a clean QA pass still needs a human set of eyes on it
+// at some point, just after the fact instead of before. Surfaced here so Big C
+// (and Big D, since this file feeds the standup) can spot-check what auto-shipped
+// without digging through logs/auto-qa-approvals.json by hand.
+function readAutoQaApprovals(hours = 48) {
+  try {
+    const approvals = JSON.parse(fs.readFileSync(path.join(ROOT, 'logs', 'auto-qa-approvals.json'), 'utf8'))
+    const cutoff = Date.now() - hours * 3600000
+    return approvals.filter(a => new Date(a.approvedAt).getTime() >= cutoff)
+  } catch { return [] }
+}
+
 function writeAgentOutputDigest() {
   const rows = buildAgentOutputDigest()
   const approvals = checkPendingApprovals()
   const qaFlags = readVisualQaFlags()
+  const autoApprovals = readAutoQaApprovals()
   const lines = [
     `# BSV Agent Output Digest — ${DAY_NAME} ${DATE_STAMP}`,
     ``,
@@ -416,6 +455,10 @@ function writeAgentOutputDigest() {
     qaFlags.length
       ? `**Visual QA Flags (last 48h): ${qaFlags.length}** — rendered image didn't match its own brief, per Claude vision check in image-gen.js:\n${qaFlags.map(f => `  - ${f.slot}: ${f.reason}`).join('\n')}`
       : `**Visual QA Flags (last 48h): 0** — no rendered-image/brief mismatches caught.`,
+    ``,
+    autoApprovals.length
+      ? `**Auto-Approved on QA Pass (last 48h, probation trial): ${autoApprovals.length}** — skipped the dashboard gate, spot-check these:\n${autoApprovals.map(a => `  - ${a.slot}: ${a.reason}`).join('\n')}`
+      : `**Auto-Approved on QA Pass (last 48h): 0**`,
     ``,
     `| Agent | Status | Last Run | What it produced |`,
     `|-------|--------|----------|-------------------|`,

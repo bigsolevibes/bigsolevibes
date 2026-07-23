@@ -133,13 +133,20 @@ const C = {
 
 function buildProductCard(product) {
   const amazonUrl = buildAmazonUrl(product)
-  // Route through the click-tracking redirect (app/api/go/[key]/route.ts)
-  // instead of linking straight to the affiliate URL — added 2026-07-10 per
-  // Big D so the dashboard can show a click count per shelf product. The key
-  // matches the convention already used elsewhere in the dashboard
-  // (ASIN when present, else the product name).
-  const clickKey  = ((product['ASIN'] || '').trim()) || (product['Product Name'] || '').trim()
-  const trackedUrl = `/api/go/${encodeURIComponent(clickKey)}?to=${encodeURIComponent(amazonUrl)}`
+  // REVERTED 2026-07-23 (Big D's call): the 2026-07-10 click-tracking redirect
+  // (/api/go/[key]?to=..., app/api/go/[key]/route.ts) turned out to be
+  // completely dead on the live site. next.config.js sets `output: 'export'`
+  // whenever CF_PAGES=1, which is a fully static build — Next.js API routes
+  // don't exist in that output at all. Confirmed live: hitting /api/go/test
+  // returned the exact same not-found response as a nonexistent path. Every
+  // "Get it on Amazon" link on the deployed shop has almost certainly been a
+  // dead 404 instead of a redirect to Amazon since 2026-07-10 — a direct
+  // candidate for the standing "zero revenue" problem. Going straight back to
+  // the plain affiliate URL restores working links immediately. Per-product
+  // click counts are gone until someone rebuilds tracking in a way that
+  // survives static export (e.g. a client-side beacon that still navigates
+  // directly) — app/api/go/[key]/route.ts is left in place, just unused, in
+  // case that's built later.
 
   // Scene image: prefer Sheet Image_URL → fall back to local public/posts/output/{slug}-scene.jpg
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
@@ -201,7 +208,7 @@ function buildProductCard(product) {
             ${highlightsHtml}
             <div class="card-footer">
               ${priceHtml}
-              <a href="${trackedUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
+              <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer sponsored" class="card-cta">
                 Get it on Amazon →
               </a>
             </div>

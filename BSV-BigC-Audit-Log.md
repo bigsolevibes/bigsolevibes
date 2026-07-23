@@ -1134,4 +1134,77 @@ Big D flagged 3 dashboard blockers: `watch-drive` stale (3h), `eng-bot` stale (3
 
 **image-gen — real, now fixed.** `wed-pm-flow`'s image hit a one-off `ERROR: fetch failed` (transient — almost certainly a dropped connection to the Imagen API, not a code or credential bug; the very next slot in the same run, `wed-pm`, succeeded normally seconds later) this morning at 09:08. Left it with a caption but no media (confirmed in `watch-drive.log`: "wed-pm-flow: caption present, waiting for media"). Reran via `run_diagnostic({script:"image-gen"})` — it generated and uploaded `wed-pm-flow.png` successfully (`1 generated, 14 skipped, 0 failed`). Should flow through resize/brand/distribute on the next watch-drive poll.
 
+---
+
+## 2026-07-23 — Cleared 16-item content-gate backlog, then built auto-approve-on-QA-pass (probation trial)
+
+**What happened:**
+- Standup showed 16 content-gate + 8 video-gate slots stuck awaiting dashboard approval, some overdue since 2026-07-21. Big D: "lets go" → "clear the backlog."
+
+**Backlog cleared:**
+- Pulled `get_slot_brief` for every pending slot and cross-checked against the digest's Visual QA Flags (Claude vision check in `image-gen.js`, added 2026-07-22) before approving anything.
+- Approved 11 (tue-pm, tue-am, tue-am-flow, sat-am, sat-am-flow, sat-pm, sat-pm-flow, sun-am, sun-am-flow, mon-am, mon-am-flow) — briefs checked out clean against voice/style/no-application-gesture rules.
+- Denied 4 that the vision QA had already flagged as not matching their own brief: `fri-am` (active reach/press gesture where brief demanded rest), `fri-am-flow` and `fri-pm-flow` (still photo delivered where brief demanded 7-8s motion video), `thu-pm-flow` (photorealistic 3D render where brief demanded flat 2D cutout collage). Reasons logged to `denial-log.json` so creative-agent/brand-manager can learn from them.
+- Left `mon-pm-flow` untouched — `get_slot_brief` returned no brief at all for it. Did not deny (deny_slot clears Drive files — didn't want to delete anything without Big D's say-so per hard rules). Flagged for Big D to check whether this is the same stuck-caption issue the standup attributed to `tue-pm-flow`.
+- Left `fri-pm` untouched — already partially posted (Bluesky succeeded, Instagram failed x2) before this session; not a gate decision, just needs an Instagram retry.
+
+**Root-cause conversation → built something:**
+- Big D asked how to stop the backlog from recurring without losing good content to a missed approval. Proposed three options (auto-approve on clean QA pass / fix telegram-webhook / auto-reschedule stale slots); Big D had no strong preference, then asked directly: "now that we have the validation agent...shouldnt we be good [without the manual gate]?"
+- Answered no, not yet, and why: `visualQaCheck()` in `image-gen.js` is one day old (added 2026-07-22) — a single day and ~10 catches isn't a track record, and the code's own comment says it was deliberately built advisory-only (flags, doesn't block) because a Haiku vision check can have false positives in *either* direction (false FAIL and false PASS both possible). Proposed a probation trial instead: auto-approve on clean PASS, but log every auto-approval for a retroactive spot-check, so trust is earned with evidence before removing Big D from the loop entirely. Big D: "yes."
+
+**Built:**
+- `scripts/lib/approved-slots.js` (new) — extracted the `{slot: true}` read/write for `logs/approved-slots.json` that was independently copy-pasted in `watch-drive.js` and `mcp-server.js` (same pattern `agent-health.js`/`visual-doctrine.js` were extracted to fix before). Value shape upgraded to `{method, reason, at}` — `method` is `'manual'` (dashboard/MCP), `'auto-qa'` (this trial), or `'self-heal-caption'` (existing flow-caption repair). Legacy boolean `true` entries stay truthy-compatible — no gate-check callers needed to change.
+- `watch-drive.js`, `mcp-server.js` — refactored to use the shared lib instead of their own inline copies. Behavior unchanged, just one source of truth now.
+- `image-gen.js` — on a clean `visualQaCheck` PASS, now calls `approveSlot(slot, {method:'auto-qa', reason})` (skips the dashboard gate) and `recordAutoQaApproval()` writes to new `logs/auto-qa-approvals.json` (rolling log, cap 100). FAIL path is untouched — still flags only, never auto-denies.
+- `chief-of-staff.js` — digest now reads `auto-qa-approvals.json` (last 48h) and surfaces a new `**Auto-Approved on QA Pass (probation trial)**` section, same pattern as the existing Visual QA Flags section, so auto-shipped slots are visible for spot-check without digging through the log file by hand.
+- Verified: `node --check` clean on all 5 touched files; round-tripped `approveSlot`/`loadApprovedSlots`/`denySlot` against a backed-up copy of the real `logs/approved-slots.json` to confirm the new object shape reads/writes correctly, then restored the original file byte-for-byte.
+
+**Not yet done:**
+- `mon-pm-flow`'s missing brief — needs Big D or a follow-up session to diagnose/regenerate.
+- `fri-pm`'s Instagram retry.
+- telegram-webhook is still down (ECONNRESET) — not addressed this session, Big D didn't pick it from the options.
+- No defined end date/criteria for the probation trial yet — worth revisiting after a couple weeks of `auto-qa-approvals.json` data to decide whether to drop the manual gate entirely.
+
+---
+
+## 2026-07-23 (same day, cont.) — Dashboard cleanup: fixed denied posts reappearing, reduced Blockers count, one fix built and reverted same session
+
+**What happened:** Big D: "lets clean up the dashboard. number of blockers and still seeing old posts that should have been denied."
+
+**Old posts reappearing — root cause found and fixed.** Confirmed live: `thu-pm-flow`, denied earlier this session, reappeared in `watch-drive-state.json` with `_approval_requested:true` on the very next `get_pipeline_state` check. Root cause: `deny_slot` and `clear_drive_slot` in `mcp-server.js` only ever ran `rclone delete` against the Drive "Ready to Post/" remote. Every download path in the repo (`watch-drive.js`, `image-gen.js`, `video-gen.js`, `telegram-queue.js`) pulls from Drive with `rclone copy` — never `rclone sync` — so a file removed on the remote is never pruned from its local mirror at `~/tmp/bsv-ready/`. `image-gen.js`'s `scanPromptFiles()` and `watch-drive.js`'s caption scan both read straight from that local directory, so a denied slot's stale local `.png`/`.md`/`-prompt.txt` files kept getting picked back up on the next poll as if nothing had happened.
+
+**Fixed:** New `scripts/lib/clear-slot-files.js` — clears Drive AND the local mirror for a slot (same 3 include patterns as before, now also matched against `~/tmp/bsv-ready/` and deleted with `fs.unlinkSync`). Both `deny_slot` and `clear_drive_slot` in `mcp-server.js` now call this instead of their own Drive-only `rclone delete`. Verified two ways: (1) a throwaway `HOME` with fake files confirmed the glob matching removes exactly the intended slot + its `-flow` sibling and leaves unrelated slots untouched; (2) re-ran `deny_slot` for real on `thu-pm-flow`, `fri-am`, `fri-am-flow`, `fri-pm-flow` (all denied earlier this session, before the fix) — `fri-am` alone had 6 stale local files (image, caption, and prompt for both itself and its flow sibling) that the original denial never actually cleared. All confirmed gone from `get_pipeline_state` afterward.
+
+**Blockers count — investigated, one approach tried and reverted, one shipped.**
+- Found: `reddit-agent`/`edition-agent`/`newsletter-agent` were each showing as a Blocker with `"stale — 301h since last activity"`, phrased as if they'd gone quiet after being active. Checked the actual log files: all three are 0-byte placeholders dated 2026-07-11, twelve days untouched — they've never produced real output, "stale" is technically true but misleadingly phrased.
+- **First attempt (reverted):** changed `checkAgentHealth()` in `lib/agent-health.js` to treat a 0-byte log the same as a missing one. Ran `health-check.js` to test against the real repo and it immediately misfired: `media-director`, `creative-agent`, `gemini-bridge`, `image-gen`, `cost-report`, `strategist`, `brand-manager`, `product-research`, `blog-agent`, `sole-report-agent`, `affiliate-scout`, `cj-research` all flipped to `"never run — log missing or empty"` — including two essential agents at `error` severity. Root cause of the false positive: `log-rotate.js` truncates every *active* log to 0 bytes as routine daily rotation (its own 2026-07-11 comment documents this exact class of trap for mtime — hadn't accounted for the same trap applying to size). A log-rotate cycle had evidently run between this session's first standup read and this point, so every daily/essential agent was sitting in the normal "rotated, hasn't re-run yet today" window and got misclassified as broken. Reverted `agent-health.js` back to the original exists-only check within the same session, re-ran `health-check.js`, confirmed all 12 agents back to `ok`. No lasting effect — `org-chart-state.json` is fully regenerated from logs every run, nothing else touched.
+- **What shipped instead:** `extractBlockers()` in `lib/dashboard/state-adapter.ts` now skips non-essential agents whose status is `'warning'` (covers both "log missing" and "stale mtime" — reddit-agent/edition-agent/newsletter-agent's actual case) without ever looking at file size, so it doesn't share the rotation trap. A non-essential agent with a genuine runtime `ERROR` in its log (e.g. `affiliate-scout`'s credit-balance failure) gets severity/status `'error'`, not `'warning'`, so it still surfaces — this only quiets the "hasn't run" case, not real failures. `essential` agents (change-agent, telegram-webhook) are untouched and still surface regardless of status.
+- Verified: `npx tsc --noEmit` clean. Blockers count for currently-real agent states dropped from 5 to 2 (change-agent stale-8h, telegram-webhook stale-3h remain — both essential, both genuinely worth Big D's attention; the other 3 non-essential/never-activated ones no longer clutter the panel but are still visible every session in `agent-output-digest.md`).
+
+**Not yet done:**
+- `change-agent` (stale 8h) and `telegram-webhook` (stale/erroring, known issue from earlier standups) are the two real remaining blockers — not addressed this pass, out of scope for "clean up the dashboard."
+- `mon-pm-flow`'s missing brief and `fri-pm`'s Instagram retry (from the earlier backlog-clear session) are still open.
+
+---
+
+## 2026-07-23 (same day, cont. 2) — Cleared change-agent blocker, found "Stuck media: tue-pm" was already stale, and a real candidate for why revenue is zero
+
+Big D pasted the live dashboard Blockers panel: `change-agent` stale-8h, and a "Standup blocker" listing "Affiliate links not in shop — zero revenue possible" + "Stuck media: tue-pm".
+
+**change-agent — fixed.** Ran it via `run_diagnostic`; completed clean (100 open items, 3 tier-1 candidates), heartbeat written fresh. Re-ran `health-check.js` — confirmed `ok`, blocker cleared.
+
+**"Stuck media: tue-pm" — already resolved, just stale text.** Checked `watch-drive.log`: `tue-pm` posted to Instagram + Bluesky at 21:03–21:04 UTC today (right after this session's earlier backlog-clear approval) and archived to `Posted/2026-07-23/`. The blocker text is verbatim from `logs/standup-2026-07-23.txt` (09:37 this morning, before the approval) — the dashboard reads whichever `standup-*.txt` is newest and shows its `BLOCKERS` section as-is; nothing regenerates it mid-day. Not a bug, just needs a fresh standup run to clear visually — will self-resolve tomorrow morning.
+
+**"Affiliate links not in shop" — the claim itself was false, and digging into why turned up a real, more serious problem.** Fetched `https://bigsolevibes.com/shop/` directly: 16 approved products live, each with a working-looking Amazon affiliate link (`?tag=bigsolevibes-20`) or a direct override (Spongelle). `git log`/`git diff` confirmed `public/shop/index.html` has been on `main` (production) with these links since at least 2026-06-10 — this was never actually undeployed.
+
+So why does `chief-of-staff.js` say otherwise? Its `linksDeployed` check (`scripts/chief-of-staff.js` ~line 193) regexes the shop HTML for a raw `amazon.com...tag=` substring. Traced why it returns zero matches even though the tag is right there: `sync-shop.js` started routing every product link through `/api/go/[key]?to=<percent-encoded-url>` on 2026-07-10 (added for per-product click counts — see `app/api/go/[key]/route.ts`). Percent-encoding turns `tag=` into `tag%3D`, so the raw-substring check has been silently failing — and reporting "zero revenue possible" every single day since — even though the links were sitting right there the whole time.
+
+**Bigger finding, from the same trail:** `/api/go/[key]` is a Next.js API route, but `next.config.js` sets `output: 'export'` whenever `CF_PAGES=1` (Cloudflare Pages' build flag) — a fully static export, which does not support API routes at all; they get silently excluded from the build. Confirmed live: `https://bigsolevibes.com/api/go/test` returns byte-for-byte the same not-found response as a deliberately nonexistent path (`https://bigsolevibes.com/this-page-definitely-does-not-exist-xyz123`). That means **every "Get it on Amazon" link on the live shop page has almost certainly been a dead 404 instead of a redirect to Amazon since 2026-07-10** — a real, direct, and far more likely candidate for "zero revenue" than "links were never deployed."
+
+**Fixed (small, safe, diagnostic only):** `chief-of-staff.js`'s regex now also matches the `/api/go/` wrapper and the percent-encoded `tag%3D` form, so future standups won't keep reporting a false "links not deployed." Verified: 31 matches against the live shop HTML (up from 0), `node --check` clean.
+
+**Deliberately not touched:** the actual broken redirect. Fixing it means picking one of: (a) revert `sync-shop.js` back to direct Amazon links, losing the per-product click-count feature but restoring working revenue links immediately, or (b) rebuild click tracking in a way that survives static export (e.g. a client-side `onclick` beacon that still navigates directly, no server route needed). That's a real product tradeoff on a revenue-critical path — asked Big D rather than picking for him.
+
+**Not yet done:** the actual affiliate-link fix (pending Big D's direction), `telegram-webhook` (known, still down), `mon-pm-flow`'s missing brief, `fri-pm`'s Instagram retry.
+
 **Notable gotcha — `run_diagnostic` is NOT a safe dry-run for `image-gen`.** Despite logging `[isLive=false]` and being documented as diagnostic/dry-run mode, the actual call generated a real image via the paid Imagen API and uploaded it to Drive — i.e. it has the exact same side effects and cost as a live run for this script. Worked in our favor here (it's literally how the fix got applied), but worth knowing before reaching for `run_diagnostic` on `image-gen` casually — it will spend money and write real files, unlike scripts where dry-run is actually inert.

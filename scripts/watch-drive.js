@@ -6,6 +6,7 @@ const os   = require('os')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 const { sendTelegram } = require('./telegram')
 const { addPendingItem } = require('./telegram-queue')
+const { loadApprovedSlots, approveSlot } = require('./lib/approved-slots')
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,8 @@ const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
 
 const REMOTE_READY          = 'big sole vibes:Big Sole Vibes/Ready to Post'
 const REMOTE_POSTED         = 'big sole vibes:Big Sole Vibes/Posted'
-const APPROVED_SLOTS_FILE   = path.join(ROOT, 'logs', 'approved-slots.json')
+// approved-slots.json read/write now lives in ./lib/approved-slots.js — shared
+// with mcp-server.js and image-gen.js (see that file for why).
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -65,10 +67,6 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
-}
-
-function loadApprovedSlots() {
-  try { return JSON.parse(fs.readFileSync(APPROVED_SLOTS_FILE, 'utf8')) } catch { return {} }
 }
 
 // Initialize a slot's platform entries. Idempotent — never overwrites existing entries.
@@ -299,9 +297,7 @@ function selfHealFlowCaption(base) {
     fs.writeFileSync(tmpFile, captionContent)
     execSync(`rclone copyto "${tmpFile}" "${REMOTE_READY}/${base}.md"`, { stdio: ['pipe', 'pipe', 'pipe'] })
     // Auto-approve so the approval gate doesn't block next poll
-    const approved = loadApprovedSlots()
-    approved[base] = true
-    fs.writeFileSync(APPROVED_SLOTS_FILE, JSON.stringify(approved, null, 2))
+    approveSlot(base, { method: 'self-heal-caption', reason: `flow caption derived from ${baseSlot} brief` })
     log(`${base}: ✓ self-healed — flow caption derived from ${baseSlot} brief, uploaded to Drive, auto-approved`)
     return true
   } catch (err) {

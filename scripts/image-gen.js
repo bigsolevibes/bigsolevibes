@@ -4,6 +4,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const Anthropic = require('@anthropic-ai/sdk').default
+const { approveSlot } = require('./lib/approved-slots')
 
 const ROOT                   = path.join(__dirname, '..')
 const LOG_FILE               = path.join(ROOT, 'logs', 'image-gen.log')
@@ -39,6 +40,8 @@ const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1'
 // QA_MODEL/QA_FLAGS_FILE — see "Visual QA" section below.
 const QA_MODEL     = 'claude-haiku-4-5-20251001'
 const QA_FLAGS_FILE = path.join(ROOT, 'logs', 'visual-qa-flags.json')
+// AUTO_QA_APPROVALS_FILE — probation-trial auto-approve log, see recordAutoQaApproval() below.
+const AUTO_QA_APPROVALS_FILE = path.join(ROOT, 'logs', 'auto-qa-approvals.json')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -290,6 +293,30 @@ function recordQaFlag(slot, reason, briefSnippet) {
   }
 }
 
+// Auto-approve probation trial — added 2026-07-23 per Big D, after the content
+// gate backlog piled up to 16+ slots waiting on manual dashboard review while
+// most of them turned out to be clean. Rationale (his call, not a unilateral
+// change): visualQaCheck() above is one day old — not enough of a track record
+// to remove Big D from the loop entirely. So instead of blocking on the
+// dashboard, a slot whose image gets a clean PASS auto-approves via
+// approveSlot() (./lib/approved-slots.js) and is logged here so Big C can
+// surface it in the digest for a retroactive spot-check. FAILs still behave
+// exactly as before (recordQaFlag only, no auto-approve, no auto-deny) —
+// this only removes the wait on the PASS side. If the false-PASS rate stays
+// near zero over the trial, the manual gate goes away for good; if not, this
+// is what let us catch it instead of shipping it silently.
+function recordAutoQaApproval(slot, reason) {
+  let approvals = []
+  try { approvals = JSON.parse(fs.readFileSync(AUTO_QA_APPROVALS_FILE, 'utf8')) } catch {}
+  approvals.unshift({ slot, reason, approvedAt: new Date().toISOString() })
+  approvals = approvals.slice(0, 100) // rolling log, not an archive
+  try {
+    fs.writeFileSync(AUTO_QA_APPROVALS_FILE, JSON.stringify(approvals, null, 2))
+  } catch (err) {
+    log(`    WARNING: failed to write auto-qa-approvals.json — ${err.message}`)
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 ;(async function run() {
@@ -371,6 +398,9 @@ function recordQaFlag(slot, reason, briefSnippet) {
         recordQaFlag(slot, qa.reason, finalPrompt.slice(0, 200))
       } else if (qa.pass === true) {
         log(`    visual QA: pass — ${qa.reason}`)
+        approveSlot(slot, { method: 'auto-qa', reason: qa.reason })
+        recordAutoQaApproval(slot, qa.reason)
+        log(`    ✓ auto-approved (QA pass, probation trial) — content gate skipped, logged for spot-check`)
       } else {
         log(`    visual QA: unparseable response — ${qa.reason}`)
       }
