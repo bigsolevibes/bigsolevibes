@@ -726,17 +726,27 @@ server.tool(
   {},
   async () => {
     const script = path.join(ROOT, 'scripts', 'sync-shop.js')
+    // stdio was fully 'ignore' before 2026-07-23 — found the hard way while
+    // reverting the broken /api/go/ click-tracking redirect: two remote
+    // invocations both died silently right after the script's own "start"
+    // log line, with nothing in logs/sync-shop.log to explain why (an
+    // uncaught exception outside sync-shop.js's own try/catch — e.g. in the
+    // googleapis auth chain — just kills a detached+ignored child with zero
+    // trace). Redirecting stdout/stderr to a file means the next silent
+    // failure actually leaves evidence.
+    const stdioLogPath = path.join(LOGS_DIR, 'sync-shop-stdio.log')
+    const stdioFd = fs.openSync(stdioLogPath, 'a')
     const child = spawn(process.execPath, [script], {
       cwd: ROOT,
       env: { ...process.env },
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', stdioFd, stdioFd],
     })
     child.unref()
     return {
       content: [{
         type: 'text',
-        text: '✓ sync-shop launched. Check logs/sync-shop.log in ~15 seconds to confirm the push.',
+        text: '✓ sync-shop launched. Check logs/sync-shop.log (and logs/sync-shop-stdio.log for any crash/stack trace) in ~15 seconds to confirm the push.',
       }],
     }
   }
