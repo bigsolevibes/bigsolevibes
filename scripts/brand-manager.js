@@ -205,6 +205,17 @@ function loadDenialPatterns(days = 30) {
 
 // ─── Drive helpers ────────────────────────────────────────────────────────────
 
+// TIMEOUT_MS — added 2026-07-23. Root cause of brand-manager not completing a
+// single run since 2026-06-15 (confirmed live: logs/brand-manager.log and
+// logs/brand-manager-audit.md both went silent mid-run, no error, process
+// just hung and had to be killed externally). None of this file's execSync
+// calls had a timeout, so any single stalled rclone/Drive call — and this
+// function alone makes 1 + N + M of them, where N/M grow with how much has
+// ever been posted to Drive's Posted/ folder — froze the whole script
+// forever with zero trace. Every execSync below now has an explicit timeout
+// so a stall fails loud within a bounded time instead of hanging silently.
+const TIMEOUT_MS = 30000
+
 function getPostedLastNDays(n = 7) {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - n)
@@ -212,17 +223,26 @@ function getPostedLastNDays(n = 7) {
 
   try {
     const dirs = execSync(`rclone lsd "${REMOTE}/Posted/"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
     }).trim()
     if (!dirs) return '(no posted content found)'
 
+    const allFolders    = dirs.split('\n').map(l => l.trim().split(/\s+/).pop()).filter(Boolean)
+    const recentFolders = allFolders.filter(f => f >= cutoffStr)
+    // Progress logging added 2026-07-23 — this loop previously ran silently
+    // between the "Loading memory..." and "Handoff:" log lines with no
+    // visibility at all, which is exactly the gap where this function was
+    // found hanging (see TIMEOUT_MS comment above). Posted/ has ${allFolders.length}
+    // folders total; only the ones in the last N days are actually processed,
+    // but a slow/stalled step now at least shows which folder it stalled on.
+    log(`  Posted/: ${allFolders.length} folder(s) total, ${recentFolders.length} in the last ${n} days`)
+
     const lines = []
-    for (const line of dirs.split('\n')) {
-      const folder = line.trim().split(/\s+/).pop()
-      if (!folder || folder < cutoffStr) continue
+    for (const [i, folder] of recentFolders.entries()) {
+      log(`  Posted/${folder} (${i + 1}/${recentFolders.length})...`)
       try {
         const files = execSync(`rclone ls "${REMOTE}/Posted/${folder}"`, {
-          encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+          encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
         }).trim()
         lines.push(`\n### ${folder}`)
         for (const f of files.split('\n')) {
@@ -235,25 +255,28 @@ function getPostedLastNDays(n = 7) {
             try {
               fs.mkdirSync(TEMP_DIR, { recursive: true })
               execSync(`rclone copy "${REMOTE}/Posted/${folder}/${name}" "${TEMP_DIR}/"`, {
-                stdio: ['pipe', 'pipe', 'pipe'],
+                stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
               })
               const local = path.join(TEMP_DIR, name)
               if (fs.existsSync(local)) lines.push('\n```\n' + fs.readFileSync(local, 'utf8').trim() + '\n```')
-            } catch {}
+            } catch (err) { log(`  WARNING: could not fetch ${folder}/${name} — ${err.message}`) }
           }
         }
-      } catch {}
+      } catch (err) { log(`  WARNING: could not list Posted/${folder} — ${err.message}`) }
     }
     return lines.join('\n') || '(no content posted in the last 7 days)'
-  } catch { return '(rclone unavailable)' }
+  } catch (err) {
+    log(`  WARNING: getPostedLastNDays failed — ${err.message}`)
+    return '(rclone unavailable)'
+  }
 }
 
 function loadDirective() {
   try {
-    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    execSync(`rclone copy "${REMOTE}/BSV-Directive.md" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS })
     const p = path.join(TEMP_DIR, 'BSV-Directive.md')
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+  } catch (err) { log(`  WARNING: loadDirective failed — ${err.message}`); return null }
 }
 
 // Week strategy — written by strategist.js on Sunday. Brand manager reads this to
@@ -309,27 +332,27 @@ function getHandoff() {
   try {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
     execSync(`rclone copy "${REMOTE}/Handoff/BSV-Handoff-v5.md" "${TEMP_DIR}/"`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
     })
     const p = path.join(TEMP_DIR, 'BSV-Handoff-v5.md')
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
-  } catch { return null }
+  } catch (err) { log(`  WARNING: getHandoff failed — ${err.message}`); return null }
 }
 
 function loadLatestSocialReport() {
   try {
     const files = execSync(`rclone ls "${REMOTE}/Reports"`, {
-      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
     }).trim().split('\n')
       .map(l => l.trim().split(/\s+/).slice(1).join(' '))
       .filter(f => /^social-report-\d{4}-\d{2}-\d{2}\.md$/.test(f))
       .sort()
     if (!files.length) return null
     const latest = files[files.length - 1]
-    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    execSync(`rclone copy "${REMOTE}/Reports/${latest}" "${TEMP_DIR}/"`, { stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS })
     const p = path.join(TEMP_DIR, latest)
     return fs.existsSync(p) ? { filename: latest, content: fs.readFileSync(p, 'utf8') } : null
-  } catch { return null }
+  } catch (err) { log(`  WARNING: loadLatestSocialReport failed — ${err.message}`); return null }
 }
 
 // ─── Build voice reference block for system prompt ────────────────────────────
@@ -555,12 +578,36 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
     messages:   originalMessages,
   })
 
+  // Timeout guard added 2026-07-23 — a stalled stream (dropped connection,
+  // no further chunks, no error event) would otherwise hang this `for await`
+  // forever with zero trace, same failure class as the untimed execSync
+  // calls above. STREAM_TIMEOUT_MS is generous (5 min) since a real report
+  // response can run long, but bounded is the whole point: fail loud, don't
+  // hang silent.
+  const STREAM_TIMEOUT_MS = 5 * 60 * 1000
+  let streamTimer
+  const streamTimeout = new Promise((_, reject) => {
+    streamTimer = setTimeout(
+      () => reject(new Error(`stream stalled — no completion within ${STREAM_TIMEOUT_MS / 1000}s`)),
+      STREAM_TIMEOUT_MS
+    )
+  })
+
   process.stdout.write('Generating')
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-      fullText += event.delta.text
-      process.stdout.write('.')
-    }
+  try {
+    await Promise.race([
+      (async () => {
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            fullText += event.delta.text
+            process.stdout.write('.')
+          }
+        }
+      })(),
+      streamTimeout,
+    ])
+  } finally {
+    clearTimeout(streamTimer)
   }
   process.stdout.write('\n')
 
@@ -592,7 +639,7 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
 
   try {
     execSync(`rclone copyto "${localPath}" "${REMOTE}/Reports/${outFile}"`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'], timeout: TIMEOUT_MS,
     })
     log(`Uploaded → ${REMOTE}/Reports/${outFile}`)
   } catch (err) {

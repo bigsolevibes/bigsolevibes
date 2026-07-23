@@ -752,6 +752,41 @@ server.tool(
   }
 )
 
+// ── run_brand_manager ─────────────────────────────────────────────────────────
+// Added 2026-07-23. brand-manager.js calls a Claude API stream plus a long
+// chain of Drive/rclone calls (loadDirective, loadMemory, getPostedLastNDays —
+// which itself makes 1 + N + M rclone calls) that can legitimately take
+// several minutes, and had zero timeouts anywhere until this same session's
+// fix. run_diagnostic's synchronous spawnSync with a 60s timeout is nowhere
+// near long enough for this script and was actively misleading (a request
+// that times out client-side looks identical to a script that instantly
+// failed). Detached + logged, same pattern as run_sync_shop, so a run that
+// takes minutes doesn't need to fit inside one tool call, and any crash or
+// timeout error is captured instead of silently discarded.
+server.tool(
+  'run_brand_manager',
+  'Run the weekly brand-health QA report (voice drift, discovery standard, denial patterns). Long-running (real runs have taken 10+ minutes historically) — launches in the background and returns immediately. Check logs/brand-manager.log for live progress and logs/brand-manager-stdio.log for any crash/timeout trace.',
+  {},
+  async () => {
+    const script = path.join(ROOT, 'scripts', 'brand-manager.js')
+    const stdioLogPath = path.join(LOGS_DIR, 'brand-manager-stdio.log')
+    const stdioFd = fs.openSync(stdioLogPath, 'a')
+    const child = spawn(process.execPath, [script], {
+      cwd: ROOT,
+      env: { ...process.env },
+      detached: true,
+      stdio: ['ignore', stdioFd, stdioFd],
+    })
+    child.unref()
+    return {
+      content: [{
+        type: 'text',
+        text: '✓ brand-manager launched in the background (this can take several minutes). Check logs/brand-manager.log for live progress, logs/brand-manager-stdio.log for any crash/timeout trace.',
+      }],
+    }
+  }
+)
+
 // ── commit_changes ────────────────────────────────────────────────────────────
 server.tool(
   'commit_changes',
