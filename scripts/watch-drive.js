@@ -409,12 +409,17 @@ function extractLastError(output, platform) {
 // ─── Post cleanup ─────────────────────────────────────────────────────────────
 
 // Move all Drive files for a given slot base to Posted/YYYY-MM-DD/.
-// Covers: {base}.png, {base}-flow.png, {base}.md, {base}-prompt.txt,
-//         {base}-flow-prompt.txt, {base}-video.mp4, {base}-image.jpg, etc.
+// Covers: {base}.png, {base}.md, {base}-prompt.txt, {base}-video.mp4,
+//         {base}-image.jpg, etc.
+// Deliberately does NOT match {base}-flow* — the flow slot is a separate
+// pipeline entry with its own post schedule and archives itself when its
+// own turn comes. Matching -flow here used to sweep the flow slot's files
+// into Posted/ before it had posted, causing "directory not found" when
+// the flow slot later tried to archive its own (already-moved) files.
 // Also deletes matching local copies from TEMP_DIR.
 function archiveSlot(base, allDriveFiles, today) {
   const dest = `${REMOTE_POSTED}/${today}`
-  const pattern = new RegExp(`^${base}(?:-flow|-video|-image|-prompt|-flow-prompt)?(?:\\.[a-z0-9]+)?$`, 'i')
+  const pattern = new RegExp(`^${base}(?:-video|-image|-prompt)?(?:\\.[a-z0-9]+)?$`, 'i')
   const matching = allDriveFiles.filter(f => {
     // strip extension for matching
     const noExt = f.name.replace(/\.[^.]+$/, '')
