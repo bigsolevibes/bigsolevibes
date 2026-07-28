@@ -593,37 +593,53 @@ async function run() {
 
       const captionText = fs.readFileSync(localCaption, 'utf8')
 
-      // Scheduling gate — hold every new slot for at least one full poll cycle before
-      // distributing. This prevents the timezone race where the pipeline runs at ~10 PM
-      // local time and sees post_time 09:00 as already passed, firing immediately with
-      // whatever media happened to be in Drive at that moment (possibly stale/wrong image).
-      // On first encounter: always hold regardless of ready state.
-      // On subsequent encounters: fire if ready=true, or if held since a prior day (overdue).
+      // Scheduling gate — hold every slot until an actual LATER calendar day
+      // arrives, then fire once that day's post_time passes. Content is
+      // generated overnight labeled for "tomorrow" (media-director.js's
+      // --day default — has done this since the 2026-05-11 four-agent
+      // refactor), but post_time alone is only ever a same-day clock check.
+      // Without a real day-boundary requirement, a slot generated at ~2am
+      // fires that same morning once its post_time passes — one full day
+      // ahead of the day its own label, theme, and persona assignment
+      // actually intend. Confirmed happening for 3 straight days (mon
+      // content posted Sunday, tue content posted Monday, wed content
+      // posted Tuesday) — see BSV-BigC-Audit-Log.md 2026-07-28 ("What's up
+      // with Tuesday's posts?"). Per Big D 2026-07-28: "the day is not as
+      // important as the gate. dont need a bunch of post the same day" —
+      // fix the gate, not the label. A slot now never fires on the same
+      // calendar day it was first seen, no matter how far past post_time
+      // that day gets — removes the old "overdue, fire immediately"
+      // shortcut entirely, since once a later day has genuinely arrived the
+      // normal ready-check already fires it correctly without a separate
+      // bypass (and without needing to skip the post_time gate at all).
       const { postTime, ready } = parsePostTime(captionText)
       if (!state[base]) state[base] = {}
       const holdSince = state[base]._hold_since
 
       if (!holdSince) {
-        // First time we've seen this slot — hold for at least one cycle
+        // First time we've seen this slot — hold until a later day arrives.
         state[base]._hold_since = today
         saveState(state)
         const now = new Date()
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-        log(`⏰ ${base}: first seen — holding until post_time ${postTime} confirmed on next poll (current time ${currentTime})`)
+        log(`⏰ ${base}: first seen ${today} — holding for post_time ${postTime} on a later day (current time ${currentTime})`)
         continue
-      } else if (holdSince < today) {
-        // Held since a prior day and still not posted — overdue, fire immediately
-        log(`⏰ ${base}: post_time ${postTime} is overdue (held since ${holdSince}) — firing immediately`)
-        delete state[base]._hold_since
-        // fall through to distribution
-      } else if (!ready) {
-        // Held today but post_time not yet reached — keep waiting
+      } else if (holdSince >= today) {
+        // Still the same day it was first seen — never fire same-day, no
+        // matter how far past post_time we are.
         const now = new Date()
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-        log(`⏰ ${base}: scheduled for ${postTime} — current time ${currentTime}, waiting`)
+        log(`⏰ ${base}: first seen ${holdSince} — waiting for a later calendar day before ${postTime} can fire (current time ${currentTime})`)
+        continue
+      } else if (!ready) {
+        // A later day has arrived, but today's post_time hasn't hit yet.
+        const now = new Date()
+        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        log(`⏰ ${base}: held since ${holdSince} — scheduled for ${postTime}, current time ${currentTime}, waiting`)
         continue
       } else {
-        // ready=true and held at least one cycle — clear sentinel and fire
+        // A later day has arrived and post_time has passed — fire.
+        log(`⏰ ${base}: held since ${holdSince} — post_time ${postTime} reached, firing`)
         delete state[base]._hold_since
       }
 
