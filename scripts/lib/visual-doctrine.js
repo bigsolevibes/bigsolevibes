@@ -61,6 +61,22 @@ const PERSON_OPTIONAL = `A person is optional, never required — pick based on 
 // assignment describes.
 const NO_DEFAULT_SETTING = `No default leather chair or dark wood study — use the setting the assignment actually describes.`
 
+// Added 2026-07-28. Per Big D's standing visual philosophy (image poses a
+// question, never answers it — no product-application shots of any body
+// part), confirmed as a real, current failure by image-gen.js's post-render
+// QA: 2 of 3 flagged images in the 48h before this fix showed a hand
+// touching/holding/reaching for the product, despite the brief never asking
+// for that. Before this, "no product-application gesture" existed only as
+// an example inside image-gen.js's post-hoc vision-check prompt (line ~253)
+// and in memory — never as fixed text in the actual brief-generation
+// template that creates the prompt Imagen reads. It was left to whichever
+// model wrote that day's brief remembering to restate it, which is exactly
+// why it kept lapsing. Scoped to IMAGE prompts only — video's own brief
+// intentionally requires the product stay visible in motion (held, set
+// down) since a static object can't demonstrate motion otherwise, so this
+// constant should not be wired into any video-brief instruction.
+const NO_APPLICATION_GESTURE = `Product at rest by default — no hand touches, holds up, or applies it. It sits in frame on its own, or a hand may be withdrawing/set it down and pull away, but never mid-application or mid-hold. If the story genuinely requires the product be held, that has to be an explicit, deliberate choice stated plainly up front — never an implicit or ambiguous gesture.`
+
 // Present across image and video (blog images don't feature it since blog
 // images are static product/scene compositions, not a moving foot-cameo beat)
 // — kept as its own export so image/video can compose it in, and so it never
@@ -77,4 +93,4 @@ function precedence(assignmentLabel) {
   return `PRECEDENCE: ${lower} wins on conflict (setting, person, product role) — these are fallbacks only.`
 }
 
-module.exports = { PALETTE, BRAND_TONE, PERSON_OPTIONAL, NO_DEFAULT_SETTING, FOOT_CAMEO, precedence }
+module.exports = { PALETTE, BRAND_TONE, PERSON_OPTIONAL, NO_DEFAULT_SETTING, NO_APPLICATION_GESTURE, FOOT_CAMEO, precedence }
