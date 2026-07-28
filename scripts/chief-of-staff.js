@@ -25,6 +25,17 @@ const REMOTE   = 'big sole vibes:Big Sole Vibes'
 
 const _now         = new Date()
 const DATE_STAMP   = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`
+
+// Local (not UTC) YYYY-MM-DD for any Date — matches watch-drive.js's
+// localDateString() and how Posted/ folders are actually named. Needed by
+// checkPosts() below: post-state.json timestamps are UTC ISO strings, and
+// naively slicing those (`.toISOString().slice(0,10)`) misdates every PM
+// post — BSV's PM slots post ~19:00 Central, which is already past
+// midnight UTC, so a straight UTC slice puts every PM post on the next
+// calendar day.
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 const DAY_NAME     = _now.toLocaleDateString('en-US', { weekday: 'long' })
 const DAY_OF_WEEK  = _now.getDay()
 const HANDOFF_FILENAME = `BSV-Handoff-${DATE_STAMP}.md`
@@ -248,27 +259,48 @@ function checkPosts() {
   const yd    = new Date(_now)
   yd.setDate(yd.getDate() - 1)
   const dayAbbr       = ABBRS[yd.getDay()]
-  const yesterdayStr  = yd.toISOString().slice(0, 10)
+  const yesterdayStr  = localDateStr(yd)
+  const todayStr      = localDateStr(_now)
 
-  // Yesterday's slots are always expected
-  const expectedSlots = [`${dayAbbr}-am`, `${dayAbbr}-pm`]
+  // Each expected slot is paired with the specific calendar date it's
+  // expected to have posted on. Added 2026-07-28 — the previous version
+  // built a flat Set of slot names from post-state.json with no date check
+  // at all, so `succeededSlots.has('mon-am')` was true forever after the
+  // FIRST time mon-am ever succeeded (post-state.json is a full append-only
+  // log back to 2026-06-03, and slot names recur every week). That made
+  // "Confirmed: mon-am ✓" mean only "mon-am has succeeded at some point,
+  // ever" — never "yesterday, specifically" — so this check could not
+  // structurally detect a real gap once a slot had a single historical
+  // success, which is every slot. This is exactly why chief never caught
+  // the day-offset scheduling bug (BSV-BigC-Audit-Log.md 2026-07-28, "What's
+  // up with Tuesday's posts?") — Big D asked "shouldn't chief be watching
+  // out for this?" and the honest answer was no, this check couldn't have.
+  const expected = [
+    { slot: `${dayAbbr}-am`, date: yesterdayStr },
+    { slot: `${dayAbbr}-pm`, date: yesterdayStr },
+  ]
 
   // Today's slots are expected once their post window has passed locally
   const todayAbbr  = ABBRS[_now.getDay()]
   const localHour  = _now.getHours()
   const localMin   = _now.getMinutes()
   const localMins  = localHour * 60 + localMin
-  if (localMins >= 10 * 60)  expectedSlots.push(`${todayAbbr}-am`)   // past 10:00 AM
-  if (localMins >= 20 * 60)  expectedSlots.push(`${todayAbbr}-pm`)   // past 8:00 PM
+  if (localMins >= 10 * 60) expected.push({ slot: `${todayAbbr}-am`, date: todayStr })   // past 10:00 AM
+  if (localMins >= 20 * 60) expected.push({ slot: `${todayAbbr}-pm`, date: todayStr })   // past 8:00 PM
 
   // post-state.json: [{slot, platform, postId, timestamp, status}]
-  const succeededSlots = new Set()
+  // Build slot -> Set of dates it actually succeeded on (from timestamp),
+  // not just whether it ever succeeded at all.
+  const succeededByDate = new Map() // slot -> Set(dateStr)
   try {
     const p = path.join(ROOT, 'logs', 'post-state.json')
     if (fs.existsSync(p)) {
       const entries = JSON.parse(fs.readFileSync(p, 'utf8'))
       for (const e of Array.isArray(entries) ? entries : []) {
-        if (e.status === 'success' && e.slot) succeededSlots.add(e.slot)
+        if (e.status !== 'success' || !e.slot || !e.timestamp) continue
+        const localDate = localDateStr(new Date(e.timestamp))
+        if (!succeededByDate.has(e.slot)) succeededByDate.set(e.slot, new Set())
+        succeededByDate.get(e.slot).add(localDate)
       }
     }
   } catch {}
@@ -281,8 +313,9 @@ function checkPosts() {
     }
   } catch {}
 
-  const confirmed = expectedSlots.filter(s => succeededSlots.has(s))
-  const gaps      = expectedSlots.filter(s => !succeededSlots.has(s))
+  const confirmed     = expected.filter(e => succeededByDate.get(e.slot)?.has(e.date)).map(e => e.slot)
+  const gaps          = expected.filter(e => !succeededByDate.get(e.slot)?.has(e.date)).map(e => e.slot)
+  const expectedSlots = expected.map(e => e.slot)
 
   log(`Posts: ${dayAbbr}/today — confirmed=${confirmed.join(',') || 'none'}, gaps=${gaps.join(',') || 'none'}, stuck media=${stuckMediaSlots.join(',') || 'none'}`)
   return { expectedSlots, confirmed, gaps, stuckMediaSlots, dayAbbr, yesterdayStr }
