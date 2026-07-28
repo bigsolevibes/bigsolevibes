@@ -264,6 +264,54 @@ server.tool(
   }
 )
 
+// ── restart_agent ────────────────────────────────────────────────────────────
+// Added 2026-07-28. Context: watch-drive.js (like telegram-webhook.js before
+// it, see BSV-Directive.md Known Issues) is a persistent daemon (setInterval),
+// not a fresh process spawned per launchd interval — so committing a code fix
+// to disk doesn't take effect until the running process is restarted. Until
+// now the only way to do that was Big D typing `launchctl kickstart -k
+// gui/$(id -u)/com.bsv.<label>` himself, which he's pushed back on ("you know
+// i hate running anything" — see feedback_bsv_prefers_mcp_over_terminal
+// memory). This closes that gap. Validates the label actually exists in
+// launchctl's current list first (a typo returns a clear error instead of
+// silently no-opping), sanitizes the input to only launchd-label-safe
+// characters (alnum, dot, hyphen, underscore — no shell metacharacters
+// possible), then kicks it and reports the fresh status line. Safe for
+// non-KeepAlive jobs too (cost-report, drive-sync, etc.) — kickstart on those
+// just triggers an immediate one-off run, the same effect as the existing
+// run_media_director/run_product_research "run now" tools.
+server.tool(
+  'restart_agent',
+  'Restart a BSV launchd-managed agent (e.g. watch-drive, telegram-webhook) so it picks up a code change. Use after committing a fix to a persistent daemon script — daemons using setInterval keep running old in-memory code until restarted.',
+  {
+    label: z.string().describe('Agent label, with or without the com.bsv. prefix — e.g. "watch-drive" or "com.bsv.watch-drive"'),
+  },
+  async ({ label }) => {
+    const clean     = label.trim().replace(/[^a-zA-Z0-9._-]/g, '')
+    const fullLabel = clean.startsWith('com.bsv.') ? clean : `com.bsv.${clean}`
+
+    const before = sh(`launchctl list | grep -iF '${fullLabel}'`)
+    if (!before || /no such|not found/i.test(before)) {
+      return { content: [{ type: 'text', text: `✗ No launchd job matching "${fullLabel}" found in \`launchctl list\`. Check the label — try get_launchd_status for the full list.` }] }
+    }
+
+    const kickResult = sh(`launchctl kickstart -k "gui/$(id -u)/${fullLabel}"`)
+    const after       = sh(`launchctl list | grep -iF '${fullLabel}'`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Restarted ${fullLabel}.`,
+          `Before: ${before}`,
+          kickResult ? `launchctl: ${kickResult}` : null,
+          `After:  ${after || '(not yet reflected — launchd may take a moment)'}`,
+        ].filter(Boolean).join('\n'),
+      }],
+    }
+  }
+)
+
 // ── run_diagnostic ───────────────────────────────────────────────────────────
 server.tool(
   'run_diagnostic',
