@@ -4,6 +4,7 @@ const fs            = require('fs')
 const path          = require('path')
 const { connect, ensureHeaders, readAllRows } = require('./sheets-client')
 const { TAGLINE } = require('./lib/brand-copy')
+const { slugifyProductName } = require('./lib/product-slug')
 
 const ROOT         = path.join(__dirname, '..')
 const LOG_FILE     = path.join(ROOT, 'logs', 'sync-shop.log')
@@ -150,8 +151,7 @@ function buildProductCard(product) {
 
   // Scene image: prefer Sheet Image_URL → fall back to local public/posts/output/{slug}-scene.jpg
   const rawImageUrl = (product['Image_URL'] || product['Locker Image'] || '').trim()
-  const cardId0 = (product['Product Name'] || '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const cardId0 = slugifyProductName(product['Product Name'])
   const localScenePath = path.join(ROOT, 'public', 'posts', 'output', `${cardId0}-scene.jpg`)
   const localSceneUrl  = fs.existsSync(localScenePath) ? `/posts/output/${cardId0}-scene.jpg` : null
   const imageUrl  = (rawImageUrl && rawImageUrl !== 'NEEDS_RENDER') ? rawImageUrl : localSceneUrl
@@ -190,10 +190,7 @@ function buildProductCard(product) {
   const badgeText   = customBadge || (isFeatured ? "Proprietor's Pick" : '')
   const badgeHtml   = badgeText ? `<span class="card-badge">★ ${escapeHtml(badgeText)}</span>` : ''
 
-  const cardId = (product['Product Name'] || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const cardId = slugifyProductName(product['Product Name'])
 
   return `
         <article class="locker-card" id="${cardId}">

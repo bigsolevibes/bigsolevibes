@@ -24,6 +24,7 @@ const { connect: sheetConnect, readAllRows } = require('./sheets-client')
 // Ankle," generated 2026-07-13) showed exactly that failure mode. Wired in
 // here so any future doctrine change reaches this file automatically.
 const { PERSON_OPTIONAL, NO_DEFAULT_SETTING, NO_APPLICATION_GESTURE } = require('./lib/visual-doctrine')
+const { slugifyProductName } = require('./lib/product-slug')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,17 @@ function buildVoiceBlock(voiceDef) {
 
 function buildProductBlock(product) {
   if (!product) return ''
-  const shelfUrl = 'https://bigsolevibes.com/shop/'
+  // Deep-link straight to this product's card on the shop page instead of
+  // the bare index — added 2026-07-28. Every caption's CTA was linking to
+  // the generic /shop/ regardless of which product the post was actually
+  // about, so an interested reader had to hunt through 15+ products
+  // themselves instead of landing on the one being talked about. Big D:
+  // approved this specific fix (deep-link anchor, not a switch to the raw
+  // Affiliate Link) — see BSV-BigC-Audit-Log.md 2026-07-28 ("the post
+  // gap"). slugifyProductName() is the same transform sync-shop.js uses to
+  // build each product's real <article id="...">, shared via
+  // lib/product-slug.js so the two can't drift apart.
+  const shelfUrl = `https://bigsolevibes.com/shop/#${slugifyProductName(product['Product Name'])}`
   const lines = [
     '## Featured Product — Wire Into This Brief',
     '',
@@ -445,10 +456,13 @@ ${COMEDIC_REGISTER}`
   // CTA hierarchy: Lounge edition page > affiliate link > shelf
   const ctaUrl = editionVignette?.loungeUrl || editionVignette?.affiliateLink || 'https://bigsolevibes.com/shop/'
   const ctaLabel = editionVignette?.loungeUrl ? 'the full edition story' : 'the shelf'
+  // Deep-linked to this specific product's card, not the bare shop index —
+  // see buildProductBlock() above for why. Same slug, same shared helper.
+  const productShelfUrl = product ? `https://bigsolevibes.com/shop/#${slugifyProductName(product['Product Name'])}` : 'https://bigsolevibes.com/shop/'
   const igGuidance = editionVignette
     ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. Open with the Social Hook from the edition scene block (exact line or same rhythm). 2–4 more sentences expanding the vignette. End with a BSV-voice CTA driving to ${ctaLabel}: ${ctaUrl}. Hashtags: ${personaHashtags}`
     : product
-      ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking to https://bigsolevibes.com/shop/ — not "link in bio". Hashtags: ${personaHashtags}`
+      ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking directly to this product's card: ${productShelfUrl} — not "link in bio", not the bare shop page. Hashtags: ${personaHashtags}`
       : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
