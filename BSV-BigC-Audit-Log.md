@@ -1344,3 +1344,17 @@ Big D asked me to explain the standing "zero revenue" org recommendation in conc
 `node --check` clean on all three files touched.
 
 **Still open — the bigger question, not this fix.** No slot in `THEME_CALENDAR`/`PERSONA_CALENDAR` is dedicated to pure product-recommendation content; every slot is a Chapter 2 narrative beat with a product woven in. This fix makes the posts that already feature a product convert better — it doesn't create more of them. That's still Big D's call to make.
+
+---
+
+## 2026-07-28 (same day, cont. 5) — Big D's Aesop approve/deny silently never saved — dashboard product endpoint has been broken since it shipped
+
+Big D: "i approved one and denied ther other aesop." Ran `run_sync_shop` to confirm it live — neither Aesop product appeared on the regenerated shop page, "Approved: 16" unchanged from the pre-existing count.
+
+**Root cause: `app/api/dashboard/shelf/approve/route.ts` and `.../deny/route.ts` fetch only `range: 'A:B'`** — `Product Name` + `ASIN` — then look for a `Status` column index within that 2-column result. Per `scripts/sheets-client.js`'s `HEADERS`, `Status` is column G. `headers.findIndex(h => h === 'Status')` on a row sliced to A:B can never return anything but `-1`, so `statusIdx < 0` is unconditionally true and the route always returns `{ error: 'Column not found' }, 500`. Neither endpoint also used the `Sheet1!` prefix every other read/write in `sheets-client.js` uses consistently. This means the dashboard's product approve/deny buttons have most likely never actually written a Status change to the Sheet, for any product, since this feature shipped — a real, standing gap, not new today.
+
+**Fixed:** both routes now fetch `Sheet1!A:Z` (matches the established convention used everywhere else) and write to `Sheet1!${colLetter}${row}` instead of the unprefixed cell reference. Runs on `com.bsv.dashboard`'s `next dev` process (confirmed via `config/com.bsv.dashboard.plist`) — hot-reloads on save, no restart needed. `npx tsc --noEmit -p tsconfig.json` clean, 0 errors.
+
+**`app/api/dashboard/` is also gitignored** (confirmed via `git check-ignore -v`) — same local-only convention as `lib/dashboard/`, no commit attempted or possible for these two files.
+
+**Couldn't verify end-to-end myself:** tried reading the live Sheet directly via `sheets-client.js`'s `connect()`/`readAllRows()` to just write the correct Status myself and save Big D a second click — failed, `ENOENT` on the Google service-account key file. The sandbox this runs in doesn't have that credential file mounted (by design — credential JSON is explicitly excluded per Hard Rules). Asked Big D to re-click Approve on Resolute Hydrating Body Balm and Deny on Rind Concentrate on the dashboard — confirmed which was which via AskUserQuestion first rather than guess. Not yet confirmed the re-click actually lands; check `public/shop/index.html` for a Resolute Aesop card and re-run `run_sync_shop` next session if not already reflected.
