@@ -17,6 +17,7 @@ const RESULTS_FILE    = path.join(ROOT, 'logs', 'distribute-results.json')
 const POST_STATE_FILE = path.join(ROOT, 'logs', 'post-state.json')
 const OUTPUT_DIR      = path.join(ROOT, 'posts', 'output')
 const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
+const LOCK_FILE        = path.join(ROOT, 'logs', 'watch-drive.lock')
 
 const REMOTE_READY          = 'big sole vibes:Big Sole Vibes/Ready to Post'
 const REMOTE_POSTED         = 'big sole vibes:Big Sole Vibes/Posted'
@@ -29,6 +30,50 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   console.log(line)
   fs.appendFileSync(LOG_FILE, line + '\n')
+}
+
+// ─── Single-instance lock ───────────────────────────────────────────────────
+// Root cause found 2026-07-31 while investigating the recurring "ERROR: failed
+// to move [slot]-flow.png" reports (5+ occurrences, 2026-07-23 through
+// 2026-07-28, e.g. sat-pm-flow, sun-am-flow, tue-am-flow, mon-am-flow,
+// wed-am-flow — see watch-drive-error.log.2). Pattern in every case: one
+// archiveSlot() call for a slot succeeds and moves its files to Posted/, then
+// moments later a SECOND, overlapping archiveSlot() call for that same slot
+// fails with "directory not found" because the files are already gone. The
+// per-slot regex is correct and does not cross-match base/-flow files (see
+// archiveSlot() below) — this was two separate OS processes racing on the
+// same Drive folder and watch-drive-state.json, each working off its own
+// stale-at-poll-start file listing. runActive/runPending below only guards
+// against overlap *within* one process; nothing previously stopped a second
+// `node watch-drive.js` (e.g. a manual restart or launchctl kickstart that
+// didn't confirm the old process had exited — KeepAlive:true in the plist
+// will also spawn a new one on crash) from running alongside a leftover one.
+// This lock makes a second instance refuse to start instead of silently
+// double-processing the same slots.
+function isPidAlive(pid) {
+  try { process.kill(pid, 0); return true } catch { return false }
+}
+
+function acquireLock() {
+  if (fs.existsSync(LOCK_FILE)) {
+    const existing = parseInt(fs.readFileSync(LOCK_FILE, 'utf8').trim(), 10)
+    if (existing && isPidAlive(existing)) {
+      log(`REFUSING TO START — another watch-drive.js instance is already running (pid ${existing}). ` +
+          `Running two instances races on the same Drive folder + state file (this is what caused the ` +
+          `recurring "-flow" archive-move errors). Stop pid ${existing} before starting a new one.`)
+      process.exit(1)
+    }
+    log(`Stale lock file found (pid ${existing || 'unreadable'} not running) — clearing and continuing`)
+  }
+  fs.writeFileSync(LOCK_FILE, String(process.pid))
+}
+
+function releaseLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE) && fs.readFileSync(LOCK_FILE, 'utf8').trim() === String(process.pid)) {
+      fs.unlinkSync(LOCK_FILE)
+    }
+  } catch {}
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -824,6 +869,10 @@ function onDirChange() {
   debounceTimer = setTimeout(triggerRun, 3000)
 }
 
+// Refuse to start if another instance is already running — see the
+// single-instance lock comment above log() for why this exists.
+acquireLock()
+
 // Fire once at startup to process anything already in TEMP_DIR
 triggerRun()
 
@@ -835,7 +884,8 @@ setInterval(triggerRun, 15 * 60 * 1000)
 const watcher = fs.watch(TEMP_DIR, { persistent: true }, onDirChange)
 watcher.on('error', err => log(`fs.watch error: ${err.message}`))
 
-process.on('SIGTERM', () => { watcher.close(); process.exit(0) })
-process.on('SIGINT',  () => { watcher.close(); process.exit(0) })
+process.on('SIGTERM', () => { releaseLock(); watcher.close(); process.exit(0) })
+process.on('SIGINT',  () => { releaseLock(); watcher.close(); process.exit(0) })
+process.on('exit',    () => { releaseLock() })
 
 log(`Watching ${TEMP_DIR} for changes (drive-sync.js feeds this via launchd)`)
