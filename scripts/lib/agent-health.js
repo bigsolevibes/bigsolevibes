@@ -106,6 +106,21 @@ const KNOWN_NON_AGENT_LOGS = new Set([
   'backup-scripts', 'learn', 'sync-shop', 'resize-post',
   'product-research-launchd', 'edition-agent-launchd', 'fetch-reddit',
   'chief-of-staff', 'health-check', // the monitors themselves — not sprawl
+  // Added 2026-07-31 — flagged untracked for 5+ standups (bigc-brief.md
+  // "brand-manager-stdio and sync-shop-stdio: pending roster decision").
+  // These are NOT separate agents: mcp-server.js's run_brand_manager and
+  // run_sync_shop tools spawn the same already-rostered brand-manager.js /
+  // sync-shop.js and pipe stdout/stderr to "<name>-stdio.log" purely so a
+  // crash outside the script's own try/catch (e.g. a googleapis auth
+  // exception) leaves a trace instead of dying silently in a detached child.
+  // Adding these as independent AGENT_ROSTER entries would create a second,
+  // spurious health check on top of the one brand-manager.js already has
+  // (weekly, via its own .log) — and since the sidecar only updates on an
+  // MCP-triggered run (not brand-manager's normal launchd/cron path), it
+  // would sit "stale" indefinitely between manual invocations for no real
+  // reason. Correct fix is here, not a roster entry: mark them as known
+  // sidecar logs so findUntrackedAgents() stops re-flagging them.
+  'brand-manager-stdio', 'sync-shop-stdio',
 ])
 
 // `log` is an optional callback (msg: string) => void — callers can wire this
