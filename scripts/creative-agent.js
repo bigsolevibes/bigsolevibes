@@ -510,6 +510,20 @@ Whichever technique you land on, anchor it in the warm amber (#C17D2E) and deep 
   // one fact that has to survive — does a person appear, and what's the
   // technique — to the front of the prompt instead of buried after several
   // sentences of scene-setting.
+  // Why this exists / what breaks if it's ever loosened or removed (added
+  // 2026-07-31, per bigc-brief.md's request to make the 2026-07-28 fix
+  // durable): before NO_APPLICATION_GESTURE was wired in here from
+  // lib/visual-doctrine.js, brand-manager.js logged 75 denials in a single
+  // review cycle, the largest share being product-application-gesture and
+  // off-technique violations. This block plus the REJECTED-without-appeal
+  // clause below it (imageBriefInstruction) is the only place in the
+  // pipeline that states those two constraints as brief text an image
+  // model actually reads — image-gen.js's post-render vision QA checks
+  // for the same things, but only after generation, as a catch not a
+  // cause. Per CLAUDE.md's domain-ownership rule, this belongs here
+  // (creative-agent.js authors the actual IMAGE BRIEF) and NOT in
+  // media-director.js, which only assigns theme/persona/product — it has
+  // no content-authoring role and should never carry a copy of this text.
   const HARD_CONSTRAINTS_LEAD = `Open the brief with two short imperative lines, before any scene description — not narrative, just the facts. Line 1: state plainly whether a person appears and how much (or "NO PERSON IN FRAME — [subject] only"), and the visual technique in 2-4 words — if the technique is flat 2D cutout, state it as "FLAT CUTOUT COLLAGE — NO SHADING" (that technique's defining negative goes in the same line, not left implicit). Line 2: state the product's physical state — default is "PRODUCT AT REST, NOT TOUCHED"; only write a handling description if the story genuinely requires it, and if so name the exact gesture rather than leaving it ambiguous. ${NO_APPLICATION_GESTURE} These two lines are the part that has to survive if anything downstream gets cut — write the rest of the brief as if they might be all that reaches the model.`
   const LENGTH_CAP = `Target 150-180 words total for this brief, no more — Imagen has a hard 480-token input limit shared with the preamble placed in front of it, and anything past that limit is silently cut off before Imagen ever sees it. Say less, more precisely, rather than covering every angle.`
 
