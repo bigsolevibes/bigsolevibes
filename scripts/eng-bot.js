@@ -23,6 +23,20 @@ const DIAGNOSIS_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 // Matched and excluded before classification/diagnosis/escalation — see isBillingFailure().
 const BILLING_ERROR_PATTERN = /credit balance is too low/i
 const MAX_ATTEMPTS          = 3
+// Telegram allows up to 4096 chars/message — 120 was an arbitrary leftover
+// that routinely cut "Problem"/"Fix" text off mid-sentence (see
+// truncate() and extractFixForFailure() below, fixed 2026-07-31 after Big D
+// asked "whats eng saying" and every escalation that day read as a
+// half-sentence with no ellipsis to even signal it was cut).
+const ALERT_FIELD_LIMIT     = 320
+
+// Cuts a string to ALERT_FIELD_LIMIT chars, appending "…" only when it
+// actually truncated — so a short, complete message never gets a
+// misleading ellipsis, and a cut one is visibly marked as cut.
+function truncate(str, limit = ALERT_FIELD_LIMIT) {
+  const s = (str || '').trim()
+  return s.length > limit ? `${s.slice(0, limit).trim()}…` : s
+}
 const GDRIVE_REMOTE         = 'big sole vibes'
 const GDRIVE_REPORTS_FOLDER = '1vKaxZuhQy2tZ8cQQF1Vc8TSVJrq26PaP'
 const GDRIVE_DRIVE_ROOT     = 'big sole vibes:Big Sole Vibes'
@@ -770,8 +784,8 @@ async function escalateToChief(failure, proposedFix, alertState) {
     `⚠️ *BSV — Chief: Action Required*`,
     ``,
     `*Source:* \`${scriptName}\``,
-    `*Problem:* ${(failure.message || '').slice(0, 120)}`,
-    proposedFix ? `*Proposed fix:* ${proposedFix.slice(0, 120)}` : null,
+    `*Problem:* ${truncate(failure.message)}`,
+    proposedFix ? `*Proposed fix:* ${proposedFix}` : null,
     ``,
     `This affects what posts, when, or how. Eng-bot cannot fix autonomously.`,
     `Review — fix if within authority, or surface to Big D if it affects revenue or brand.`,
@@ -948,6 +962,53 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
     return result + '\n\n_(Diagnosis truncated — max token limit reached. Some failures above may be missing a fix recommendation.)_'
   }
   return result
+}
+
+// diagnose() asks Claude for one "### [Platform] — [log filename]" section per
+// failure, each with its own "**Fix:**" line (see the prompt above). The
+// per-failure dispatch loop used to do a single non-global
+// `diagnosis.match(/\*\*Fix:\*\*.../)`, which always returns the FIRST
+// **Fix:** in the whole multi-failure diagnosis text — every failure that
+// run got the same fix, whichever one happened to be diagnosed first.
+// Confirmed live 2026-07-31: cost-report.js and telegram-webhook's stale
+// alerts both shipped watch-drive's "SSH in, check if the process is dead"
+// fix, because watch-drive's section came first in that day's diagnosis.
+// Fixed by finding this failure's own "### ..." section (matched on its log
+// filename, which diagnose()'s prompt requires in the header) before
+// extracting a **Fix:** from it.
+// extractFailures() can only set a real `platform` when a line matches its
+// "✗ platform: message" pattern (distribute-style failures). Health-check-
+// style lines like "[warning] telegram-webhook: stale — 7h since last
+// activity" don't match that shape, so those failures get platform:'unknown'
+// — but the agent name BSV always writes as a hyphenated slug (telegram-
+// webhook, watch-drive, cost-report...) is still sitting right there in the
+// message text. Pull every plausible identifier — real platform, that
+// slug, and the failure's own source log with its extension stripped — so
+// matching has more than one thing to try against Claude's header, which
+// doesn't always echo the same string back.
+function candidateIdentifiers(failure) {
+  const ids = []
+  if (failure.platform && failure.platform !== 'unknown') ids.push(failure.platform)
+  const slugMatch = (failure.message || '').match(/\b([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b/i)
+  if (slugMatch) ids.push(slugMatch[1])
+  if (failure.source) ids.push(failure.source.replace(/(-error)?\.log$/i, ''))
+  return [...new Set(ids.map(s => s.toLowerCase()).filter(Boolean))]
+}
+
+function extractFixForFailure(diagnosis, failure) {
+  if (!diagnosis) return null
+  const sections = diagnosis.split(/\n(?=###\s)/)
+  const ids      = candidateIdentifiers(failure)
+  const section  = sections.find(s => {
+    const header = s.split('\n')[0].toLowerCase()
+    return ids.some(id => header.includes(id))
+  })
+  if (!section) return null
+  // Fix text can legitimately span multiple lines (a code block, a
+  // multi-step list) — capture until the next **Label:** line, the next
+  // section, or end of text, not just the first line.
+  const fixMatch = section.match(/\*\*Fix:\*\*\s*([\s\S]*?)(?:\n\*\*[A-Za-z ]+:\*\*|\n###\s|$)/)
+  return fixMatch ? fixMatch[1].trim() : null
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -1177,11 +1238,13 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
     for (const failure of allFailures.slice(0, 10)) {
       const category = categorizeIssue(failure, diagnosis)
 
-      // Extract proposed fix from diagnosis for all paths
+      // Extract proposed fix from diagnosis for all paths — matched to this
+      // specific failure's own diagnosis section, not just the first **Fix:**
+      // in the whole report (see extractFixForFailure() above for why).
       let proposedFix = 'See eng report for details'
       if (diagnosis) {
-        const fixMatch = diagnosis.match(/\*\*Fix:\*\*\s*([^\n]+)/)
-        if (fixMatch) proposedFix = fixMatch[1].trim().slice(0, 120)
+        const matched = extractFixForFailure(diagnosis, failure)
+        if (matched) proposedFix = truncate(matched)
       }
 
       // ── Tier 1: Autonomous — fix now, no approval needed ──────────────────
@@ -1213,7 +1276,7 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
       // ── Tier 3: Big D — revenue/brand/strategic; Chief surfaces to Big D ──
       const issueId    = buildIssueId(failure)
       const scriptName = failure.source ? failure.source.replace(/\.log$/, '.js') : 'unknown'
-      const problem    = failure.message.slice(0, 120)
+      const problem    = truncate(failure.message)
 
       const issueMsg = [
         `🚨 *BSV — Chief → Big D: Decision Required*`,
