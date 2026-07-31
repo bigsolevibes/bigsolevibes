@@ -459,11 +459,18 @@ ${COMEDIC_REGISTER}`
   // Deep-linked to this specific product's card, not the bare shop index —
   // see buildProductBlock() above for why. Same slug, same shared helper.
   const productShelfUrl = product ? `https://bigsolevibes.com/shop/#${slugifyProductName(product['Product Name'])}` : 'https://bigsolevibes.com/shop/'
+  // Added 2026-07-31 — growth research (see BSV-BigC-Audit-Log.md same
+  // date, prompted by BSV's 3-follower plateau) found Instagram now works
+  // as a search engine: people type real phrases into the in-app search
+  // bar, and that indexed text matters more than the hashtag block. Hashtags
+  // still get their own slot below — this doesn't replace them, it gives
+  // Instagram's search index a plain-language phrase to match on beyond it.
+  const SEARCHABLE_PHRASE = `Work one real, plainly-worded phrase a man might actually type into Instagram's search bar (e.g. "foot care for men," "recovery routine after a long shift") naturally into a sentence — an actual phrase someone would search, not a hashtag.`
   const igGuidance = editionVignette
-    ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. Open with the Social Hook from the edition scene block (exact line or same rhythm). 2–4 more sentences expanding the vignette. End with a BSV-voice CTA driving to ${ctaLabel}: ${ctaUrl}. Hashtags: ${personaHashtags}`
+    ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. Open with the Social Hook from the edition scene block (exact line or same rhythm). 2–4 more sentences expanding the vignette. ${SEARCHABLE_PHRASE} End with a BSV-voice CTA driving to ${ctaLabel}: ${ctaUrl}. Hashtags: ${personaHashtags}`
     : product
-      ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. End with a BSV-voice CTA linking directly to this product's card: ${productShelfUrl} — not "link in bio", not the bare shop page. Hashtags: ${personaHashtags}`
-      : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Hashtags: ${personaHashtags}`
+      ? `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. Tell the product's story — the man who needs it, the moment it earns its place. ${SEARCHABLE_PHRASE} End with a BSV-voice CTA linking directly to this product's card: ${productShelfUrl} — not "link in bio", not the bare shop page. Hashtags: ${personaHashtags}`
+      : `${voiceDef.name} VOICE: Apply the tone rules and example above. Hard guardrails apply. 3–5 sentences. ${SEARCHABLE_PHRASE} Hashtags: ${personaHashtags}`
   const bskyGuidance = `${voiceDef.name} VOICE: 2–3 lines max. No hashtags. Apply the tone rules strictly.`
 
   // Visual approach — REARCHITECTED 2026-07-10 per Big D: assigning one of N
