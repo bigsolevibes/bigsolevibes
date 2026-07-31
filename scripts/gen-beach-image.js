@@ -14,6 +14,23 @@ const GEMINI_API  = 'https://generativelanguage.googleapis.com/v1beta'
 //
 // Run: node scripts/gen-beach-image.js
 // Writes to public/crawl/beach.jpg
+//
+// NOT PIPELINE / NOT A DOCTRINE CONFLICT — reviewed 2026-07-31 after chief-
+// of-staff's findContentOverrideRisks() flagged this file's hardcoded
+// "photorealistic 35mm cinematic" prompt as a potential conflict with the
+// current flat-2D-cutout-collage visual doctrine. It isn't one: this is a
+// manual, already-run, one-off site-asset generator, not part of the daily
+// watch-drive/media-director/creative-agent/gemini-bridge pipeline, and its
+// output (public/crawl/beach.jpg) is live in OpeningCrawl.tsx's BG_IMAGES
+// alongside modern.jpg. Both are the cited reference images for "Full
+// photorealistic cinematic, 35mm film still" — still one of the four valid,
+// actively-offered techniques in creative-agent.js's own VISUAL_TECHNIQUE_RANGE
+// (that constant names beach.jpg and modern.jpg by path). The flat-2D-cutout
+// push is about the DAILY post pipeline's technique mix, not a ban on
+// photorealism site-wide. Leaving the automated scan flagging this file as
+// "expected recurring" (same pattern as gemini-bridge.js's
+// BSV_VISUAL_PREAMBLE) rather than disabling it — the script itself is
+// harmless since nothing calls it automatically.
 
 const SCENE = {
   name: 'beach',
