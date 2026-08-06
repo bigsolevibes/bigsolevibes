@@ -346,13 +346,25 @@ function publishEditionToLounge(state) {
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
   log(`Manifest updated: ${manifest.length} article(s)`)
 
-  // Git push to preview/full-site via safePushToPreview pattern
+  // Git commit + push to preview/full-site.
+  // FIXED 2026-08-06: safePushToPreview(cwd, log) only runs `git push` — it
+  // never stages or commits anything. This call used to pass a commit-message
+  // string as the `cwd` argument (signature mismatch) and never called `git
+  // add`/`git commit` at all, so when HEAD already matched origin the push
+  // was a silent no-op that still logged "pushed" success. Edition #2 sat
+  // uncommitted in the working tree for hours before this was caught — see
+  // BSV-BigC-Audit-Log.md same date. Now stages + commits BLOG_DIR explicitly
+  // before pushing, and checks the actual return value.
   try {
     const { safePushToPreview } = require('./git-push-guard')
-    safePushToPreview(`edition-${state.editionNumber}: publish ${state.theme} to The Lounge`)
-    log(`Git: pushed to preview/full-site`)
+    execSync(`git add "${BLOG_DIR}"`, { cwd: ROOT, stdio: 'pipe' })
+    execSync(`git commit -m "edition-${state.editionNumber}: publish ${state.theme} to The Lounge"`, { cwd: ROOT, stdio: 'pipe' })
+    const pushed = safePushToPreview(ROOT, log)
+    if (pushed) log(`Git: committed + pushed to preview/full-site`)
+    else log(`WARNING: commit succeeded but push failed — check logs/edition-agent.log for the git error above`)
   } catch (err) {
-    log(`WARNING: git push failed — ${err.message}`)
+    const msg = err.stderr?.toString().trim() || err.message
+    log(`WARNING: git commit/push failed — ${msg}`)
     log('Run: git add public/the-lounge/ && git commit -m "edition publish" && git push origin preview/full-site')
   }
 
