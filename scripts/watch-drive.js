@@ -486,10 +486,19 @@ function archiveSlot(base, allDriveFiles, today) {
 }
 
 // ─── Shop sync ────────────────────────────────────────────────────────────────
-// Tracks the approved ASIN set between polls. null = not yet initialized.
+// Tracks the approved Product Name set between polls. null = not yet initialized.
 // sync-shop.js fires on any change to the approved set (additions OR removals).
+//
+// Keyed by Product Name, not ASIN. sync-shop.js's own approved filter (and its
+// dedup key) is Status==='approved' + non-blank Product Name — it does not
+// require an ASIN. Keying this trigger by ASIN meant any product approved while
+// its ASIN cell was still blank never registered as a "new approval" here, so
+// sync-shop.js never got re-run and the approval silently never reached the
+// live shop page. Found 2026-08-12 after "Aesop Resolute Hydrating Body Balm"
+// shipped with a placeholder ASIN ("B00XXXXXXX") — Big D flagged that approvals
+// have gone missing like this before. Fixed by matching sync-shop.js's own key.
 
-let prevApprovedAsins = null
+let prevApprovedNames = null
 
 async function checkAndSyncShop() {
   try {
@@ -498,20 +507,20 @@ async function checkAndSyncShop() {
     const rows = await readAllRows(conn)
     const currentApproved = new Set(
       rows.filter(r => (r['Status'] || '').trim().toLowerCase() === 'approved')
-          .map(r => r['ASIN'])
+          .map(r => (r['Product Name'] || '').trim())
           .filter(Boolean)
     )
 
-    if (prevApprovedAsins === null) {
+    if (prevApprovedNames === null) {
       // First poll — establish baseline, don't trigger deploy
-      prevApprovedAsins = currentApproved
+      prevApprovedNames = currentApproved
       log(`Shop sync: baseline set — ${currentApproved.size} approved product(s)`)
       return
     }
 
-    const newApprovals  = [...currentApproved].filter(a => !prevApprovedAsins.has(a))
-    const newRejections = [...prevApprovedAsins].filter(a => !currentApproved.has(a))
-    prevApprovedAsins = currentApproved
+    const newApprovals  = [...currentApproved].filter(a => !prevApprovedNames.has(a))
+    const newRejections = [...prevApprovedNames].filter(a => !currentApproved.has(a))
+    prevApprovedNames = currentApproved
 
     if (newApprovals.length === 0 && newRejections.length === 0) return
 
