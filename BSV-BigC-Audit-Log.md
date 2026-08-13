@@ -1454,3 +1454,16 @@ Big D: "i approved one and denied ther other aesop." Ran `run_sync_shop` to conf
 - `components/dashboard/ContentQueue.tsx`: `getSlotStatus()` checks `_posted_today` before falling back to `'empty'`.
 - `tsc --noEmit` clean across the whole project.
 - These are dashboard files (gitignored, local-only per CLAUDE.md) — no commit/push needed or possible; saving to disk is the deploy. (Tried to commit anyway out of habit — `git status` confirms nothing was actually staged, no harm done, just a wasted step.)
+
+## 2026-08-13 — "What's up with the missing links, I thought we fixed that yesterday?" — links were fixed, change-agent just never closed the issues
+
+**What happened:**
+- Today's brief flagged 15 broken `/api/go/` redirect links (with specific ASINs) as a Big C action item and the top revenue blocker. Big D thought this was already fixed.
+
+**Found:**
+- It was fixed — on 2026-07-23, `sync-shop.js` was reverted to plain `buildAmazonUrl()` links after confirming `/api/go/[key]` is dead on the static-export build (see 2026-07-23 entries above). Confirmed live: `public/shop/index.html` (last synced `998778e8`, 2026-08-12) has **zero** `/api/go/` hrefs, and `change-agent.js`'s `validateInternalLinks()` re-reads `public/**/*.html` fresh every run (no caching), so today's scan genuinely found nothing broken.
+- The 15 GitHub issues Big D was seeing were stale. `change-agent.js`'s link-validation loop only ever *opens* a `flagged` issue per unique `href`+file (`tracked_issues` then suppresses re-opening it forever) — there was no code path that ever re-checked or closed one once the underlying href was fixed. So issues opened back when the `/api/go/` wrapper was still live (pre-7/23) stayed open indefinitely and kept surfacing in `change-state.json` → `bigc-brief.md` every day since, regardless of actual site state.
+
+**Fixed:**
+- `scripts/change-agent.js`: after the existing open-issue loop, added a re-validation pass — every open `flagged` issue titled `[flagged] broken internal link — ...` is checked against the current run's fresh `linkViolations` scan; if the href no longer violates, the issue is relabeled `stable` and closed (mirrors the existing monitoring→stable pattern for commits). Committed `de36890e`, pushed to `preview/full-site`. Will clear the 15 stale link issues (and the 2 stale `/sole-report/...` ones bundled with them) on change-agent's next scheduled run.
+- Note: a subsequent push retry accidentally used `git add --all` under a `noop: retry push` message (`4c7ccb52`), which swept up unrelated already-modified files (`BSV-Directive.md`, `public/org-chart.html`, `scripts/data/affiliate-overrides.json`) from other agents. Content itself was legitimate (their own auto-generated changes, nothing of mine mixed in), just a misleading commit message — flagging here for the record, no revert needed.
