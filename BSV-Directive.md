@@ -52,7 +52,24 @@ The standard source list (Grooming Lounge, MR PORTER, Kiehl's, Molton Brown, Art
 
 ### Specific Products to Hunt
 
-Auto-updated from research run 2026-07-12.
+Auto-updated from research run 2026-08-09.
+
+**Near-misses from last cycle — evaluate these first next run:**
+
+## HELD BACK
+
+**Open shelf gaps to fill:**
+
+| Gap | Status | Priority |
+|---|---|---|
+| **Standard-tier dedicated foot treatment ($40–70)** | 🔴 CRITICAL — still unfilled | Non-medicated, fast-absorbing, active ingredients, men's or gender-neutral. MALIN+GOETZ Rum Body Lotion is an adjacent win but is not foot-specific. The gap remains open. |
+| **Aspiration-tier foot care object ($100–200)** | 🔴 CRITICAL — still unfilled | European craft,
+
+**Source intelligence from last cycle:**
+
+**Productive sources this cycle:**
+- **Grooming Lounge**: Confirmed active for MALIN+GOETZ body care. No dedicated foot treatment product exists in their current catalog — the gap is documented for the fourth consecutive cycle.
+- **MR PORTER**: Continues to be the single most reliable discovery source for brand-positioned body care. Grown Alchemist surfaced here and passed Gates 0–2 before failing
 ### Amazon First
 
 All picks must have an Amazon ASIN and be available via tag bigsolevibes-20. No Amazon availability means hold until alternative affiliate channel is confirmed.

@@ -5,5 +5,19 @@
     "affiliate_network": "Spongelle Direct",
     "commission": "15%",
     "promo": "30% off for customer"
+  },
+  "Brickell Clarifying Gel Face Wash 8oz": {
+    "affiliate_url": "https://brickellmensproducts.com/products/clarifying-gel-face-wash-for-men",
+    "affiliate_network": "Refersion (Direct/Self-Hosted)",
+    "commission": "5–10%",
+    "signup_url": "https://brickellmensproducts.refersion.com/",
+    "scouted": "2026-07-28"
+  },
+  "Therabody WaveRoller": {
+    "affiliate_url": "https://www.therabody.com/products/wave-roller",
+    "affiliate_network": "Impact.com",
+    "commission": "5%",
+    "signup_url": "https://www.therabody.com/pages/affiliates",
+    "scouted": "2026-07-28"
   }
 }

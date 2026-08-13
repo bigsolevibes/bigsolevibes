@@ -1358,3 +1358,99 @@ Big D: "i approved one and denied ther other aesop." Ran `run_sync_shop` to conf
 **`app/api/dashboard/` is also gitignored** (confirmed via `git check-ignore -v`) — same local-only convention as `lib/dashboard/`, no commit attempted or possible for these two files.
 
 **Couldn't verify end-to-end myself:** tried reading the live Sheet directly via `sheets-client.js`'s `connect()`/`readAllRows()` to just write the correct Status myself and save Big D a second click — failed, `ENOENT` on the Google service-account key file. The sandbox this runs in doesn't have that credential file mounted (by design — credential JSON is explicitly excluded per Hard Rules). Asked Big D to re-click Approve on Resolute Hydrating Body Balm and Deny on Rind Concentrate on the dashboard — confirmed which was which via AskUserQuestion first rather than guess. Not yet confirmed the re-click actually lands; check `public/shop/index.html` for a Resolute Aesop card and re-run `run_sync_shop` next session if not already reflected.
+
+## 2026-07-31 — Root-caused the recurring "-flow" archive-move error; added single-instance lock to watch-drive.js
+
+**What happened:**
+- bigc-brief.md flagged (job #1) a 5-day recurring `ERROR: failed to move [slot]-flow.png` in watch-drive, describing it as active/unresolved and affecting post timing.
+
+**Investigation:**
+- Grepped `watch-drive-error.log.2` for every occurrence (2026-07-23 through 2026-07-28: sat-pm-flow, sun-am-flow, tue-am-flow, sun-pm-flow, mon-am-flow, tue-pm-flow, wed-am-flow — 7 slots, all `-flow`, never a plain slot). Checked the current logs (`watch-drive.log`/`.1`/`.2`/`.3`, `watch-drive-error.log`/`.1`, covering 2026-07-29 through today): zero occurrences. The brief's "still unresolved, 5+ days" framing was stale — the symptom hasn't recurred in 3 days, but the underlying vulnerability was real and worth closing preemptively.
+- Traced the actual sequence in `watch-drive-error.log.2` (sat-pm-flow, 2026-07-23): a flow slot's `archiveSlot()` call succeeded and moved all 3 files (prompt.txt, .md, .png) to `Posted/`. ~20 seconds later, a second attempt to archive the *same already-moved* files failed with "directory not found." Verified in a node REPL that `archiveSlot`'s per-slot regex is correct and does NOT cross-match `base` vs `base-flow` (e.g. `sat-pm` never matches `sat-pm-flow.png`) — ruling out the regex as the cause, despite that being my first hypothesis.
+- Root cause: two overlapping `watch-drive.js` OS processes racing on the same Drive folder + `watch-drive-state.json`. The in-process `runActive`/`runPending` guard (top of file) only prevents overlapping `run()` calls *within one process* — nothing stopped a second `node watch-drive.js` from running alongside a leftover one (e.g. a restart that didn't confirm the old process had exited; `KeepAlive: true` in the launchd plist will also spawn a replacement on crash without killing a hung original). Confirmed via `get_agent_processes`: only one instance running right now (pid 52124), consistent with the vulnerability being real but currently dormant rather than actively triggered.
+
+**Fixed:**
+- `scripts/watch-drive.js`: added a PID lockfile (`logs/watch-drive.lock`). On startup, a new process checks for a live PID holding the lock and refuses to start if found (clear log line naming the blocking PID); a stale lock from a dead PID is cleared automatically; the lock releases on clean SIGTERM/SIGINT/exit. Committed + pushed to `preview/full-site` (`a0dd5bf7`).
+
+**Not yet done / needs Big D:**
+- The currently-running watch-drive process (pid 52124) predates this fix and won't have the lock until it's restarted. Not urgent — the bug is dormant — but worth a restart next time watch-drive is touched for something else, so the guard is actually live.
+
+## 2026-07-31 (cont.) — Resolved brand-manager-stdio / sync-shop-stdio "untracked" roster decision
+
+**What happened:**
+- bigc-brief.md's job #2: brand-manager-stdio and sync-shop-stdio flagged as untracked (no health check) for 5+ standups, "15-minute fix, add to roster."
+
+**Found:**
+- Neither is a real independent agent. `mcp-server.js`'s `run_brand_manager` / `run_sync_shop` MCP tools spawn the already-rostered `brand-manager.js` / `sync-shop.js` and redirect stdout/stderr to `<name>-stdio.log` purely so a crash outside the script's own try/catch leaves a trace (comment right above each tool definition explains this). Adding them as real `AGENT_ROSTER` entries would create a second, spurious health check layered on brand-manager's existing weekly one — and since the sidecar log only updates on an MCP-triggered run (not the normal launchd/cron path), it would sit "stale" indefinitely between manual invocations regardless of actual health.
+
+**Fixed:**
+- `scripts/lib/agent-health.js`: added both names to `KNOWN_NON_AGENT_LOGS` instead of `AGENT_ROSTER`. Verified `findUntrackedAgents()` returns `[]` (previously listed both). Committed + pushed to `preview/full-site` (`f04a08da`).
+
+## 2026-07-31 (cont.) — Audited voice-doctrine enforcement; found the standup's file attribution was wrong, and the "0 denials" win is unproven by the freshest evidence
+
+**What happened:**
+- bigc-brief.md's job #3: confirm the "media-director caption brief template" now explicitly passes Proprietor voice, props-in-scenes framing, and no-application-gesture constraints to creative-agent, since brand-manager denials dropped 9→0 this week — and document it so it doesn't regress.
+
+**Found:**
+- The premise was half right, half misattributed. `media-director.js` only assigns theme/persona/product (correct, per its domain) — it has never carried voice/visual-doctrine text and shouldn't. The actual enforcement lives in `creative-agent.js`, which authors the real IMAGE BRIEF: `NO_APPLICATION_GESTURE` (from `lib/visual-doctrine.js`, added 2026-07-28) is inlined into `HARD_CONSTRAINTS_LEAD`, and `imageBriefInstruction`'s REJECTED-without-appeal clause explicitly names an unstated product-application gesture as an auto-reject condition. Proprietor-voice and props-as-anchor framing are both present too (`THE PROPRIETOR'S TEST` block, `PRIORITY_ORDER`). Structurally, this is exactly right and exactly where it should live.
+- But: `agent-output-digest.md`'s "Visual QA Flags (last 48h)" lists 8 fresh violations of this *exact* rule (fri-am/pm, sat-am/pm + flow variants) — "hands actively reaching toward and touching the wallet," "product-application gesture," 6-panel collage where a single frame was required — with **0 auto-approved on QA pass**. `denial-log.json` (what "0 denials" actually measures) is written by Big D manually clicking Deny on the dashboard — a human-review signal, separate from image-gen.js's own post-render vision QA. There are currently 9 pending dashboard approvals Big D hasn't reviewed yet. So "0 denials this week" may mean the fix worked, or it may just mean the violating content hasn't reached Big D's review yet — the evidence doesn't yet distinguish the two. The brief-writing fix is real and correctly built; whether it's actually reducing violations is still open, because Imagen keeps generating images that violate the correctly-written brief.
+
+**Fixed:**
+- `scripts/creative-agent.js`: added a comment above `HARD_CONSTRAINTS_LEAD` recording why the constraint exists (75 denials in the pre-fix cycle) and that it must live here, not in media-director.js, per domain ownership. Documentation only, no functional change. Committed + pushed (`818dd426`).
+
+**Needs Big D:**
+- Clear the 9 pending dashboard approvals (1 content-gate, 8 video-gate) — that's the actual test of whether the brief fix is holding up against real Imagen output, not the denial count alone.
+
+## 2026-07-31 (cont.) — Resolved gen-beach-image.js "hardcoded photorealistic prompt" decision (Decisions Needed backlog)
+
+**What happened:**
+- bigc-brief.md's Decisions Needed backlog: "gen-beach-image.js hardcoded photorealistic prompt — disable or mark as non-pipeline. Needs one-line decision."
+
+**Found:**
+- Not a conflict. `gen-beach-image.js` is a manual, already-run, one-off generator (its own header says so) — not called anywhere in the automated pipeline. Its output, `public/crawl/beach.jpg`, is live in `OpeningCrawl.tsx`'s `BG_IMAGES`, right next to `modern.jpg`. Both are the exact reference images `creative-agent.js`'s `VISUAL_TECHNIQUE_RANGE` names for "Full photorealistic cinematic, 35mm film still" — still one of the four valid techniques the daily pipeline can choose today. The flat-2D-cutout directive is about the daily pipeline's technique mix defaulting away from unreliable photorealistic-human renders, not a site-wide ban on the photorealistic style itself.
+
+**Fixed:**
+- Added a header note to `gen-beach-image.js` explaining this, so chief's `findContentOverrideRisks()` daily flag reads as "expected, already reviewed" — same treatment as `gemini-bridge.js`'s `BSV_VISUAL_PREAMBLE`. No functional change. Committed + pushed (`c920367a`).
+
+## 2026-07-31 (cont.) — Fixed eng-bot's garbled/mismatched Telegram escalations
+
+**What happened:**
+- Big D asked "whats eng saying" about today's escalations. Pulled the actual queued messages from `logs/telegram-pending.json` (5 unique issues today: watch-drive/telegram-webhook staleness, cost-report API error x2, one image-gen visual-QA fail) and found every one was broken in one of two ways.
+
+**Found:**
+- **Truncation:** both `*Problem:*` and `*Proposed fix:*` fields were hard-cut at 120 characters with no ellipsis (`eng-bot.js` lines ~773, 1184, 1216) — e.g. the cost-report fix read "1. Verify launchd plist for watch-drive exists and is loaded:" and just stopped. Telegram allows up to 4096 chars; 120 was an arbitrary leftover.
+- **Mismatched fix (the real bug):** `diagnose()` asks Claude for one `### ...` section per failure, each with its own `**Fix:**` line — but the dispatch loop extracted it with a single non-global `diagnosis.match(/\*\*Fix:\*\*.../)`, which always returns the FIRST `**Fix:**` in the whole multi-failure diagnosis. Confirmed live: cost-report and telegram-webhook's alerts both shipped watch-drive's "SSH in, check if the process is dead" fix, because watch-drive's section happened to come first that day.
+
+**Fixed:**
+- `scripts/eng-bot.js`: added `extractFixForFailure()` + `candidateIdentifiers()` — matches each failure to its own diagnosis section using real platform, an agent-name slug pulled out of the message text (health-check-style "[warning] name: msg" lines don't get a real `platform` from `extractFailures()`), and the source log filename. Verified against the actual cached diagnosis in `logs/eng-diagnosis-state.json`: watch-drive and eng-bot failures now correctly resolve to their own distinct fixes; failures with no matching section fall back to the honest default instead of silently showing a wrong one. Added `truncate()`/`ALERT_FIELD_LIMIT` (320 chars, visible "…" only when actually cut) to replace the bare 120-char slices. Committed + pushed (`8cbcf476`).
+
+## 2026-07-31 (cont.) — Growth research + Instagram search-phrase caption tweak
+
+**What happened:**
+- Big D asked me to dig into the standing "3 followers, content outpaces distribution" org recommendation and propose concrete tactics.
+
+**Found (web research, 2026 sources):**
+- Reddit: `reddit-agent.js` posts to r/bigsolevibes — BSV's own empty subreddit — which does nothing for discovery. The actual high-leverage move, flagged in 23+ strategist standups and still undone, is Big D posting manually in established communities (r/goodyearwelt, r/malefashionadvice). Confirmed this is still the right call, not something an agent can substitute for.
+- Bluesky: Starter Packs drive up to 43% of new follows for creators who land in one; domain-verified handles (`@bigsolevibes.com`) read as more credible. Both are cheap, one-time/manual moves, zero API cost.
+- Instagram: shifted to search-driven discovery in 2026 — people type real phrases into the in-app search bar; hashtags alone are no longer enough.
+
+**Fixed:**
+- `scripts/creative-agent.js`: added a `SEARCHABLE_PHRASE` instruction to all three `igGuidance` branches (edition vignette / product post / product-free post), telling the model to work one real, plainly-worded search phrase into a sentence — additive to the existing hashtag block. Committed + pushed (`a761be13`).
+
+**Needs Big D:** the Reddit post (still the top lever, zero cost) and the Bluesky domain-handle/starter-pack moves — both manual, not something I can do from here.
+
+## 2026-07-31 (cont.) — Fixed dashboard Content Queue showing already-posted slots as empty
+
+**What happened:**
+- Big D asked why item 11 on the Content Queue grid was empty. Grid order is day-headers (1-7) then the AM row (8-14), so item 11 = the 4th AM cell = thu-am.
+
+**Found:**
+- `watch-drive-state.json` has no entry at all for thu-am (confirmed: `mon-am` through `thu-pm` are all missing, `fri-am` through `sat-pm` have live entries). `watch-drive.js`'s `archiveSlot()` deletes a slot's entire state key once it's successfully posted and archived (by design — see that function's own comment). So a fully-completed slot and one that never ran look identical to the dashboard: no platform statuses, no `_media_since`. `getSlotStatus()` had no way to distinguish them and defaulted both to `'empty'`.
+- Cross-checked `post-state.json`: thu-am has multiple successful-post records across past weeks, and per today's standup eng-bot confirmed it posted again this morning. The slot worked correctly — the dashboard just has no memory of it once state gets cleaned up.
+
+**Fixed:**
+- `lib/dashboard/types.ts`: added `SlotState._posted_today`.
+- `lib/dashboard/state-adapter.ts`: `getSlots()` now cross-references `post-state.json` (local-date comparison, not a raw ISO slice, to avoid the same UTC/local pitfall `watch-drive.js`'s own `localDateString()` exists to avoid) and tags any slot with a successful post today as `_posted_today`, even with no live state entry.
+- `components/dashboard/ContentQueue.tsx`: `getSlotStatus()` checks `_posted_today` before falling back to `'empty'`.
+- `tsc --noEmit` clean across the whole project.
+- These are dashboard files (gitignored, local-only per CLAUDE.md) — no commit/push needed or possible; saving to disk is the deploy. (Tried to commit anyway out of habit — `git status` confirms nothing was actually staged, no harm done, just a wasted step.)
