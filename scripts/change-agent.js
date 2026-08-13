@@ -747,6 +747,34 @@ function validateAutoCommit(commit, files) {
     }
   }
 
+  // ── Close stale internal-link issues ──────────────────────────────────────────
+  // The loop above only ever opens issues (tracked_issues suppresses re-opening
+  // forever, even after the href is fixed) — nothing previously re-checked
+  // whether a flagged link was still actually broken, so fixed links stayed
+  // "open" in change-state.json/bigc-brief.md indefinitely. Found 2026-08-13:
+  // Big D asked about "missing links" fixed the day before; the 15 /api/go/
+  // links were fixed on 2026-07-23 (sync-shop.js reverted to direct affiliate
+  // URLs) and reconfirmed gone in every shop sync since — but the GitHub issues
+  // opened back when they were first flagged were never closed. Re-validate
+  // every open 'flagged' link issue against this run's fresh scan and close
+  // any that no longer appear as a violation.
+  const stillBrokenLinks = new Set(linkViolations.map(v => `${v.href}::${path.basename(v.file)}`))
+  const openLinkIssues   = listOpenIssues('flagged').filter(i => i.title.startsWith('[flagged] broken internal link —'))
+  for (const issue of openLinkIssues) {
+    const m = issue.title.match(/^\[flagged\] broken internal link — (.+) in (.+)$/)
+    if (!m) continue
+    const [, href, file] = m
+    if (stillBrokenLinks.has(`${href}::${file}`)) continue // still broken — leave open
+    updateIssueLabel(issue.number, 'stable', 'flagged')
+    closeIssue(
+      issue.number,
+      `Re-validated ${new Date().toISOString().slice(0, 10)} — \`${href}\` no longer appears as a broken link in \`${file}\`. Closing.`,
+    )
+    const trackedKey = Object.keys(state.tracked_issues || {}).find(k => state.tracked_issues[k] === issue.number)
+    if (trackedKey) delete state.tracked_issues[trackedKey]
+    log(`  Issue #${issue.number} → stable (closed) — link now resolves: ${href}`)
+  }
+
   const changeRecords = []
 
   for (const commit of newCommits) {
