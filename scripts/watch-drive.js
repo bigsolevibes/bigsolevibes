@@ -17,6 +17,12 @@ const RESULTS_FILE    = path.join(ROOT, 'logs', 'distribute-results.json')
 const POST_STATE_FILE = path.join(ROOT, 'logs', 'post-state.json')
 const OUTPUT_DIR      = path.join(ROOT, 'posts', 'output')
 const TEMP_DIR        = path.join(os.homedir(), 'tmp', 'bsv-ready')
+// TikTok posting (draft/inbox today, Direct Post once audited) is manual/async
+// and can lag days behind the auto-pipeline, which wipes OUTPUT_DIR on every
+// image slot run (see clearOutputDir()). The TikTok-bound unbranded render
+// lives here instead, outside OUTPUT_DIR, so it survives until it's actually
+// posted. See BSV-BigC-Audit-Log.md 2026-08-26.
+const TIKTOK_DIR      = path.join(ROOT, 'posts', 'tiktok-ready')
 const LOCK_FILE        = path.join(ROOT, 'logs', 'watch-drive.lock')
 
 const REMOTE_READY          = 'big sole vibes:Big Sole Vibes/Ready to Post'
@@ -412,6 +418,15 @@ function processMedia(base, mediaFile, localPath) {
     const outFile = path.join(OUTPUT_DIR, `${base}-youtube.mp4`)
     log(`  running brand-video.js → ${path.basename(outFile)}`)
     runCaptured('brand-video', `node "${path.join(__dirname, 'brand-video.js')}" --video "${localPath}" --output "${outFile}"`)
+
+    // TikTok's Watermark Guidelines forbid a brand logo/mark on content
+    // posted via the Content Posting API — render a second, unbranded copy
+    // (Veo's own watermark still covered, that's not BSV branding) into the
+    // durable TIKTOK_DIR for tiktok-post.js / the dashboard to use.
+    fs.mkdirSync(TIKTOK_DIR, { recursive: true })
+    const tiktokFile = path.join(TIKTOK_DIR, `${base}-tiktok.mp4`)
+    log(`  running brand-video.js --unbranded → ${path.basename(tiktokFile)}`)
+    runCaptured('brand-video-tiktok', `node "${path.join(__dirname, 'brand-video.js')}" --video "${localPath}" --output "${tiktokFile}" --unbranded`)
   }
 }
 

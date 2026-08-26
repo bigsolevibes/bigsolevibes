@@ -66,3 +66,5 @@ tsconfig.tsbuildinfo
 # Same "local working data" category as logs/.
 posts/output/
 public/posts/output/
+# Durable unbranded TikTok renders — see watch-drive.js TIKTOK_DIR
+posts/tiktok-ready/

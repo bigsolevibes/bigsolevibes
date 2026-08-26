@@ -84,6 +84,7 @@ function getArg(flag) {
 const videoPath  = getArg('--video')
 const numeral    = getArg('--numeral') || ''
 const outputArg  = getArg('--output')
+const unbranded  = args.includes('--unbranded')
 
 if (!videoPath) {
   log('ERROR: no --video argument — Usage: node scripts/brand-video.js --video /path/to/input.mp4 [--numeral XIV] [--output posts/output/branded.mp4]')
@@ -132,16 +133,24 @@ const BOURBON = '0xC17D2E'
 const CREAM   = '0xF5ECD7'
 const STEEL   = '0x4A6380'
 
-const brandFilters = [
+// TikTok's Watermark Guidelines forbid posting content with a brand logo/mark
+// via the Content Posting API — --unbranded skips the BSV border + wordmark
+// for that render, but still covers Veo's own watermark below (that's not
+// BSV branding, and TikTok's real AI-disclosure mechanism is the API's
+// post_info.is_aigc flag, not what's visible in the frame — see
+// BSV-BigC-Audit-Log.md 2026-08-26 for the research behind this).
+const brandFilters = []
+
+if (!unbranded) {
   // Steel inset border
-  `drawbox=x=20:y=20:w=iw-40:h=ih-40:color=${STEEL}:t=3`,
+  brandFilters.push(`drawbox=x=20:y=20:w=iw-40:h=ih-40:color=${STEEL}:t=3`)
 
   // "BSV" — bold serif, 80px, bottom left
-  `drawtext=fontfile='${esc(FONT_BSV)}':text='BSV':fontcolor=${BOURBON}:fontsize=80:x=40:y=h-140`,
+  brandFilters.push(`drawtext=fontfile='${esc(FONT_BSV)}':text='BSV':fontcolor=${BOURBON}:fontsize=80:x=40:y=h-140`)
+}
 
-]
-
-// Black rectangle covering the bottom-right Veo watermark zone
+// Black rectangle covering the bottom-right Veo watermark zone — kept even
+// in unbranded mode, this covers Veo's own mark, not BSV's.
 brandFilters.push(
   `drawbox=x=iw-200:y=ih-80:w=200:h=80:color=0x000000:t=fill`
 )
@@ -151,7 +160,7 @@ const vf = brandFilters.join(',')
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 const label = numeral ? ` [${numeral}]` : ''
-log(`START input=${path.basename(videoPath)} output=${path.basename(outputPath)}${label}`)
+log(`START input=${path.basename(videoPath)} output=${path.basename(outputPath)}${label}${unbranded ? ' [unbranded]' : ''}`)
 
 // Re-encode video to burn filters; copy audio stream untouched
 // ffmpeg output goes directly to inherited stdio — captured by parent if needed
