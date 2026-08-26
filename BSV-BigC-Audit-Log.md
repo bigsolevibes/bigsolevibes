@@ -1467,3 +1467,50 @@ Big D: "i approved one and denied ther other aesop." Ran `run_sync_shop` to conf
 **Fixed:**
 - `scripts/change-agent.js`: after the existing open-issue loop, added a re-validation pass — every open `flagged` issue titled `[flagged] broken internal link — ...` is checked against the current run's fresh `linkViolations` scan; if the href no longer violates, the issue is relabeled `stable` and closed (mirrors the existing monitoring→stable pattern for commits). Committed `de36890e`, pushed to `preview/full-site`. Will clear the 15 stale link issues (and the 2 stale `/sole-report/...` ones bundled with them) on change-agent's next scheduled run.
 - Note: a subsequent push retry accidentally used `git add --all` under a `noop: retry push` message (`4c7ccb52`), which swept up unrelated already-modified files (`BSV-Directive.md`, `public/org-chart.html`, `scripts/data/affiliate-overrides.json`) from other agents. Content itself was legitimate (their own auto-generated changes, nothing of mine mixed in), just a misleading commit message — flagging here for the record, no revert needed.
+
+## 2026-08-26 — TikTok video naming bug found + fixed; TikTok Direct Post scoped; YouTube found to be on a trial key
+
+**What happened:**
+- Big D asked about a stale TikTok app-approval email (6/18) — confirmed it was old news, already acted on (basic app registration approval, not the Direct Post audit), and that the current `/dashboard/tiktok` flow only posts to TikTok's draft/inbox endpoint (no auto-publish; Big D still finishes the post manually in-app).
+- While explaining what a real Direct Post build would take, found a live bug independent of any of that: `watch-drive.js`'s video branch was writing branded video output as `${base}-branded.mp4`, but `/dashboard/tiktok`'s page and API route have always expected `${base}-youtube.mp4` (matching the convention `resize-post.js`'s video branch and the platform-suffixed image variants use). Confirmed via repo-wide grep this was the only place the mismatch existed — `distribute.js`'s YouTube upload uses a generic `.mp4` match, unaffected. So `/dashboard/tiktok` has likely been finding zero videos even when real videos existed in `posts/output/`, on top of the separately-known "8 stuck Video Review approvals" cause from 06-28.
+- Fixed: changed the one line in `watch-drive.js` (`processMedia()`) to output `-youtube.mp4` instead of `-branded.mp4`. `node --check` passed. Committed `b2c28cc7` via `commit_changes`, pushed to `preview/full-site`.
+- Scoped what a real TikTok Direct Post build requires (Big D asked "what is it going to take"): re-request `video.publish` OAuth scope (currently only `user.info.basic,video.upload`), a `creator_info` lookup before showing the post form, a real UI on `/dashboard/tiktok` (title, privacy dropdown, comment/duet/stitch toggles, music-usage confirmation, commercial-content-disclosure toggle, preview, post-status polling), and a new posting call against `/v2/post/publish/video/init/` instead of the current inbox endpoint. Still blocked on the watermark decision from 06-28 (branded vs. unbranded render) before that UI/demo can be built — Big D hasn't chosen yet.
+- Also clarified for Big D: the UI work is an extension of the existing `/dashboard/tiktok` page, not a new dashboard.
+- Separately, Big D asked whether YouTube (already fully built into `distribute.js`'s `postToYouTube()`, just switched off via `SKIPPED_PLATFORMS`) could be turned on the same way. New fact from Big D: the `YOUTUBE_*` credentials were issued as a **temporary/trial key** and BSV never went down the path of getting a permanent one. This likely explains the earlier "refresh token revoked" scare (06-05/06-19) — Google OAuth apps left in "Testing" publishing status have refresh tokens that expire for external test users, which would produce exactly that symptom even though a same-day `--check` looked fine. Not yet investigated further — need to check the OAuth consent screen's publishing status in Google Cloud Console before flipping `youtube` off `SKIPPED_PLATFORMS`.
+
+**Decided / concluded:**
+- TikTok naming bug: fixed, committed, pushed.
+- TikTok Direct Post: real build, gated on Big D's branding decision (unbranded render vs. accept watermark risk) before any UI/demo work starts.
+- YouTube: do not flip on yet — trial-key status needs resolving first (likely a Google OAuth verification/publishing step, not just a re-auth).
+
+**Files / artifacts touched:**
+- `scripts/watch-drive.js` (preview/full-site, commit `b2c28cc7`)
+
+**Open / follow-up:**
+- Big D to decide: TikTok unbranded render vs. accept watermark risk.
+- Investigate YouTube OAuth app's publishing status (Testing vs. Published/verified) — determine what a permanent key actually requires (verification review for the upload scope is likely, which has its own timeline).
+- TikTok Direct Post UI build queued behind the branding decision.
+
+## 2026-08-26 (cont.) — Built the unbranded TikTok render (watermark decision resolved, code shipped)
+
+**What happened:**
+- Big D decided: not accepting the TikTok branded-content watermark risk. Confirmed separately that covering Veo's own visible watermark (distinct from the BSV logo) doesn't conflict with Google's Gemini API Terms of Service — no clause found prohibiting it, Google itself made the visible mark optional/removable for consumer surfaces on 8/14/26 while keeping invisible SynthID/C2PA metadata regardless, and `brand-video.js` has already been doing this for every platform since it was built, not a new practice. Also confirmed the Veo API used by `video-gen.js` has no parameter to disable the watermark at generation time (Google's own Veo API docs: "this watermarking appears mandatory and non-configurable through the API") — so the ffmpeg blackout box stays necessary regardless.
+- Also resolved via TikTok's own developer docs: the actual AI-disclosure mechanism for Direct Post is the `post_info.is_aigc` boolean field (auto-labels the post "Creator labeled as AI-generated"), not anything about the visible watermark. Added to the running Direct Post build scope — set `is_aigc: true` on every post once that endpoint is built, since all our video is Veo-generated.
+- Built the unbranded render: `scripts/brand-video.js` takes a new `--unbranded` flag — skips the steel border + "BSV" drawtext, keeps the black box over Veo's watermark corner (that's not BSV branding).
+- `scripts/watch-drive.js`'s video branch now runs `brand-video.js` twice per slot: the existing branded `-youtube.mp4` into `posts/output/` (used by Bluesky/Instagram/YouTube), plus a new unbranded `-tiktok.mp4` into a new `posts/tiktok-ready/` directory (gitignored). Needed its own directory because TikTok posting is manual/async and can lag days — `posts/output/` gets wiped by `clearOutputDir()` on every image slot run, which would have destroyed the TikTok copy before Big D ever got to post it.
+- Updated `/dashboard/tiktok`'s page and API route to list/post from `posts/tiktok-ready/<slot>-tiktok.mp4` instead of the old `posts/output/<slot>-youtube.mp4` expectation (the naming-mismatch bug fixed separately this session, commit `b2c28cc7`). The route now also deletes the file from `tiktok-ready/` after a successful send to TikTok's inbox, so it doesn't accumulate.
+- `node --check` on both scripts, `npx tsc --noEmit -p tsconfig.json` on the whole project — both clean. Committed `b2abb106`, pushed to `preview/full-site`.
+- Still using the draft/inbox endpoint for now (unchanged) — this is prep work that both the current manual flow and the future Direct Post flow need; it doesn't require the audit to be useful today.
+
+**Decided / concluded:**
+- TikTok watermark decision: unbranded render, ship it — done.
+- Veo watermark blackout: stays, confirmed not a ToS or disclosure problem.
+- `is_aigc: true` added to the Direct Post build scope (not yet built).
+
+**Files / artifacts touched:**
+- `scripts/brand-video.js`, `scripts/watch-drive.js`, `.gitignore`, `app/api/dashboard/tiktok/post/route.ts`, `app/dashboard/(protected)/tiktok/page.tsx` (preview/full-site, commit `b2abb106`)
+
+**Open / follow-up:**
+- Direct Post UI/API build (title, privacy, comment/duet/stitch, music-usage confirmation, commercial-content-disclosure toggle, `is_aigc: true`, preview, post-status polling, new `video.publish` OAuth scope, new endpoint call) — still not started, next up if Big D wants to keep going.
+- Once a real video runs through the pipeline, verify `posts/tiktok-ready/<slot>-tiktok.mp4` actually appears and looks right (unverified against a real generated video this pass — code review + syntax/type checks only).
+- YouTube trial-key investigation (Google Cloud Console publishing status) still open, separate thread.
