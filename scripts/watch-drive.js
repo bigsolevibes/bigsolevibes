@@ -409,7 +409,7 @@ function processMedia(base, mediaFile, localPath) {
     log(`  running resize-post.js`)
     runCaptured('resize', `node "${path.join(__dirname, 'resize-post.js')}" "${localPath}"`)
   } else {
-    const outFile = path.join(OUTPUT_DIR, `${base}-branded.mp4`)
+    const outFile = path.join(OUTPUT_DIR, `${base}-youtube.mp4`)
     log(`  running brand-video.js → ${path.basename(outFile)}`)
     runCaptured('brand-video', `node "${path.join(__dirname, 'brand-video.js')}" --video "${localPath}" --output "${outFile}"`)
   }
