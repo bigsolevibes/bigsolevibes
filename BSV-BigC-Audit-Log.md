@@ -1514,3 +1514,28 @@ Big D: "i approved one and denied ther other aesop." Ran `run_sync_shop` to conf
 - Direct Post UI/API build (title, privacy, comment/duet/stitch, music-usage confirmation, commercial-content-disclosure toggle, `is_aigc: true`, preview, post-status polling, new `video.publish` OAuth scope, new endpoint call) — still not started, next up if Big D wants to keep going.
 - Once a real video runs through the pipeline, verify `posts/tiktok-ready/<slot>-tiktok.mp4` actually appears and looks right (unverified against a real generated video this pass — code review + syntax/type checks only).
 - YouTube trial-key investigation (Google Cloud Console publishing status) still open, separate thread.
+
+## 2026-08-26 (cont.) — Built the TikTok Direct Post flow
+
+**What happened:**
+- Big D confirmed the unbranded render fix wasn't blocking — could build ahead and fix issues as found. Went straight into the full Direct Post build scoped earlier today.
+- `scripts/tiktok-auth.js`: default OAuth scope now requests `video.publish` alongside the existing `user.info.basic,video.upload` — next re-auth picks up Direct Post access, doesn't touch the working draft/inbox flow.
+- New `scripts/tiktok-direct-post.js`: `queryCreatorInfo()` (privacy options, comment/duet/stitch disabled state, max duration), `initDirectPost()` (validates privacy_level is set, rejects `brand_content_toggle` paired with `SELF_ONLY` client-side before calling TikTok), `uploadVideo()` (same PUT mechanic as `tiktok-post.js`), `checkPublishStatus()`/`pollUntilTerminal()`. CLI modes: `--video`/`--creator-info`/`--status`, `--json` for machine consumption. Always sets `is_aigc: true` — every video this pipeline makes is Veo-generated, so this isn't a judgment call per post.
+- Caught and fixed one real bug before it shipped: initial draft fetched the access token before validating `--video` existed, so a bad path produced a confusing "fetch failed" instead of a clear error (and wasted a token refresh). Reordered to validate local args first, matching `tiktok-post.js`'s existing pattern. Confirmed via a deliberate bad-path test.
+- Three new session-gated dashboard API routes: `creator-info` (GET, shells to the script), `preview` (GET, streams the local `posts/tiktok-ready/<slot>-tiktok.mp4` directly — no Drive round-trip needed since the file's already local), `direct-post` (POST to submit — validates slot/privacy/title/music-rights server-side too, not just client-side, deletes the local file after a successful upload; GET to poll status by `publish_id`).
+- Rebuilt `/dashboard/tiktok`'s page: each video gets a "Direct Post…" button opening an inline form — video preview, title (2200-char counter), privacy dropdown sourced from `creator_info` with no default selected, comment/duet/stitch toggles (locked+checked if already off account-wide), Your Brand / Branded Content toggles with the SELF_ONLY+branded-content conflict surfaced inline, a required music-rights confirmation checkbox, and a note that AI-disclosure is automatic (`is_aigc`) rather than a toggle. Kept the original "Send to Drafts" button alongside it as a fallback path.
+- `node --check` on both scripts, `npx tsc --noEmit -p tsconfig.json` on the whole project — clean both times, including after the page.tsx rewrite and after adding the three new routes. Confirmed `app/dashboard/`/`app/api/dashboard/` are gitignored by design (per [[feedback_bsv_dashboard_gitignored]]) — only the two script files needed a git commit. Committed `df6a7711`, pushed to `preview/full-site`.
+
+**Decided / concluded:**
+- Direct Post build: code-complete for a first pass. Not yet tested against TikTok's actual API (no live token with the new `video.publish` scope yet — Big D needs to re-run `node scripts/tiktok-auth.js` to pick it up).
+- This is usable today in TikTok's unaudited-client sandbox mode (private/SELF_ONLY only, 5 users/24h) — good enough to actually test the flow and record the demo TikTok's audit requires, without waiting on the audit itself.
+
+**Files / artifacts touched:**
+- `scripts/tiktok-auth.js`, `scripts/tiktok-direct-post.js` (preview/full-site, commit `df6a7711`)
+- `app/dashboard/(protected)/tiktok/page.tsx`, `app/api/dashboard/tiktok/creator-info/route.ts`, `app/api/dashboard/tiktok/preview/route.ts`, `app/api/dashboard/tiktok/direct-post/route.ts` — gitignored, saved to disk directly
+
+**Open / follow-up:**
+- Big D needs to re-run `node scripts/tiktok-auth.js` to get a token with the `video.publish` scope before Direct Post will work at all.
+- Untested against the real API — first real click-through on the dashboard is the actual test.
+- Once that works: record the 1-5 demo videos TikTok's audit submission needs, then actually submit.
+- YouTube trial-key investigation still open, separate thread.
