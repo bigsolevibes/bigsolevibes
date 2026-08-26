@@ -39,9 +39,14 @@ function getArg(flag) {
 const codeArg      = getArg('--code')
 const isRefresh     = args.includes('--refresh')
 const redirectUri    = getArg('--redirect-uri') || 'https://bigsolevibes.com/api/auth/tiktok/callback'
-// video.upload is enough for the draft/inbox posting flow (tiktok-post.js).
-// video.publish (Direct Post) needs app audit approval — not used here.
-const scope          = getArg('--scope') || 'user.info.basic,video.upload'
+// video.upload covers the draft/inbox posting flow (tiktok-post.js).
+// video.publish covers Direct Post (tiktok-direct-post.js) — usable in
+// TikTok's unaudited-client sandbox mode today (private-only, SELF_ONLY,
+// 5 users/24h cap) for testing/demo-recording purposes; full public
+// publishing needs the app to clear TikTok's Direct Post audit first. Both
+// scopes requested together so re-running this doesn't disturb the existing
+// draft/inbox flow.
+const scope          = getArg('--scope') || 'user.info.basic,video.upload,video.publish'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
