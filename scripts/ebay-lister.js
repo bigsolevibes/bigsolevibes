@@ -37,8 +37,15 @@ const DRAFT_MODEL  = 'claude-sonnet-4-6' // judgment task (condition assessment,
                                           // as creative-agent/product-research,
                                           // not eng-bot/QA-check Haiku tier.
 const MAX_IMAGES_PER_ITEM = 6
+const MAX_IMAGE_DIMENSION = 1568 // px, long edge — matches Claude's own internal vision resize target
+const JPEG_QUALITY        = 80   // sips formatOptions percentage — plenty for condition assessment, keeps request size well under the API cap
 
 const IMAGE_EXTENSIONS = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' }
+// iPhone camera photos are HEIC/HEIF by default — Big D's actual workflow
+// (photographing thrift finds on his phone) — and Claude's vision API only
+// accepts jpeg/png/gif/webp. Recognized as image files here, then converted
+// to jpeg via macOS's built-in `sips` (no extra install) before sending.
+const HEIC_EXTENSIONS = ['.heic', '.heif']
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
@@ -130,7 +137,10 @@ async function processItem(anthropicKey, sheetCtx, itemName) {
   const localDir        = path.join(TEMP_DIR, itemName)
 
   const files = listRemoteFiles(remoteItemPath)
-  const imageFiles = files.filter(f => IMAGE_EXTENSIONS[path.extname(f).toLowerCase()])
+  const imageFiles = files.filter(f => {
+    const ext = path.extname(f).toLowerCase()
+    return IMAGE_EXTENSIONS[ext] || HEIC_EXTENSIONS.includes(ext)
+  })
   const hasNotes    = files.includes('notes.txt')
 
   if (!imageFiles.length) {
@@ -146,10 +156,35 @@ async function processItem(anthropicKey, sheetCtx, itemName) {
     log(`  NOTE: ${imageFiles.length} images found, only sending first ${MAX_IMAGES_PER_ITEM} to control cost`)
   }
 
-  const images = imagesToSend.map(f => {
-    const buffer = fs.readFileSync(path.join(localDir, f))
-    return { mimeType: IMAGE_EXTENSIONS[path.extname(f).toLowerCase()], base64: buffer.toString('base64') }
-  })
+  // Every image gets normalized through sips: resized to MAX_IMAGE_DIMENSION
+  // and re-encoded as jpeg. Two reasons this runs on ALL images, not just
+  // HEIC: (1) Claude's vision API downsamples internally past ~1568px on the
+  // long edge anyway, so sending full-res iPhone originals (often 3000px+)
+  // wastes request size for zero quality gain, and full-res HEIC->JPEG
+  // conversion alone (no resize) is what hit a 413 request_too_large on the
+  // first real test — 6 photos, converted 1:1, was too large; (2) it gives
+  // one code path instead of format-specific branches.
+  const images = []
+  for (const f of imagesToSend) {
+    const ext        = path.extname(f).toLowerCase()
+    const sourcePath = path.join(localDir, f)
+    const jpegPath    = sourcePath.replace(new RegExp(`${ext}$`, 'i'), '.normalized.jpg')
+
+    try {
+      execSync(`sips -Z ${MAX_IMAGE_DIMENSION} -s format jpeg -s formatOptions ${JPEG_QUALITY} "${sourcePath}" --out "${jpegPath}"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (err) {
+      log(`  WARNING: sips normalization failed for ${f}, skipping this image: ${err.stderr?.toString().trim() || err.message}`)
+      continue
+    }
+
+    const buffer = fs.readFileSync(jpegPath)
+    images.push({ mimeType: 'image/jpeg', base64: buffer.toString('base64') })
+  }
+
+  if (!images.length) {
+    log(`SKIP ${itemName}: all images failed to load/convert — left in Inbox for review`)
+    return { error: true }
+  }
 
   const notesText = hasNotes ? fs.readFileSync(path.join(localDir, 'notes.txt'), 'utf8').trim() : ''
 
