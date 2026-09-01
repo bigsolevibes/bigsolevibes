@@ -35,6 +35,7 @@ logs/
 config/youtube-credentials.json
 config/youtube-token.json
 config/tiktok-token.json
+config/ebay-token.json
 config/.youtube-new-credentials.txt
 gen-lang-client*.json
 
