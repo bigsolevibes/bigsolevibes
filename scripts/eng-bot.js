@@ -109,6 +109,15 @@ function normalizeMessage(msg) {
     .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, '<ts>')       // embedded ISO timestamps
     .replace(/\[hash=[a-f0-9]+\]/g, '')                    // [hash=...] annotations
     .replace(/\/(?:Users|home|tmp|opt|var|usr)\/[^\s"'`\],]*/g, '<path>') // absolute paths
+    // health-check "stale — Nh since last activity" lines carry a rising hour
+    // count that changes on every ~5min poll, so a permanently-stale agent
+    // (reddit-agent, edition-agent, newsletter-agent...) hashed as a brand-new
+    // failure every cycle and defeated dedup entirely — eng-bot was calling
+    // Claude to re-diagnose the same unchanged staleness ~50-70x/day. Collapse
+    // the count to a placeholder so the same agent+condition hashes the same
+    // across polls; only a real state change (or crossing a fresh alert) will
+    // still look new. Fixed 2026-09-01 after a live credit-burn investigation.
+    .replace(/\b\d+\s*(h|hr|hrs|d|days?|m|min|mins)\b(?=\s+since last activity)/gi, '<N>$1')
     .replace(/^[a-z][a-z0-9-]*:\s+/, '')                   // leading slug prefix (e.g. "mon-am: ")
     .replace(/\s+/g, ' ')
     .trim()
