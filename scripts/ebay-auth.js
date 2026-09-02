@@ -44,6 +44,12 @@ const REDIRECT_URI = process.env.EBAY_RUNAME || '' // the RuName value from the 
 const SCOPES = [
   'https://api.ebay.com/oauth/api_scope',
   'https://api.ebay.com/oauth/api_scope/sell.inventory',
+  // Account API (opt-in, fulfillment/payment/return policies, inventory
+  // location) needs this separate scope — added 2026-09-02 when
+  // ebay-account-setup.js hit 403 Insufficient permissions with only
+  // sell.inventory granted. Re-run the authorize flow after this change;
+  // the old token doesn't cover the new scope.
+  'https://api.ebay.com/oauth/api_scope/sell.account',
 ].join(' ')
 
 const ENDPOINTS = {
@@ -227,9 +233,16 @@ async function main() {
   console.log(`\nAfter granting access you'll land on the eBay callback page with the exact command to run next.`)
 }
 
-main().catch(err => {
-  console.error(`FATAL: ${err.message}`)
-  process.exit(1)
-})
+// Only run the CLI entry point when this file is executed directly — other
+// scripts (ebay-account-setup.js, ebay-list-publish.js) require() this file
+// just for getValidAccessToken() and shouldn't trigger main()'s "open this
+// URL" printout as a side effect of requiring it. Bug found + fixed
+// 2026-09-02 while building ebay-account-setup.js.
+if (require.main === module) {
+  main().catch(err => {
+    console.error(`FATAL: ${err.message}`)
+    process.exit(1)
+  })
+}
 
 module.exports = { getValidAccessToken }

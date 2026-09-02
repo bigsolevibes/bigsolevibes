@@ -149,4 +149,35 @@ async function appendListing({ sheets, spreadsheetId }, listing) {
   })
 }
 
-module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendListing }
+// Updates specific columns of one existing row (1-indexed among data rows,
+// i.e. rowIndex 0 is the first row under the header — same indexing
+// readAllRows()'s returned array uses). Only touches the columns present in
+// `fields` (by header name), leaves everything else in that row alone.
+// Added 2026-09-02 for ebay-list-publish.js to write back Status/eBay
+// Listing URL after a successful publish, without needing to know column
+// letters (looks them up from the live header row, same safety contract as
+// appendListing/ensureHeaders).
+async function updateRowFields({ sheets, spreadsheetId }, rowIndex, fields) {
+  const headerRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Sheet1!A1:Z1',
+  })
+  const headers = (headerRes.data.values || [])[0] || []
+  const sheetRow = rowIndex + 2 // +1 for header row, +1 for 1-indexing
+
+  const data = Object.entries(fields).map(([headerName, value]) => {
+    const colIndex = headers.indexOf(headerName)
+    if (colIndex === -1) throw new Error(`updateRowFields: unknown column "${headerName}" — not in sheet header row`)
+    return {
+      range: `Sheet1!${colLetter(colIndex + 1)}${sheetRow}`,
+      values: [[value]],
+    }
+  })
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'RAW', data },
+  })
+}
+
+module.exports = { HEADERS, connect, ensureHeaders, readAllRows, appendListing, updateRowFields }
