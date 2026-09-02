@@ -85,6 +85,90 @@ function mapCondition(text) {
   return 'USED_GOOD'
 }
 
+// Regex rules for matching our free-text condition notes against the
+// conditionDescription strings eBay returns from get_item_condition_policies
+// (used for "structured" categories like clothing & shoes below).
+const CONDITION_DESCRIPTION_MAP = [
+  [/new with (tags|box)/i, /new with (box|tags)/i],
+  [/new without box/i, /new without box/i],
+  [/new with defects/i, /new with defects/i],
+  [/like new|excellent/i, /excellent/i],
+  [/very good/i, /very good/i],
+  [/good/i, /good/i],
+  [/acceptable|fair|heavily worn/i, /fair|acceptable/i],
+]
+
+// Some eBay categories — clothing & shoes chief among them — define their
+// own numeric conditionId scale via get_item_condition_policies, and
+// publishOffer validates against THAT scale, not the generic one implied
+// by ConditionEnum names — discovered live: "USED_GOOD" (which eBay
+// internally resolves to id 5000) got rejected by category 15709 (Athletic
+// Shoes), which only accepts {1000,1500,1750,2990,3000,3010}. The
+// category's own label for id 3000 is "Pre-owned - Good", but the
+// ConditionEnum token that actually maps to id 3000 is (confusingly)
+// "USED_EXCELLENT" — verified live, one enum value at a time, against the
+// Sandbox API. This table is that empirically-confirmed id->enum mapping;
+// IDs not in it (e.g. 1000/1500, the "brand new" tier) haven't been
+// verified — a category needing one of those falls back to mapCondition()
+// with a loud warning rather than guessing.
+const CONDITION_ID_TO_ENUM = {
+  '1750': 'NEW_WITH_DEFECTS',
+  '2000': 'CERTIFIED_REFURBISHED',
+  '2500': 'SELLER_REFURBISHED',
+  '2750': 'LIKE_NEW',
+  '2990': 'PRE_OWNED_EXCELLENT',
+  '3000': 'USED_EXCELLENT', // category desc "Pre-owned - Good" for Athletic Shoes — id match confirmed, enum name is just misleading
+  '3010': 'PRE_OWNED_FAIR',
+  '4000': 'USED_VERY_GOOD',
+  '5000': 'USED_GOOD',
+  '6000': 'USED_ACCEPTABLE',
+}
+
+async function resolveCondition(token, categoryId, text) {
+  const res = await ebayFetch(token, 'GET', `/sell/metadata/v1/marketplace/${MARKETPLACE_ID}/get_item_condition_policies?filter=categoryIds:{${categoryId}}`)
+  const conditions = res.ok ? res.data?.itemConditionPolicies?.[0]?.itemConditions : null
+
+  if (conditions && conditions.length) {
+    for (const [textRe, descRe] of CONDITION_DESCRIPTION_MAP) {
+      if (!textRe.test(text)) continue
+      const match = conditions.find(c => descRe.test(c.conditionDescription))
+      if (match) {
+        const enumValue = CONDITION_ID_TO_ENUM[match.conditionId]
+        if (enumValue) {
+          log(`  Condition: "${text}" -> ${enumValue} (id ${match.conditionId}: "${match.conditionDescription}") [category-specific]`)
+          return enumValue
+        }
+        log(`  WARNING: category ${categoryId} wants condition id ${match.conditionId} ("${match.conditionDescription}") but no verified ConditionEnum maps to it — falling back`)
+        break
+      }
+    }
+  }
+
+  return mapCondition(text)
+}
+
+// Department is a SELECTION_ONLY aspect for shoe categories — eBay's
+// Sandbox category 15709 only offers "Men", "Teens", "Unisex Adults" (no
+// plain "Women" in that category's list, at least in Sandbox). Check
+// "women" before "men" since "women" contains "men" as a substring.
+function deriveDepartment(sizeText) {
+  if (!sizeText) return null
+  if (/women/i.test(sizeText)) return 'Unisex Adults' // no distinct Women option in this category's list — safest is Unisex Adults over guessing wrong
+  if (/\bmen\b/i.test(sizeText)) return 'Men'
+  if (/\b(boy|girl|kid|youth|teen)s?\b/i.test(sizeText)) return 'Teens'
+  if (/unisex/i.test(sizeText)) return 'Unisex Adults'
+  return null
+}
+
+// Pulls the numeric shoe size out of free text like "US Men's 11" or
+// "Women's 8.5" -> "11" / "8.5", matching the plain-number aspect values
+// eBay's Taxonomy API returns for "US Shoe Size" (e.g. "9.5", "11").
+function deriveShoeSize(sizeText) {
+  if (!sizeText) return null
+  const m = sizeText.match(/(\d+(?:\.\d+)?)/)
+  return m ? m[1] : null
+}
+
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -136,6 +220,10 @@ async function uploadToR2(localFilePath, fileName) {
 
 async function preparePhotoUrls(row, sku) {
   const localDir = path.join(TEMP_DIR, sku)
+  // Always start from a clean dir — otherwise a re-run finds last run's
+  // normalized-*.jpg outputs still sitting next to the source photos and
+  // re-uploads each photo twice (bug found during the first live test).
+  fs.rmSync(localDir, { recursive: true, force: true })
   fs.mkdirSync(localDir, { recursive: true })
 
   log(`  Downloading photos from ${row['Drive Folder']}...`)
@@ -188,15 +276,27 @@ async function publishRow(token, row, rowIndex) {
   }
 
   const imageUrls = await preparePhotoUrls(row, sku)
-  const categoryId = await resolveCategoryId(token, row['Category'] || row['eBay Title'])
-  const condition = mapCondition(row['Item Condition'])
+  const categoryId = await resolveCategoryId(token, row['eBay Title'] || row['Category'])
+  const condition = await resolveCondition(token, categoryId, row['Item Condition'])
   const price = parseFloat(row['Suggested Price'])
   if (!price || Number.isNaN(price)) throw new Error(`Invalid Suggested Price: "${row['Suggested Price']}"`)
 
   const aspects = {}
   if (row['Brand']) aspects.Brand = [row['Brand']]
-  if (row['Size'])  aspects.Size  = [row['Size']]
   if (row['Color']) aspects.Color = [row['Color']]
+  // Clothing/shoe categories (e.g. 15709 Athletic Shoes) require the
+  // "Department" and "US Shoe Size" item specifics — discovered live via
+  // publishOffer's "item specific Department is missing" error. Our sheet's
+  // free-text "Size" column (e.g. "US Men's 11") isn't itself a valid
+  // aspect for these categories, so parse it into the two eBay actually
+  // wants instead of sending it as-is.
+  const department = deriveDepartment(row['Size'])
+  if (department) aspects.Department = [department]
+  const shoeSize = deriveShoeSize(row['Size'])
+  if (shoeSize) aspects['US Shoe Size'] = [shoeSize]
+  if (!department || !shoeSize) {
+    log(`  WARNING: couldn't fully parse Department/US Shoe Size from Size="${row['Size']}" (got department=${department}, shoeSize=${shoeSize}) — listing may fail item-specifics validation`)
+  }
 
   const inventoryItem = {
     condition,
@@ -241,9 +341,20 @@ async function publishRow(token, row, rowIndex) {
   let offerId
   if (!dryRun) {
     const offerRes = await ebayFetch(token, 'POST', '/sell/inventory/v1/offer', offer)
-    if (!offerRes.ok) throw new Error(`createOffer failed: HTTP ${offerRes.status} ${JSON.stringify(offerRes.data)}`)
-    offerId = offerRes.data.offerId
-    log(`  Offer created: ${offerId}`)
+    if (offerRes.ok) {
+      offerId = offerRes.data.offerId
+      log(`  Offer created: ${offerId}`)
+    } else if (offerRes.data?.errors?.[0]?.errorId === 25002) {
+      // "Offer entity already exists" — a prior run for this SKU got this
+      // far and failed later (e.g. our own publishOffer condition/aspect
+      // bugs, fixed live this session). Reuse that existing offer instead
+      // of treating a retry as a hard failure.
+      offerId = offerRes.data.errors[0].parameters?.find(p => p.name === 'offerId')?.value
+      if (!offerId) throw new Error(`createOffer failed: HTTP ${offerRes.status} ${JSON.stringify(offerRes.data)}`)
+      log(`  Offer already existed, reusing: ${offerId}`)
+    } else {
+      throw new Error(`createOffer failed: HTTP ${offerRes.status} ${JSON.stringify(offerRes.data)}`)
+    }
   } else {
     log(`  [dry-run] would POST /sell/inventory/v1/offer: ${JSON.stringify(offer).slice(0, 300)}...`)
     return { dryRun: true }
