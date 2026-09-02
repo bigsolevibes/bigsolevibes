@@ -38,6 +38,14 @@ const DRAFT_MODEL  = 'claude-sonnet-4-6' // judgment task (condition assessment,
                                           // not eng-bot/QA-check Haiku tier.
 const MAX_IMAGES_PER_ITEM = 6
 const MAX_IMAGE_DIMENSION = 1568 // px, long edge — matches Claude's own internal vision resize target
+
+// BSV's actual shipping/returns policy (Big D, 2026-09-02) — the real eBay
+// business policy set up in ebay-account-setup.js. Fed to the draft prompt
+// verbatim so the generated description can't drift from it; a wrong first
+// draft ("All sales final") shipped on the very first live listing before
+// this existed. Update BOTH here and the eBay business policy if this ever
+// changes — see [[project_bsv_ebay_lister]] in project memory.
+const RETURN_POLICY_TEXT = 'Free shipping (cost is built into the price — never call out a separate shipping charge). Returns accepted within 30 days of delivery; buyer pays return shipping.'
 const JPEG_QUALITY        = 80   // sips formatOptions percentage — plenty for condition assessment, keeps request size well under the API cap
 
 const IMAGE_EXTENSIONS = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' }
@@ -107,6 +115,8 @@ ${notesText ? `Seller's own notes (source store, cost, anything they flagged abo
 Look closely at the photos for: brand and model (read any visible labels/tags), size (if a tag is visible), color/colorway, and condition — genuinely inspect for wear: sole wear, creasing, scuffs, discoloration, missing laces/insoles, box/original packaging presence. Be honest about condition; overstating it causes returns and bad feedback. Use eBay's standard condition vocabulary (e.g. "Pre-owned - Good", "Pre-owned - Fair", "New with box", "New without box").
 
 Suggest a starting price in USD based on what you can see of the item's condition and apparent market tier — note in price_reasoning that this is a rough estimate and Big D should sanity-check it against actual recent eBay sold listings before posting, since you don't have live market data.
+
+BSV's actual shipping/returns policy, which the description's closing note must reflect accurately (in your own words, but never contradicting these terms — do not write "all sales final," "no returns," or invent different shipping/return terms): ${RETURN_POLICY_TEXT}
 
 Respond with ONLY a single JSON object — no markdown fences, no commentary before or after — with exactly these keys:
 {
