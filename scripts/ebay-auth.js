@@ -35,7 +35,7 @@ const path = require('path')
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TOKEN_FILE = path.join(__dirname, '..', 'config', 'ebay-token.json')
-const REDIRECT_URI = process.env.EBAY_RUNAME || '' // the RuName value from the Developer Portal, not a URL
+const REDIRECT_URI = process.env[`EBAY_${env.toUpperCase()}_RUNAME`] || '' // the RuName value from the Developer Portal, not a URL — env-prefixed since sandbox/prod RuNames are different values tied to different keysets
 
 // Base scope is always required; sell.inventory covers the listing-creation
 // calls ebay-lister.js's phase 2 needs (createOrReplaceInventoryItem,
@@ -206,7 +206,7 @@ async function main() {
 
   if (codeArg) {
     if (!REDIRECT_URI) {
-      console.error('✗ EBAY_RUNAME not set in .env — this must exactly match the RuName from the Developer Portal (not a URL, the RuName identifier itself)')
+      console.error(`✗ EBAY_${env.toUpperCase()}_RUNAME not set in .env — this must exactly match the RuName from the Developer Portal (not a URL, the RuName identifier itself)`)
       process.exit(1)
     }
     const data = await exchangeCode(codeArg)
@@ -218,7 +218,7 @@ async function main() {
 
   // No args — print the authorize URL to visit.
   if (!REDIRECT_URI) {
-    console.error('✗ EBAY_RUNAME not set in .env yet — create the RuName in the Developer Portal first (Application Keys -> User Tokens), then add EBAY_RUNAME=<the RuName value> to .env before running this.')
+    console.error(`✗ EBAY_${env.toUpperCase()}_RUNAME not set in .env yet — create the RuName in the Developer Portal first (Application Keys -> User Tokens), then add EBAY_${env.toUpperCase()}_RUNAME=<the RuName value> to .env before running this.`)
     process.exit(1)
   }
 

@@ -53,9 +53,14 @@ const MARKETPLACE_ID = 'EBAY_US'
 // comment. Re-run ebay-account-setup.js and update these if it's ever torn
 // down and recreated (the IDs are not stable across a delete/recreate).
 const LOCATION_KEY        = 'bsv-resale-main'
-const FULFILLMENT_POLICY_ID = process.env.EBAY_FULFILLMENT_POLICY_ID
-const PAYMENT_POLICY_ID     = process.env.EBAY_PAYMENT_POLICY_ID
-const RETURN_POLICY_ID      = process.env.EBAY_RETURN_POLICY_ID
+// Env-prefixed, same convention as ebay-auth.js's APP_ID/CERT_ID/DEV_ID —
+// sandbox and prod are different eBay accounts with different policy IDs;
+// a single shared var name would silently collide the moment prod policies
+// get created (caught before it happened, while wiring up prod planning).
+const ENV_PREFIX = env.toUpperCase()
+const FULFILLMENT_POLICY_ID = process.env[`EBAY_${ENV_PREFIX}_FULFILLMENT_POLICY_ID`]
+const PAYMENT_POLICY_ID     = process.env[`EBAY_${ENV_PREFIX}_PAYMENT_POLICY_ID`]
+const RETURN_POLICY_ID      = process.env[`EBAY_${ENV_PREFIX}_RETURN_POLICY_ID`]
 
 // eBay's ConditionEnum for used items. ebay-lister.js writes free-text like
 // "Pre-owned - Good" to the sheet; map the common phrases it actually
@@ -272,7 +277,7 @@ async function publishRow(token, row, rowIndex) {
   log(`\n--- Publishing row ${rowIndex}: "${row['Item']}" (sku: ${sku}) ---`)
 
   if (!FULFILLMENT_POLICY_ID || !PAYMENT_POLICY_ID || !RETURN_POLICY_ID) {
-    throw new Error('Missing EBAY_FULFILLMENT_POLICY_ID / EBAY_PAYMENT_POLICY_ID / EBAY_RETURN_POLICY_ID — run scripts/ebay-account-setup.js and add its output to .env first')
+    throw new Error(`Missing EBAY_${ENV_PREFIX}_FULFILLMENT_POLICY_ID / EBAY_${ENV_PREFIX}_PAYMENT_POLICY_ID / EBAY_${ENV_PREFIX}_RETURN_POLICY_ID — run scripts/ebay-account-setup.js --env ${env} and add its output to .env first`)
   }
 
   const imageUrls = await preparePhotoUrls(row, sku)

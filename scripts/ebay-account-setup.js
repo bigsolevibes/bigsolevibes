@@ -174,8 +174,12 @@ async function main() {
   const paymentPolicyId = await ensurePaymentPolicy(token)
   const returnPolicyId = await ensureReturnPolicy(token)
 
-  console.log('\n✓ Setup complete. Save these for ebay-list-publish.js:')
-  console.log(JSON.stringify({ locationKey, fulfillmentPolicyId, paymentPolicyId, returnPolicyId }, null, 2))
+  const p = env.toUpperCase()
+  console.log(`\n✓ Setup complete. Add these to .env for ebay-list-publish.js (env-prefixed so ${env} never collides with the other environment's values):`)
+  console.log(`EBAY_${p}_FULFILLMENT_POLICY_ID=${fulfillmentPolicyId}`)
+  console.log(`EBAY_${p}_PAYMENT_POLICY_ID=${paymentPolicyId}`)
+  console.log(`EBAY_${p}_RETURN_POLICY_ID=${returnPolicyId}`)
+  console.log(`(merchant location key is fixed: ${locationKey})`)
 }
 
 main().catch(err => {
