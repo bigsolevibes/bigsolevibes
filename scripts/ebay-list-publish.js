@@ -290,7 +290,14 @@ async function publishRow(token, row, rowIndex) {
   // free-text "Size" column (e.g. "US Men's 11") isn't itself a valid
   // aspect for these categories, so parse it into the two eBay actually
   // wants instead of sending it as-is.
-  const department = deriveDepartment(row['Size'])
+  // Size alone doesn't reliably carry a gender qualifier (e.g. just '9'
+  // for the New Balance row, vs. 'US Men's 11' for the Nike one -- caught
+  // live when this exact gap made publishOffer fail with 'item specific
+  // Department is missing'). eBay Title reliably does ('...Men's Size 9...')
+  // since ebay-lister.js's prompt asks for it there. Shoe SIZE stays
+  // Size-field-only though -- a title can contain other numbers first
+  // (e.g. 'Metcon 9' is the model number, not the shoe size) and would misparse.
+  const department = deriveDepartment(`${row['Size']} ${row['eBay Title']}`)
   if (department) aspects.Department = [department]
   const shoeSize = deriveShoeSize(row['Size'])
   if (shoeSize) aspects['US Shoe Size'] = [shoeSize]
