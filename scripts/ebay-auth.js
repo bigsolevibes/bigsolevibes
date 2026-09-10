@@ -35,7 +35,11 @@ const path = require('path')
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TOKEN_FILE = path.join(__dirname, '..', 'config', 'ebay-token.json')
-const REDIRECT_URI = process.env[`EBAY_${env.toUpperCase()}_RUNAME`] || '' // the RuName value from the Developer Portal, not a URL — env-prefixed since sandbox/prod RuNames are different values tied to different keysets
+// REDIRECT_URI moved below env's declaration (~line 77) — it depends on env,
+// which didn't exist yet at this point in the file (ReferenceError: Cannot
+// access 'env' before initialization). Introduced by the env-prefixing
+// commit that made this RuName env-specific; broke `node ebay-auth.js` for
+// both sandbox and prod until fixed 2026-09-10.
 
 // Base scope is always required; sell.inventory covers the listing-creation
 // calls ebay-lister.js's phase 2 needs (createOrReplaceInventoryItem,
@@ -88,6 +92,8 @@ if (!APP_ID || !CERT_ID) {
   console.error(`✗ Missing EBAY_${env.toUpperCase()}_APP_ID / EBAY_${env.toUpperCase()}_CERT_ID in .env`)
   process.exit(1)
 }
+
+const REDIRECT_URI = process.env[`EBAY_${env.toUpperCase()}_RUNAME`] || '' // the RuName value from the Developer Portal, not a URL — env-prefixed since sandbox/prod RuNames are different values tied to different keysets
 
 // ─── Token file I/O — { sandbox: {...}, prod: {...} } ───────────────────────
 
