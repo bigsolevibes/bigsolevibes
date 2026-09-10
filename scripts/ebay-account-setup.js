@@ -47,6 +47,21 @@ const SANDBOX_PLACEHOLDER_ADDRESS = {
   country: 'US',
 }
 
+// Real ship-from address, added 2026-09-10 when wiring up prod — Big D confirmed
+// this directly in chat. Sandbox keeps the placeholder above (sandbox never
+// ships anything real); prod uses this so shipping cost/label calculations
+// are accurate on real sold items.
+const PROD_SHIP_FROM_ADDRESS = {
+  addressLine1: '914 W Grace St',
+  addressLine2: '#2',
+  city: 'Chicago',
+  stateOrProvince: 'IL',
+  postalCode: '60613',
+  country: 'US',
+}
+
+const MERCHANT_ADDRESS = env === 'prod' ? PROD_SHIP_FROM_ADDRESS : SANDBOX_PLACEHOLDER_ADDRESS
+
 function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`) }
 
 async function ebayFetch(token, method, path, body) {
@@ -87,7 +102,7 @@ async function ensureLocation(token) {
     return MERCHANT_LOCATION_KEY
   }
   const res = await ebayFetch(token, 'POST', `/sell/inventory/v1/location/${MERCHANT_LOCATION_KEY}`, {
-    location: { address: SANDBOX_PLACEHOLDER_ADDRESS },
+    location: { address: MERCHANT_ADDRESS },
     name: 'BSV Resale',
     merchantLocationStatus: 'ENABLED',
     locationTypes: ['WAREHOUSE'],
