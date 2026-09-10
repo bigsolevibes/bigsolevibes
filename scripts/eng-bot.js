@@ -7,7 +7,7 @@ const os           = require('os')
 const crypto       = require('crypto')
 const { execSync } = require('child_process')
 const { sendTelegram } = require('./telegram')
-const { addPendingItem, readDecisionFromDrive, archiveDecision, loadPendingItems, savePendingItems } = require('./telegram-queue')
+const { addPendingItem, readDecisionFromDrive, archiveDecision, loadPendingItems, savePendingItems, listInboxFiles } = require('./telegram-queue')
 
 const ROOT                  = path.join(__dirname, '..')
 const LOG_FILE              = path.join(ROOT, 'logs', 'eng-bot.log')
@@ -17,6 +17,13 @@ const ALERT_STATE_FILE      = path.join(ROOT, 'logs', 'eng-bot-alert-state.json'
 const ALERT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 const DIAGNOSIS_STATE_FILE      = path.join(ROOT, 'logs', 'eng-diagnosis-state.json')
 const DIAGNOSIS_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
+// Hard circuit-breaker on top of the hash-based dedup above — never attempt a
+// diagnosis call more than once per this window, regardless of whether the
+// failure set hashes as "unchanged". Added 2026-09-10: diagnose() kept
+// throwing (Anthropic credit balance was $0), saveDiagnosisState() only runs
+// on success, so the hash-dedup above could never go fresh and eng-bot called
+// Claude fresh every ~29-minute cycle indefinitely once credit was restored.
+const DIAGNOSIS_ATTEMPT_COOLDOWN_MS = 30 * 60 * 1000
 // Anthropic billing failures (exhausted credit balance) are cost-report.js's domain, not
 // eng-bot's. eng-bot can't fix a billing problem, and calling Claude to diagnose "the
 // Claude API is unreachable" is circular and burns a call that will just fail the same way.
@@ -1058,7 +1065,14 @@ function extractFixForFailure(diagnosis, failure) {
   try {
     const allPending = loadPendingItems()
     const engPending = allPending.filter(i => i.type === 'eng')
+    // One Drive listing instead of one rclone-copy subprocess per pending item —
+    // with a 423-item backlog (all still awaiting Big D's decision) the old code
+    // shelled out to rclone 423 times every ~29-minute cycle (~27 of those
+    // minutes), which is almost certainly why cycles ran that slow. Falls back
+    // to the old per-item behavior if the listing itself fails.
+    const inboxFiles = listInboxFiles()
     for (const item of engPending) {
+      if (inboxFiles && !inboxFiles.has(item.driveFile)) continue
       const decision = readDecisionFromDrive(item.driveFile)
       if (!decision) continue
       log(`Decision for ${item.id}: ${decision.decision}`)
@@ -1216,19 +1230,26 @@ function extractFixForFailure(diagnosis, failure) {
     && diagnosisState.hash === diagHash
     && (Date.now() - new Date(diagnosisState.diagnosedAt).getTime()) < DIAGNOSIS_DEDUP_WINDOW_MS
 
+  const attemptCooldownActive = diagnosisState && diagnosisState.lastAttemptAt
+    && (Date.now() - new Date(diagnosisState.lastAttemptAt).getTime()) < DIAGNOSIS_ATTEMPT_COOLDOWN_MS
+
   if (cacheIsFresh) {
     diagnosis = diagnosisState.diagnosis
     log(`Diagnosis call skipped — failure set unchanged since ${diagnosisState.diagnosedAt} (within ${DIAGNOSIS_DEDUP_WINDOW_MS / 3600000}h dedup window); reusing cached diagnosis (${diagnosis.length} chars)`)
+  } else if (attemptCooldownActive) {
+    diagnosis = diagnosisState.diagnosis || null
+    log(`Diagnosis call skipped — last attempt was ${diagnosisState.lastAttemptAt} (within ${DIAGNOSIS_ATTEMPT_COOLDOWN_MS / 60000}min attempt cooldown); ${diagnosis ? 'reusing last available diagnosis' : 'no prior diagnosis available'}`)
   } else {
     log('Calling Claude API for diagnosis...')
     try {
       diagnosis = await diagnose(client, diagnosisInput, directive, memory)
       log(`Diagnosis complete (${diagnosis.length} chars)`)
-      saveDiagnosisState({ hash: diagHash, diagnosedAt: new Date().toISOString(), diagnosis })
+      saveDiagnosisState({ hash: diagHash, diagnosedAt: new Date().toISOString(), diagnosis, lastAttemptAt: new Date().toISOString() })
     } catch (err) {
       log(`ERROR: Claude diagnosis failed: ${err.message}`)
       diagnosis = (diagnosisState && diagnosisState.diagnosis) || null
       if (diagnosis) log('Falling back to last cached diagnosis after API error')
+      saveDiagnosisState({ ...(diagnosisState || {}), lastAttemptAt: new Date().toISOString() })
     }
   }
 

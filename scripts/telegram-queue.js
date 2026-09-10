@@ -84,6 +84,24 @@ function readDecisionFromDrive(driveFile) {
   }
 }
 
+// Lists filenames currently sitting in Big Sole Vibes/Inbox (one rclone call)
+// so callers can skip a per-item readDecisionFromDrive() for files that were
+// never uploaded yet. Returns null (meaning "unknown, caller should not
+// filter") if the listing itself fails, rather than an empty set — an empty
+// set would wrongly look like "nothing exists yet" and skip everything.
+function listInboxFiles() {
+  ensureDirs()
+  try {
+    const out = execSync(`rclone lsf "${INBOX_REMOTE}"`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000,
+    }).toString()
+    return new Set(out.split('\n').map(s => s.trim()).filter(Boolean))
+  } catch {
+    return null
+  }
+}
+
 // Moves processed file to Big Sole Vibes/Inbox/Processed/
 function archiveDecision(driveFile) {
   try {
@@ -104,6 +122,7 @@ module.exports = {
   savePendingItems,
   readDecisionFromDrive,
   archiveDecision,
+  listInboxFiles,
   PENDING_FILE,
   INBOX_REMOTE,
   TEMP_DIR,
