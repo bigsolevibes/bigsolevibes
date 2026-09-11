@@ -174,6 +174,36 @@ function deriveShoeSize(sizeText) {
   return m ? m[1] : null
 }
 
+// "Upper Material" is a required SELECTION_ONLY aspect for several shoe
+// categories (e.g. 24087 Casual Shoes) -- discovered live via publishOffer's
+// "item specific Upper Material is missing" error, same pattern as
+// Department/US Shoe Size above. Unlike those two (hand-verified fixed
+// value sets), Upper Material's valid values vary more by category, so
+// this looks them up live via the Taxonomy API's get_item_aspects_for_category
+// and matches against our title+description text instead of hardcoding a guess.
+async function resolveAspectValue(token, categoryId, aspectName, text) {
+  const res = await ebayFetch(token, 'GET', `/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id=${categoryId}`)
+  const aspect = res.ok && res.data?.aspects?.find(a => a.localizedAspectName === aspectName)
+  const values = aspect?.aspectValues?.map(v => v.localizedValue) || []
+  const lowerText = text.toLowerCase()
+
+  if (values.length) {
+    // Longest-first, plain substring match (not \b-bounded -- plurals like
+    // "Sneakers" vs the enum's "Sneaker" wouldn't match with word boundaries).
+    const sorted = [...values].sort((a, b) => b.length - a.length)
+    const match = sorted.find(v => lowerText.includes(v.toLowerCase()))
+    if (match) {
+      log(`  ${aspectName}: matched "${match}" from listing text [category-specific]`)
+      return match
+    }
+    log(`  WARNING: category ${categoryId} requires ${aspectName} but none of its values (${values.join(', ')}) matched the listing text -- using first available value "${values[0]}" as a fallback`)
+    return values[0]
+  }
+
+  log(`  WARNING: couldn't fetch ${aspectName} values for category ${categoryId} -- leaving aspect unset, listing may fail item-specifics validation`)
+  return null
+}
+
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -309,6 +339,12 @@ async function publishRow(token, row, rowIndex) {
   if (!department || !shoeSize) {
     log(`  WARNING: couldn't fully parse Department/US Shoe Size from Size="${row['Size']}" (got department=${department}, shoeSize=${shoeSize}) — listing may fail item-specifics validation`)
   }
+
+  const aspectText = `${row['eBay Title']} ${row['Description']}`
+  const upperMaterial = await resolveAspectValue(token, categoryId, 'Upper Material', aspectText)
+  if (upperMaterial) aspects['Upper Material'] = [upperMaterial]
+  const style = await resolveAspectValue(token, categoryId, 'Style', aspectText)
+  if (style) aspects.Style = [style]
 
   const inventoryItem = {
     condition,
