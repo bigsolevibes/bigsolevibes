@@ -9,6 +9,7 @@
 
 require('dotenv').config({ quiet: true })
 const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+const { logAiUsage } = require('./lib/ai-usage')
 const fs   = require('fs')
 const path = require('path')
 
@@ -94,6 +95,7 @@ Return ONLY valid JSON:
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
       messages: [{ role: 'user', content: prompt }]
     })
+    logAiUsage({ script: 'affiliate-scout', tag: 'scout', model: 'claude-sonnet-4-6', response })
 
     // Extract the final text response
     const textBlock = response.content.find(b => b.type === 'text')

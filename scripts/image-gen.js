@@ -4,6 +4,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { approveSlot } = require('./lib/approved-slots')
 
 const ROOT                   = path.join(__dirname, '..')
@@ -264,6 +265,7 @@ REASON: one sentence, specific about what matches or what's wrong`,
         ],
       }],
     })
+    logAiUsage({ script: 'image-gen', tag: 'qa-vision', model: QA_MODEL, response })
 
     const text = response.content?.[0]?.text || ''
     const verdictMatch = text.match(/VERDICT:\s*(PASS|FAIL)/i)

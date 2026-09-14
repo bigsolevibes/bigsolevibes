@@ -20,6 +20,7 @@ const path          = require('path')
 const fs            = require('fs')
 const os            = require('os')
 const Anthropic     = require('@anthropic-ai/sdk')
+const { logAiUsage } = require('./lib/ai-usage')
 
 const ROOT         = path.join(__dirname, '..')
 const LOG_FILE     = path.join(ROOT, 'logs', 'reddit-agent.log')
@@ -255,6 +256,7 @@ Return ONLY valid JSON:
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
   })
+  logAiUsage({ script: 'reddit-agent', tag: 'post-gen', model: 'claude-haiku-4-5-20251001', response: msg })
 
   const raw = msg.content[0]?.text?.trim() || ''
   const jsonMatch = raw.match(/\{[\s\S]*\}/)

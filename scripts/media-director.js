@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic        = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -377,6 +378,7 @@ async function callClaude(prompt) {
     max_tokens: 512,
     messages:   [{ role: 'user', content: prompt }],
   })
+  logAiUsage({ script: 'media-director', tag: 'cultural-override', model: 'claude-haiku-4-5-20251001', response: msg })
   return msg.content[0].text.trim()
 }
 
@@ -560,6 +562,7 @@ Return JSON only — no markdown fences:
       max_tokens: 512,
       messages:   [{ role: 'user', content: prompt }],
     })
+    logAiUsage({ script: 'media-director', tag: 'sole-report-brief', model: 'claude-haiku-4-5-20251001', response: msg })
     const raw      = msg.content[0].text.trim()
     const stripped = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
     const start    = stripped.indexOf('{')

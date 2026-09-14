@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -290,6 +291,7 @@ If current trends hold, where will each segment land in 30 days? What would need
   process.stdout.write('\n')
 
   const final = await stream.finalMessage()
+  logAiUsage({ script: 'marketing-manager', tag: 'plan', model: 'claude-haiku-4-5-20251001', response: final })
   log(`Done — ${final.usage?.output_tokens ?? '?'} tokens, stop: ${final.stop_reason}`)
 
   if (!fullText.trim()) { log('ERROR: empty response'); process.exit(1) }

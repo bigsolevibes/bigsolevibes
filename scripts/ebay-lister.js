@@ -4,6 +4,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { connect, ensureHeaders, appendListing } = require('./resale-sheets-client')
 
 // ─── ebay-lister.js ─────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary bef
     max_tokens: 1200,
     messages:   [{ role: 'user', content }],
   })
+  logAiUsage({ script: 'ebay-lister', tag: 'listing-draft', model: DRAFT_MODEL, response })
 
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
   return parseJsonResponse(text)

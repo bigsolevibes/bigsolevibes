@@ -18,6 +18,7 @@ require('dotenv').config()
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Anthropic    = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path         = require('path')
 const fs           = require('fs')
@@ -261,6 +262,7 @@ Write the strategy brief using EXACTLY this structure. No additional sections. N
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     })
+    logAiUsage({ script: 'strategist', tag: 'strategy', model: 'claude-sonnet-4-6', response: msg })
     strategyText = (msg.content[0]?.text || '').trim()
     log(`Generated: ${strategyText.length} chars, ${msg.usage?.output_tokens ?? '?'} tokens`)
   } catch (err) {

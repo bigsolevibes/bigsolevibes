@@ -4,6 +4,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 // Priority order: Revenue → Posts → Agent health → Growth → Drive doc
 
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync, spawnSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -1575,6 +1576,7 @@ ${efficiencyAudit ? "## Agent Efficiency\n(Review table. Call out flags.)" : ""}
     }
     process.stdout.write('\n')
     const finalMsg = await stream.finalMessage()
+    logAiUsage({ script: 'chief-of-staff', tag: 'standup', model: 'claude-sonnet-4-6', response: finalMsg })
     log(`Standup done — ${finalMsg.usage?.output_tokens ?? '?'} tokens, stop: ${finalMsg.stop_reason}`)
   } catch (err) {
     process.stdout.write('\n')
@@ -1629,6 +1631,7 @@ Write the complete ${HANDOFF_FILENAME}. Sections: what BSV is, pipeline state, c
       messages:   [{ role: 'user', content: handoffPrompt }],
     })
     handoffText = msg.content[0]?.text?.trim() || ''
+    logAiUsage({ script: 'chief-of-staff', tag: 'handoff', model: 'claude-haiku-4-5-20251001', response: msg })
     log(`Handoff done — ${msg.usage?.output_tokens ?? '?'} tokens`)
   } catch (err) {
     log(`ERROR: handoff API — ${err.message}`)
@@ -1668,6 +1671,7 @@ Return the complete updated BSV-Memory.md starting with # BSV-Memory.md`,
       }],
     })
     const updatedMem = memMsg.content[0]?.text?.trim() || ''
+    logAiUsage({ script: 'chief-of-staff', tag: 'memory', model: 'claude-haiku-4-5-20251001', response: memMsg })
     log(`Memory done — ${memMsg.usage?.output_tokens ?? '?'} tokens`)
     if (updatedMem.includes('# BSV-Memory.md')) {
       const localMem = path.join(TEMP_DIR, 'BSV-Memory.md')

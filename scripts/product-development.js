@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -188,6 +189,7 @@ Top 3 actions for next week, specific and actionable.`
       tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 12 }],
       messages,
     })
+    logAiUsage({ script: 'product-development', tag: 'research-loop', model: 'claude-sonnet-4-6', response })
 
     messages.push({ role: 'assistant', content: response.content })
 

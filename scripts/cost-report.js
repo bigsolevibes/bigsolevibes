@@ -3,6 +3,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
+const { summarize: summarizeAiUsage } = require('./lib/ai-usage')
 
 const ROOT     = path.join(__dirname, '..')
 const LOG_FILE = path.join(ROOT, 'logs', 'cost-report.log')
@@ -424,7 +425,7 @@ async function summarise(label, window, mdirLog, imgLog, vidLog) {
 
 // ─── Markdown report ──────────────────────────────────────────────────────────
 
-function buildReport(today, week, month, reportDate) {
+function buildReport(today, week, month, reportDate, byAgentToday = [], agentWeek = null) {
   const dayOfMonth  = new Date().getDate()
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
   const budgetPct   = (month.total / MONTHLY_BUDGET) * 100
@@ -452,6 +453,20 @@ function buildReport(today, week, month, reportDate) {
     ].join('\n')
   }
 
+  const byAgentSection = [
+    '## By Agent (Today, tracked)',
+    '',
+    byAgentToday.length
+      ? [
+          '| Script | Calls | Cost |',
+          '|--------|-------|------|',
+          ...byAgentToday.map(a => `| ${a.script} | ${a.calls} | ${fmt(a.cost)}${a.unpriced_calls ? ` _(${a.unpriced_calls} unpriced)_` : ''} |`),
+        ].join('\n')
+      : '_No tracked calls yet today._',
+    '',
+    '_Source: logs/ai-usage.jsonl — only counts scripts wired to logAiUsage() (all of them as of 2026-09-14). Will read $0 for a script that hasn\'t run yet today, not a script with no cost._',
+  ].join('\n')
+
   return [
     `# BSV Cost Report — ${reportDate}`,
     '',
@@ -470,6 +485,10 @@ function buildReport(today, week, month, reportDate) {
     '## Today',
     '',
     windowSection(today),
+    '',
+    '---',
+    '',
+    byAgentSection,
     '',
     '---',
     '',
@@ -542,6 +561,23 @@ async function loadMemory() {
   log(`Week   — Claude: ${weekData.claudeCalls} calls, Imagen: ${weekData.images}, Veo: ${weekData.videos}, cost: ${fmt(weekData.total)}`)
   log(`Month  — Claude: ${monthData.claudeCalls} calls, Imagen: ${monthData.images}, Veo: ${monthData.videos}, cost: ${fmt(monthData.total)}`)
 
+  // ── Per-agent breakdown ─────────────────────────────────────────────────────
+  // Added 2026-09-14 (see scripts/lib/ai-usage.js) — the real Cost Report API
+  // above only gives an org-wide total, so this is the first place "which
+  // script is actually spending money" has a real, per-call answer instead of
+  // a guess. Only reflects calls made by scripts wired to call logAiUsage() —
+  // fills in day by day, doesn't retroactively cover history before 2026-09-14.
+  const agentToday = summarizeAiUsage({ since: todayWindow().start })
+  const agentWeek   = summarizeAiUsage({ since: weekWindow().start })
+  const byAgentToday = Object.entries(agentToday.byScript)
+    .map(([script, d]) => ({ script, ...d }))
+    .sort((a, b) => b.cost - a.cost)
+  if (byAgentToday.length) {
+    log(`By agent (today, tracked): ${byAgentToday.map(a => `${a.script}=${fmt(a.cost)} (${a.calls} calls)`).join(', ')}`)
+  } else {
+    log('By agent (today): no tracked calls yet')
+  }
+
   // ── Runway check ────────────────────────────────────────────────────────────
 
   const burnHistory  = await fetchBurnHistory(3)
@@ -590,6 +626,8 @@ async function loadMemory() {
     balance_source:         balanceSource,
     runway_hours:           runwayHours,
     burn_history:           burnHistory,
+    by_agent_today:         byAgentToday,
+    by_agent_today_source:  'logs/ai-usage.jsonl — per-call, only scripts wired to logAiUsage() (all as of 2026-09-14)',
     balance_alert_sent_at:  balanceNowLow
       ? (shouldSendBalanceAlert ? new Date().toISOString() : prevAlertSentAt)
       : null,
@@ -643,7 +681,7 @@ async function loadMemory() {
     }
   }
 
-  const report   = buildReport(todayData, weekData, monthData, reportDate)
+  const report   = buildReport(todayData, weekData, monthData, reportDate, byAgentToday, agentWeek)
   const filename = `cost-report-${reportDate}.md`
   const tmpPath  = `/tmp/${filename}`
 

@@ -10,6 +10,7 @@ require('dotenv').config()
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -621,6 +622,7 @@ ${weeklyPlan ? `## Weekly plan context\n${weeklyPlan.content.slice(0, 800)}\n\n`
         system:     srSystem,
         messages:   [{ role: 'user', content: srUser }],
       })
+      logAiUsage({ script: 'blog-agent', tag: 'sole-report-article', model: 'claude-sonnet-4-6', response })
       rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
       log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
     } catch (err) {
@@ -964,6 +966,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     })
+    logAiUsage({ script: 'blog-agent', tag: 'blog-post', model: 'claude-sonnet-4-6', response })
     rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
     log(`Claude done — ${response.usage?.output_tokens ?? '?'} tokens, stop: ${response.stop_reason}`)
   }
@@ -1175,6 +1178,7 @@ Return ONLY the JSON object. No preamble, no explanation.`
           system:     systemPrompt,
           messages:   [{ role: 'user', content: revisionPrompt }],
         })
+        logAiUsage({ script: 'blog-agent', tag: 'revision', model: 'claude-sonnet-4-6', response: revResponse })
         const revRaw = revResponse.content.filter(b => b.type === 'text').map(b => b.text).join('').trim()
         const stripped = revRaw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
         const start = stripped.indexOf('{')

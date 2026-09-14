@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -625,6 +626,7 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
   process.stdout.write('\n')
 
   const final = await stream.finalMessage()
+  logAiUsage({ script: 'brand-manager', tag: 'review', model: 'claude-sonnet-4-6', response: final })
   log(`Done — ${final.usage?.output_tokens ?? '?'} tokens, stop: ${final.stop_reason}`)
 
   if (final.stop_reason === 'max_tokens') {
@@ -639,6 +641,7 @@ Specific, actionable changes for next week. Not suggestions — directives. Incl
         { role: 'user', content: 'Continue exactly where you left off. Do not repeat anything.' },
       ],
     })
+    logAiUsage({ script: 'brand-manager', tag: 'continuation', model: 'claude-sonnet-4-6', response: continuation })
     fullText += continuation.content[0]?.text ?? ''
     log(`Continuation done — ${continuation.usage?.output_tokens ?? '?'} tokens`)
   }

@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 const Anthropic    = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const fs           = require('fs')
 const path         = require('path')
 const os           = require('os')
@@ -950,6 +951,7 @@ If a P0 failure appears more than once across recent logs (recurring error), esc
     system:     buildCachedSystem(directive, memory, engBotRole),
     messages: [{ role: 'user', content: userContent }],
   })
+  logAiUsage({ script: 'eng-bot', tag: 'diagnosis', model: 'claude-haiku-4-5-20251001', response })
 
   log(`API response: id=${response.id} stop_reason=${response.stop_reason} blocks=${response.content.length}`)
   response.content.forEach((block, i) => {

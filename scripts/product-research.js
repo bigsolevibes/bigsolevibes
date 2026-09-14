@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -182,6 +183,7 @@ Rules: asin must be real (B0... format). If not found or unavailable set asin to
       tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
       messages,
     })
+    logAiUsage({ script: 'product-research', tag: 'batch-eval', model: 'claude-sonnet-4-6', response })
 
     messages.push({ role: 'assistant', content: response.content })
 
@@ -261,6 +263,7 @@ Return ONLY a valid JSON array (no markdown, no commentary):
     }],
   })
 
+  logAiUsage({ script: 'product-research', tag: 'brand-story', model: 'claude-sonnet-4-6', response: resp })
   const text = (resp.content.find(b => b.type === 'text')?.text || '').trim()
   try {
     const stories = extractJsonArray(text)
@@ -391,6 +394,7 @@ Write the man first. The product appears where it belongs in the scene.
 End with one quiet line that makes the reader want it without asking them to buy it.`,
       }],
     })
+    logAiUsage({ script: 'product-research', tag: 'narrative', model: 'claude-sonnet-4-6', response: resp })
     const text = (resp.content.find(b => b.type === 'text')?.text || '').trim()
     return text ? `[DRAFT] ${text}` : ''
   } catch (err) {
@@ -412,6 +416,7 @@ async function runTrack2Evaluation({ productName, asin, crossoverSignal, affilia
         tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
         messages:   [{ role: 'user', content: `Search Amazon for "${productName}" and return ONLY the ASIN (format: B0XXXXXXXXX). If not found, return NOT_FOUND.` }],
       })
+      logAiUsage({ script: 'product-research', tag: 'asin-lookup', model: 'claude-haiku-4-5-20251001', response: lookupResp })
       const lookupText = lookupResp.content.filter(b => b.type === 'text').map(b => b.text).join('')
       const asinMatch  = lookupText.match(/\b(B0[A-Z0-9]{8})\b/)
       if (asinMatch) {
@@ -494,6 +499,7 @@ Then score against the Track 2 rubric and return ONLY this JSON object (no markd
       tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
       messages,
     })
+    logAiUsage({ script: 'product-research', tag: 'track2-eval', model: 'claude-sonnet-4-6', response })
     messages.push({ role: 'assistant', content: response.content })
 
     if (response.stop_reason === 'end_turn') {
@@ -1083,6 +1089,7 @@ If BSV featured the top 3 products once each per week for a month at 2% conversi
         tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 20 }],
         messages,
       })
+      logAiUsage({ script: 'product-research', tag: 'research-loop', model: 'claude-sonnet-4-6', response })
 
       messages.push({ role: 'assistant', content: response.content })
 
@@ -1168,6 +1175,7 @@ ${fullText}`,
     }],
   })
 
+  logAiUsage({ script: 'product-research', tag: 'extract-picks', model: 'claude-sonnet-4-6', response: extractResponse })
   const jsonText = extractResponse.content.filter(b => b.type === 'text').map(b => b.text).join('')
   let picks
   try {

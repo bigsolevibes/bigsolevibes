@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -638,6 +639,7 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   })
 
   const brief = msg.content[0].text.trim()
+  logAiUsage({ script: 'creative-agent', tag: 'brief', model: 'claude-sonnet-4-6', response: msg })
   log(`Done — ${msg.usage?.output_tokens ?? '?'} tokens, stop: ${msg.stop_reason}`)
 
   if (!brief) { log('ERROR: empty response'); process.exit(1) }
@@ -690,6 +692,7 @@ One line only. No explanation unless it's a CONCERN.`,
         }],
       })
 
+      logAiUsage({ script: 'creative-agent', tag: 'qa-check', model: 'claude-haiku-4-5-20251001', response: qaMsg })
       const qaResult = (qaMsg.content[0]?.text ?? '').trim()
       log(`Brief QA: ${qaResult}`)
 

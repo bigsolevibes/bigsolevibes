@@ -15,6 +15,7 @@ require('dotenv').config()
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Anthropic        = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync }     = require('child_process')
 const path             = require('path')
 const fs               = require('fs')
@@ -210,6 +211,7 @@ Output the full reconciled article now.`
     system:     systemPrompt,
     messages:   [{ role: 'user', content: userPrompt }],
   })
+  logAiUsage({ script: 'lounge-reconcile', tag: 'reconcile', model: 'claude-sonnet-4-6', response: msg })
 
   const reconciled = msg.content[0].text.trim()
   log(`  Reconciled: ${reconciled.length} chars, tokens: ${msg.usage?.output_tokens ?? '?'}`)

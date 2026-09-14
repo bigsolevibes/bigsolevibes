@@ -1,5 +1,6 @@
 require('dotenv').config()
 const Anthropic = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs   = require('fs')
@@ -286,6 +287,7 @@ Products flagged for Track 2 shelf consideration: [list names, or "none this wee
       tools:      [{ type: 'web_search_20250305', name: 'web_search', max_uses: 18 }],
       messages,
     })
+    logAiUsage({ script: 'social-listening', tag: 'research-loop', model: 'claude-haiku-4-5-20251001', response })
 
     messages.push({ role: 'assistant', content: response.content })
 

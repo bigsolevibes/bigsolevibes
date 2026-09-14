@@ -13,6 +13,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 const Anthropic        = require('@anthropic-ai/sdk').default
+const { logAiUsage } = require('./lib/ai-usage')
 const { execSync }     = require('child_process')
 const fs               = require('fs')
 const path             = require('path')
@@ -478,6 +479,7 @@ function publishEditionToLounge(state) {
       max_tokens: 4000,
       messages:   [{ role: 'user', content: prompt }],
     })
+    logAiUsage({ script: 'edition-agent', tag: 'edition-story', model: 'claude-sonnet-4-6', response })
     raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
     log(`Claude response: ${raw.length} chars, stop_reason=${response.stop_reason}`)
   } catch (err) {
