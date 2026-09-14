@@ -185,8 +185,10 @@ function buildProductBlock(product) {
   if (product['Category']) lines.push(`**Category:** ${product['Category']}`)
   if (product['Narrative']) {
     lines.push('')
-    lines.push('**Narrative (Proprietor voice — pull the scene from this):**')
+    lines.push('**Background (established fact about this product — not a scene to retell):**')
     lines.push(product['Narrative'])
+    lines.push('')
+    lines.push('This exact background line gets handed to you every single time this product comes up in rotation. If you just restate it, every post about this product reads identically — that is the single biggest thing making BSV content feel stale right now. Your job: invent a DIFFERENT specific moment than the background covers — a different hour, a different trigger, a different consequence, a different person who reacts to it. Same product, same underlying truth, new scene every time. Treat the background as a fact you already know about the man, not a story you are retelling.')
   }
   lines.push('')
   lines.push(`**Affiliate Link:** ${product['Affiliate Link']}`)
