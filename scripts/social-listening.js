@@ -95,6 +95,14 @@ function getPreviousReport() {
   fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
   fs.mkdirSync(TEMP_DIR, { recursive: true })
 
+  // Paused 2026-09-15 by Big D — focus is driving traffic to the existing site,
+  // not sourcing new shelf candidates. Delete logs/social-listening.pause (or this
+  // block) to resume.
+  if (fs.existsSync(path.join(ROOT, 'logs', 'social-listening.pause'))) {
+    log('PAUSED — logs/social-listening.pause present, skipping run')
+    process.exit(0)
+  }
+
   acquireLock()
   log('━━━ social-listening start ━━━')
 
