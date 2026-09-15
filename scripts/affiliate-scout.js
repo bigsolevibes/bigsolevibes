@@ -60,10 +60,7 @@ Research whether "${brandName}" has a direct affiliate program — NOT through A
 Products on our shelf:
 ${productList}
 
-Search for:
-1. "${brandName} affiliate program"
-2. "${brandName} ambassador program"  
-3. "${brandName} partner program"
+Search efficiently — you have a small search budget, not an open-ended budget. In most cases one search for "${brandName} affiliate program" resolves this outright (found, or clearly nothing exists). Only spend a second search on "${brandName} ambassador program" or "partner program" if the first search was genuinely ambiguous. If you do find a direct program, look for the product URLs on the SAME visit to the brand's site rather than a separate search per product — one well-chosen page (a shop/collections listing) usually has all of them. Stop as soon as you have enough to answer confidently; do not keep searching to be thorough for its own sake.
 
 For each result determine:
 - Does the brand have a DIRECT affiliate program (on their own site, or via Impact.com, ShareASale, CJ Affiliate, Rakuten, FlexOffers, etc.)?
@@ -92,7 +89,7 @@ Return ONLY valid JSON:
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6', // downgraded from opus-4-8 2026-07-15 — factual lookup task, doesn't need opus-tier reasoning; was the one script in the pipeline off the Sonnet/Haiku pattern
       max_tokens: 1000,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }], // cut from 6 -> 3, 2026-09-15: 10-brand weekly run was averaging ~55K input tokens/brand ($1.84 total) because each extra search resends the whole growing transcript, not just its own result — see prompt's efficiency instruction above for the other half of this fix
       messages: [{ role: 'user', content: prompt }]
     })
     logAiUsage({ script: 'affiliate-scout', tag: 'scout', model: 'claude-sonnet-4-6', response })
