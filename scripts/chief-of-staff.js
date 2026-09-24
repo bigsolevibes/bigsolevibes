@@ -1496,7 +1496,7 @@ ${mktReport ? mktReport.content.slice(0, 800) : '(not available)'}
 
 ## Change State
 \`\`\`json
-${changeState ? JSON.stringify(changeState, null, 2) : '(not available)'}
+${changeState ? JSON.stringify({ ...changeState, tracked_issues: `(${Object.keys(changeState.tracked_issues || {}).length} tracked issues omitted — full list in logs/change-state.json)` }, null, 2) : '(not available)'}
 \`\`\`
 
 ## Edition State
