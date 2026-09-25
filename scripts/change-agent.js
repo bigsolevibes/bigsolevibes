@@ -201,7 +201,7 @@ function closeIssue(num, comment) {
 function listOpenIssues(label) {
   try {
     const out = execSync(
-      `gh issue list --repo ${GH_REPO} --label "${label}" --json number,title,createdAt --limit 50`,
+      `gh issue list --repo ${GH_REPO} --label "${label}" --json number,title,createdAt --limit 1000`,
       { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
     ).trim()
     return out ? JSON.parse(out) : []
@@ -638,6 +638,13 @@ function validateAutoCommit(commit, files) {
     }
   } else {
     log('origin/main is clean — no unexpected commits')
+    // main is clean, so every old ROGUE MAIN PUSH flag has since been reconciled
+    // (preview/full-site contains it). Nothing ever closed these — 2026-09-25
+    // cleanup, they had piled up as stale Tier-1 noise.
+    for (const issue of listOpenIssues('flagged').filter(i => i.title.startsWith('[flagged] ROGUE MAIN PUSH'))) {
+      closeIssue(issue.number)
+      log(`  Issue #${issue.number} closed — origin/main is clean, rogue push reconciled`)
+    }
   }
 
   // ── Get new commits ───────────────────────────────────────────────────────────
@@ -904,18 +911,12 @@ function validateAutoCommit(commit, files) {
     const ageDays = (Date.now() - new Date(issue.createdAt).getTime()) / 86400000
     if (ageDays < 3) continue
 
-    const keywords = issue.title.replace('[monitoring] ', '').split(/\s+/).slice(0, 5)
-      .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .filter(Boolean)
-      .join('|')
-    const hasErrors = keywords ? recentErrors.some(e => new RegExp(keywords, 'i').test(e)) : false
-    if (hasErrors) continue
-
-    updateIssueLabel(issue.number, 'stable', 'monitoring')
-    closeIssue(
-      issue.number,
-      `Confirmed stable — no related errors in eng-bot over ${Math.round(ageDays)} days. Closing.`,
-    )
+    // 2026-09-25: the old check matched the commit subject's first 5 words
+    // (e.g. "fix:", "the", "add") against any eng-bot error line — generic
+    // words always hit, so nothing ever graduated and open issues grew into
+    // the thousands. eng-bot owns regression detection; this is just a
+    // "recently changed" notice, so age out after 3 days.
+    closeIssue(issue.number)
     stableThisRun.push(issue.title.replace('[monitoring] ', '').slice(0, 60))
     log(`  Issue #${issue.number} → stable (closed)`)
   }
