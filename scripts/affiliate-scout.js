@@ -14,6 +14,13 @@ const fs   = require('fs')
 const path = require('path')
 
 const ROOT     = path.join(__dirname, '..')
+
+// Paused 2026-10-23 by Big D — running lean on credits; focus is driving traffic to
+// the existing shelf, not sourcing new products/programs. Delete logs/affiliate-scout.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'affiliate-scout.pause'))) {
+  console.log(`[${new Date().toISOString()}] PAUSED — logs/affiliate-scout.pause present, skipping run`)
+  process.exit(0)
+}
 const LOG_FILE = path.join(ROOT, 'logs', 'affiliate-scout.log')
 const REPORT   = path.join(ROOT, 'logs', 'affiliate-scout-report.md')
 const OVERRIDES_PATH = path.join(__dirname, 'data', 'affiliate-overrides.json')

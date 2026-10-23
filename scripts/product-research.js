@@ -17,6 +17,13 @@ const { VOICE } = require('./lib/brand-copy')
 // Both belong. Both make money. Both tell the BSV story.
 
 const ROOT     = path.join(__dirname, '..')
+
+// Paused 2026-10-23 by Big D — running lean on credits; focus is driving traffic to
+// the existing shelf, not sourcing new products/programs. Delete logs/product-research.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'product-research.pause'))) {
+  console.log(`[${new Date().toISOString()}] PAUSED — logs/product-research.pause present, skipping run`)
+  process.exit(0)
+}
 const LOG_FILE = path.join(ROOT, 'logs', 'product-research.log')
 const TEMP_DIR = path.join(os.homedir(), 'tmp', 'bsv-product-research')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
