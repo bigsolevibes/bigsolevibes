@@ -116,8 +116,14 @@ function saveTokenForEnv(envName, data) {
 
 // ─── Token exchange / refresh ────────────────────────────────────────────────
 
-function basicAuthHeader() {
-  return 'Basic ' + Buffer.from(`${APP_ID}:${CERT_ID}`).toString('base64')
+function basicAuthHeader(envName = env) {
+  // Per-env credentials — getValidAccessToken() can be called for either env
+  // regardless of which --env this process started with (fixed 2026-10-30:
+  // prod refreshes were being sent with the sandbox keyset to the sandbox
+  // endpoint, failing with "issued to another client").
+  const appId  = process.env[`EBAY_${envName.toUpperCase()}_APP_ID`]
+  const certId = process.env[`EBAY_${envName.toUpperCase()}_CERT_ID`]
+  return 'Basic ' + Buffer.from(`${appId}:${certId}`).toString('base64')
 }
 
 async function exchangeCode(code) {
@@ -142,12 +148,12 @@ async function exchangeCode(code) {
   return data
 }
 
-async function refreshAccessToken(refresh_token) {
-  const res = await fetch(ENDPOINTS[env].token, {
+async function refreshAccessToken(refresh_token, envName = env) {
+  const res = await fetch(ENDPOINTS[envName].token, {
     method:  'POST',
     headers: {
       'Content-Type':  'application/x-www-form-urlencoded',
-      'Authorization': basicAuthHeader(),
+      'Authorization': basicAuthHeader(envName),
     },
     body: new URLSearchParams({
       grant_type:    'refresh_token',
@@ -188,7 +194,7 @@ async function getValidAccessToken(envName = 'sandbox') {
   // Temporarily point module-level `env` at the right environment for the
   // refresh call's endpoint/credential lookup — getValidAccessToken() can be
   // called for either env regardless of which --env this process started with.
-  const refreshed = await refreshAccessToken(entry.refresh_token)
+  const refreshed = await refreshAccessToken(entry.refresh_token, envName)
   // eBay does not rotate refresh_token on refresh — keep the original.
   saveTokenForEnv(envName, { ...refreshed, refresh_token: refreshed.refresh_token || entry.refresh_token })
   return refreshed.access_token

@@ -262,7 +262,7 @@ async function preparePhotoUrls(row, sku) {
   fs.mkdirSync(localDir, { recursive: true })
 
   log(`  Downloading photos from ${row['Drive Folder']}...`)
-  execSync(`rclone copy "${row['Drive Folder']}" "${localDir}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
+  execSync(`rclone copy --max-depth 1 "${row['Drive Folder']}" "${localDir}/"`, { stdio: ['pipe', 'pipe', 'pipe'] })
 
   const files = fs.readdirSync(localDir).filter(f => /\.(jpe?g|png|heic|heif|webp)$/i.test(f))
   if (!files.length) throw new Error(`No photos found in ${row['Drive Folder']}`)
@@ -367,6 +367,10 @@ async function publishRow(token, row, rowIndex) {
     log(`  [dry-run] would PUT /sell/inventory/v1/inventory_item/${sku}: ${JSON.stringify(inventoryItem).slice(0, 300)}...`)
   }
 
+  const floorRaw = parseFloat(String(row['Offer Floor'] || '').replace(/[^0-9.]/g, ''))
+  const offerFloor = (floorRaw > 0 && floorRaw < price) ? floorRaw : Math.floor(price * 0.75)
+  log(`  Best Offer: on, auto-decline under $${offerFloor.toFixed(2)}`)
+
   const offer = {
     sku,
     marketplaceId: MARKETPLACE_ID,
@@ -378,6 +382,12 @@ async function publishRow(token, row, rowIndex) {
       fulfillmentPolicyId: FULFILLMENT_POLICY_ID,
       paymentPolicyId: PAYMENT_POLICY_ID,
       returnPolicyId: RETURN_POLICY_ID,
+      // Best Offer on every listing (added 2026-10-30, Big D). Floor comes
+      // from the sheet's "Offer Floor" column if set, else 75% of price.
+      bestOfferTerms: {
+        bestOfferEnabled: true,
+        autoDeclinePrice: { value: offerFloor.toFixed(2), currency: 'USD' },
+      },
     },
     pricingSummary: {
       price: { value: price.toFixed(2), currency: 'USD' },
@@ -400,6 +410,12 @@ async function publishRow(token, row, rowIndex) {
       offerId = offerRes.data.errors[0].parameters?.find(p => p.name === 'offerId')?.value
       if (!offerId) throw new Error(`createOffer failed: HTTP ${offerRes.status} ${JSON.stringify(offerRes.data)}`)
       log(`  Offer already existed, reusing: ${offerId}`)
+      // Push current terms (price, Best Offer, description) onto the
+      // existing offer — updateOffer revises a live listing in place.
+      const { sku: _s, marketplaceId: _m, format: _f, ...updateBody } = offer
+      const updRes = await ebayFetch(token, 'PUT', `/sell/inventory/v1/offer/${offerId}`, updateBody)
+      if (!updRes.ok) throw new Error(`updateOffer failed: HTTP ${updRes.status} ${JSON.stringify(updRes.data)}`)
+      log(`  Offer updated: ${offerId}`)
     } else {
       throw new Error(`createOffer failed: HTTP ${offerRes.status} ${JSON.stringify(offerRes.data)}`)
     }
