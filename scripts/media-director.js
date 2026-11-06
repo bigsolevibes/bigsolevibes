@@ -7,6 +7,12 @@ const fs   = require('fs')
 const os   = require('os')
 
 const ROOT                   = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/media-director.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'media-director.pause'))) {
+  console.log('[media-director] paused (logs/media-director.pause present) — exiting without work')
+  process.exit(0)
+}
 const LOG_FILE               = path.join(ROOT, 'logs', 'media-director.log')
 const TEMP_DIR               = path.join(os.homedir(), 'tmp', 'bsv-media-director')
 const REMOTE                 = 'big sole vibes:Big Sole Vibes'

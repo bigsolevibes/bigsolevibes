@@ -39,6 +39,12 @@ const fs   = require('fs')
 const { execSync } = require('child_process')
 
 const ROOT     = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/cj-research.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'cj-research.pause'))) {
+  console.log('[cj-research] paused (logs/cj-research.pause present) — exiting without work')
+  process.exit(0)
+}
 const LOG_FILE = path.join(ROOT, 'logs', 'cj-research.log')
 const REMOTE   = 'big sole vibes:Big Sole Vibes'
 const DRY_RUN  = process.argv.includes('--dry-run')

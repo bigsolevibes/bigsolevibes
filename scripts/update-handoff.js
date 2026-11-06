@@ -7,6 +7,12 @@ const { TAGLINE } = require('./lib/brand-copy')
 const { PALETTE } = require('./lib/visual-doctrine')
 
 const ROOT           = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/update-handoff.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'update-handoff.pause'))) {
+  console.log('[update-handoff] paused (logs/update-handoff.pause present) — exiting without work')
+  process.exit(0)
+}
 const LOG_FILE       = path.join(ROOT, 'logs', 'update-handoff.log')
 const TEMP_DIR       = path.join(os.homedir(), 'tmp', 'bsv-handoff')
 const REMOTE_HANDOFF = 'big sole vibes:Big Sole Vibes/Handoff'

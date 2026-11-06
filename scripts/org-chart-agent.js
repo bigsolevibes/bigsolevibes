@@ -7,6 +7,12 @@ const fs   = require('fs')
 const path = require('path')
 
 const ROOT            = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/org-chart-agent.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'org-chart-agent.pause'))) {
+  console.log('[org-chart-agent] paused (logs/org-chart-agent.pause present) — exiting without work')
+  process.exit(0)
+}
 const STATE_PATH      = path.join(ROOT, 'logs', 'org-chart-state.json')
 const COST_STATE_PATH = path.join(ROOT, 'logs', 'cost-state.json')
 const OUT_PATH        = path.join(ROOT, 'public', 'org-chart.html')

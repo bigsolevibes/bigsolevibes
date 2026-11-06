@@ -21,6 +21,12 @@ const os               = require('os')
 const { TAGLINE, VOICE } = require('./lib/brand-copy')
 
 const ROOT                = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/edition-agent.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'edition-agent.pause'))) {
+  console.log('[edition-agent] paused (logs/edition-agent.pause present) — exiting without work')
+  process.exit(0)
+}
 const LOG_FILE            = path.join(ROOT, 'logs', 'edition-agent.log')
 const SHELF_PRODUCTS_FILE = path.join(ROOT, 'scripts', 'data', 'shelf-products.json')
 const EDITION_STATE_FILE  = path.join(ROOT, 'logs', 'edition-state.json')

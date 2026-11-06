@@ -27,6 +27,12 @@ const { connect, readAllRows } = require('./sheets-client')
 const { sendTelegram }         = require('./telegram')
 
 const ROOT       = path.join(__dirname, '..')
+
+// Paused 2026-11-05 by Big D — BSV reset (one product, Brok episodes). Delete logs/strategist.pause to resume.
+if (fs.existsSync(path.join(ROOT, 'logs', 'strategist.pause'))) {
+  console.log('[strategist] paused (logs/strategist.pause present) — exiting without work')
+  process.exit(0)
+}
 const LOG_FILE   = path.join(ROOT, 'logs', 'strategist.log')
 const ACTIVE_FILE = path.join(ROOT, 'logs', 'strategy-active.md')
 const TEMP_DIR   = path.join(os.homedir(), 'tmp', 'bsv-strategist')
