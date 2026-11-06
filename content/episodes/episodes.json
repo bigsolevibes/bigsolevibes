@@ -1,0 +1,41 @@
+{
+  "_note": "Brok episodes shown on the one-page home (app/page.tsx). Newest first. Each `slug` becomes an anchor (#slug) so social posts can link straight to an episode. `story` paragraphs render in order; wrap the product mention in **double asterisks** to bold it. Optional `image` = a path under public/.",
+  "episodes": [
+    {
+      "slug": "brunch-of-the-barbarians",
+      "number": 1,
+      "title": "Brunch of the Barbarians",
+      "teaser": "Brok took off his sandals at brunch. The patio was evacuated.",
+      "story": [
+        "It was a perfect Sunday. Bottomless mimosas. A table in the sun. And then Brok, a man of simple pleasures, slipped off his sandals.",
+        "What followed is still discussed in hushed tones. Napkins were raised like white flags. A server, a veteran of eleven years, dropped a tray of eggs Benedict and walked straight into the street. Somewhere, a choir of birds fell silent.",
+        "The maître d' approached. He did not speak. He simply placed a small object on the table, the way one hands a sword to a knight before battle: **the Super Buffer.**",
+        "One week later, Brok returned. Sandals off. The patio held its breath — and nothing happened. The maître d' wept. Brok now has the chef's table for life, and the birds sing for him alone."
+      ]
+    },
+    {
+      "slug": "the-pedicure-lady-has-seen-things",
+      "number": 2,
+      "title": "The Pedicure Lady Has Seen Things",
+      "teaser": "She has done this for twenty years. She crossed herself.",
+      "story": [
+        "Brok had heard of the pedicure. A ritual for the civilized. He arrived early, chose the grandest chair, and removed his boots with ceremony.",
+        "The pedicurist had seen everything — marathon runners, construction crews, a man who swore he had walked from Ohio. She looked down at Brok's heels and, for the first time in twenty years, made the sign of the cross. The other customers left. One left without her shoes.",
+        "When she recovered, she reached into her drawer and handed Brok something she said she kept \"for emergencies, and for men\": **the Super Buffer.** \"Every day,\" she told him. \"Every day, or don't come back.\"",
+        "He came back. She studied his heels in silence, then took a photo and framed it. It hangs on the salon's Wall of Fame — the first one ever."
+      ]
+    },
+    {
+      "slug": "the-shoes-off-house",
+      "number": 3,
+      "title": "The Shoes-Off House",
+      "teaser": "Brok met her parents. The sign said \"shoes off, please.\" The dog has already left.",
+      "story": [
+        "Brok had prepared for everything. Flowers for her mother. A firm handshake for her father. Three facts about the family dog. He had not prepared for the sign: Shoes off, please.",
+        "Time slowed. Brok considered faking an injury, moving to another country, simply walking into the sea. The golden retriever, sensing what was coming, quietly left the room and was later found in the garage.",
+        "Brok kept his shoes on and blamed a doctor's orders. On the drive home, she handed him a small gift bag. Inside: **the Super Buffer**, and a note — \"Next time, the shoes come off.\"",
+        "Next time, they did. Her father glanced down, looked back up, and asked quietly, man to man: \"What's your secret?\" The dog sat at Brok's feet all evening."
+      ]
+    }
+  ]
+}

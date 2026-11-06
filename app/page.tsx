@@ -1,230 +1,180 @@
 import fs from 'fs'
 import path from 'path'
-import Link from 'next/link'
-import SiteNav from '@/app/components/SiteNav'
 import Footer from '@/components/Footer'
 import EmailCapture from '@/components/EmailCapture'
 import OpeningCrawl from '@/app/components/OpeningCrawl'
-import { getAllPosts } from '@/lib/mdx'
 
-type FeaturedProduct = {
-  name: string
-  category: string
-  affiliate_url: string
-  narrative: string
+// ─── One-page home — BSV reset 2026-11-05 ─────────────────────────────────────
+// One product (Spongelle Men's Super Buffer), one recurring character (Brok).
+// Land, laugh, get it in a few seconds, order. The previous home page is kept
+// at app/_archive/home-page-2026-11-05.tsx.bak; the Lounge, Sole Report, shop
+// and other pages still build and their URLs keep working — they're just no
+// longer linked from here.
+
+type Episode = {
+  slug: string
+  number: number
+  title: string
+  teaser: string
+  story: string[]
+  image?: string
 }
 
-function getFeaturedProducts(): FeaturedProduct[] {
+function getEpisodes(): Episode[] {
   try {
-    const raw = fs.readFileSync(path.join(process.cwd(), 'public/shop/featured.json'), 'utf8')
-    return (JSON.parse(raw).picks || []) as FeaturedProduct[]
+    const raw = fs.readFileSync(path.join(process.cwd(), 'content/episodes/episodes.json'), 'utf8')
+    return (JSON.parse(raw).episodes || []) as Episode[]
   } catch {
     return []
   }
 }
 
+// The affiliate link lives in scripts/data/affiliate-overrides.json (same
+// source the pipeline's lib/brok-doctrine.js reads) — never hardcode it here.
+function getBuyUrl(): string {
+  let link = 'https://spongelle.com/SFGCP6TP'
+  try {
+    const raw = fs.readFileSync(path.join(process.cwd(), 'scripts/data/affiliate-overrides.json'), 'utf8')
+    link = JSON.parse(raw)['Spongelle Men Super Buffer']?.affiliate_url || link
+  } catch {}
+  // Routed through the click-count Pages Function (functions/api/go/[key].ts).
+  return `/api/go/spongelle-super-buffer?to=${encodeURIComponent(link)}`
+}
+
+// **bold** → <strong>
+function Rich({ text }: { text: string }) {
+  const parts = text.split('**')
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1 ? <strong key={i} className="text-bsv-amber font-semibold">{p}</strong> : <span key={i}>{p}</span>
+      )}
+    </>
+  )
+}
+
+function BuyButton({ href, label, big = false }: { href: string; label: string; big?: boolean }) {
+  return (
+    <a
+      href={href}
+      rel="sponsored noopener"
+      className={`inline-flex items-center justify-center bg-bsv-amber text-bsv-bg font-heading tracking-widest hover:opacity-90 transition-opacity ${big ? 'text-xl px-10 py-5' : 'text-lg px-8 py-4'}`}
+    >
+      {label}
+    </a>
+  )
+}
+
 export default function HomePage() {
-  const today    = new Date()
-  today.setHours(0, 0, 0, 0)
-  const posts    = getAllPosts()
-    .filter((p) => new Date(p.date) <= today)
-    .slice(0, 3)
-  const products = getFeaturedProducts()
+  const episodes = getEpisodes()
+  const latest   = episodes[0]
+  const older    = episodes.slice(1)
+  const buyUrl   = getBuyUrl()
 
   return (
     <>
-      <SiteNav />
-      <main className="bg-bsv-bg">
+      <header className="fixed top-0 inset-x-0 z-50 bg-bsv-bg/90 backdrop-blur border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <a href="#hero" className="font-heading text-2xl sm:text-3xl tracking-[0.15em] text-bsv-cream">BIG SOLE VIBES</a>
+          <a href={buyUrl} rel="sponsored noopener" className="bg-bsv-amber text-bsv-bg font-heading tracking-widest text-sm sm:text-base px-4 sm:px-6 py-3 hover:opacity-90 transition-opacity">
+            GET THE BUFFER
+          </a>
+        </div>
+      </header>
 
-        {/* ── OPENING CRAWL ─────────────────────────────────────────────── */}
+      <main className="bg-bsv-bg text-bsv-cream">
+
+        {/* ── OPENING CRAWL — cave to beach, which is Brok's whole arc ───── */}
         <OpeningCrawl />
 
-        {/* ── HERO ──────────────────────────────────────────────────────── */}
-        <section id="hero" className="relative bg-bsv-bg py-28 sm:py-36 border-b border-white/10 overflow-hidden">
-
-          {/* Ambient grain texture */}
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
-            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\'/%3E%3C/svg%3E")' }}
-            aria-hidden="true"
-          />
-
-          <div className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-
-            <p className="font-heading text-xs tracking-[0.4em] text-bsv-amber mb-16">
-              BIG SOLE VIBES — FROM HEAD TO TOE
-            </p>
-
-            <p className="font-display text-xl sm:text-2xl text-bsv-cream leading-relaxed mb-10">
-              The hair is immaculate. The jacket is bespoke. The cologne smells like old money and minor scandals.
-            </p>
-
-            <p className="font-display text-xl sm:text-2xl text-bsv-cream leading-relaxed mb-10">
-              He has, by every available metric, figured it out.
-            </p>
-
-            <p className="font-display text-2xl sm:text-3xl text-bsv-cream leading-relaxed font-semibold mb-20">
-              His feet filed a formal complaint in 2019. It is still under review.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/the-lounge"
-                className="bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest px-10 py-4 hover:opacity-90 transition-opacity"
-              >
-                THE LOUNGE
-              </Link>
-              <Link
-                href="/shop"
-                className="bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest px-10 py-4 hover:opacity-90 transition-opacity"
-              >
-                THE LOCKER ROOM
-              </Link>
-            </div>
-
-          </div>
-        </section>
-
-        {/* ── THE MANIFESTO ─────────────────────────────────────────────── */}
-        <section className="py-24 border-b border-white/10">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="font-heading text-4xl sm:text-5xl text-bsv-amber tracking-wide mb-10">
-              THE MANIFESTO
-            </h2>
-            <p className="font-body text-bsv-cream text-base sm:text-lg leading-relaxed">
-              In 1823, a gentleman in Brussels conditioned his beard with imported oil, pressed his trousers to a knife edge, and then put on his boots without a second thought. Nothing has changed. For two centuries, men have applied extraordinary effort to everything above the ankle and treated everything below it as someone else&apos;s problem. The barber noticed. The tailor noticed. The woman who handed him his shoes noticed. Nobody said anything. Big Sole Vibes said something. We are a head-to-toe grooming brand for the man who has almost figured it out. The shelf covers the full body — face, hair, torso, recovery, and yes, the foundation. Because a man is one continuous structure, and the bottom of that structure has been quietly holding up the rest of it without so much as a thank you. The oversight ends here.
-            </p>
-          </div>
-        </section>
-
-        {/* ── THE SOLE REPORT ───────────────────────────────────────────── */}
-        <section className="py-24 border-t border-white/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-baseline justify-between mb-4">
-              <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
-                THE SOLE REPORT
-              </h2>
-              <Link
-                href="/sole-report"
-                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
-              >
-                VIEW ALL →
-              </Link>
-            </div>
-
-            <p className="font-body text-bsv-muted text-base mb-10 max-w-2xl">
-              Dispatches from a man paying attention to the things most men aren&apos;t. Written without judgment. Mostly.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
-              {posts.map((post, i) => {
-                const spanClass   = posts.length === 2 && i === 0 ? 'md:col-span-2' : ''
-                const borderClass = i < posts.length - 1
-                  ? 'border-b md:border-b-0 md:border-r border-white/10'
-                  : ''
-                return (
-                  <Link
-                    key={post.slug}
-                    href={`/sole-report/${post.slug}`}
-                    className={`block p-8 hover:bg-bsv-card transition-colors ${spanClass} ${borderClass}`.trim()}
-                  >
-                    <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
-                      {new Date(post.date).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                    <h3 className="font-heading text-2xl text-bsv-cream tracking-wide leading-tight mb-3">
-                      {post.title.toUpperCase()}
-                    </h3>
-                    <p className="text-bsv-muted text-sm leading-relaxed">{post.excerpt}</p>
-                  </Link>
-                )
-              })}
-            </div>
-
-            <div className="mt-8 sm:hidden">
-              <Link
-                href="/sole-report"
-                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
-              >
-                VIEW ALL →
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ── THE LOCKER ROOM ───────────────────────────────────────────── */}
-        <section className="py-24 bg-bsv-surface border-t border-white/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-baseline justify-between mb-4">
-              <div>
-                <p className="text-bsv-amber font-heading text-xs tracking-widest mb-2">
-                  THE LOCKER ROOM
-                </p>
-                <h2 className="font-heading text-4xl sm:text-5xl text-bsv-cream tracking-wide">
-                  WHAT&apos;S ON THE SHELF
-                </h2>
+        {/* ── HERO ─────────────────────────────────────────────────────── */}
+        <section id="hero" className="relative overflow-hidden border-b border-white/10">
+          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/crawl/cave.jpg)' }} aria-hidden="true" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(13,27,42,0.95) 0%, rgba(13,27,42,0.8) 50%, rgba(13,27,42,0.35) 100%)' }} aria-hidden="true" />
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-28 sm:py-40">
+            <div className="max-w-2xl flex flex-col gap-6">
+              <p className="text-bsv-amber font-heading tracking-[0.3em] text-sm">A PUBLIC SERVICE FOR MEN</p>
+              <h1 className="font-heading text-7xl sm:text-8xl lg:text-9xl leading-[0.9] tracking-wide">DON&apos;T BE A CAVEMAN.</h1>
+              <p className="font-display italic text-2xl sm:text-3xl leading-snug">
+                Why are men so barbaric about their feet? Brok was. Then he found the buffer.
+              </p>
+              <div className="flex flex-wrap items-center gap-6 pt-2">
+                <BuyButton href={buyUrl} label="GET THE BUFFER — 30% OFF" big />
+                <a href="#episode" className="text-bsv-cream underline underline-offset-4 hover:text-bsv-amber transition-colors">
+                  Watch Brok&apos;s shame →
+                </a>
               </div>
-              <Link
-                href="/shop"
-                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity hidden sm:block"
-              >
-                FULL SHELF →
-              </Link>
             </div>
+          </div>
+        </section>
 
-            <p className="font-body text-bsv-muted text-base mb-10 max-w-2xl">
-              The shelf. Head to toe. Curated by someone with strong opinions, too much time, and a working theory about why men have ignored the bottom six inches of themselves since the Renaissance. Nothing here is average. Nothing here was easy to find. Everything here has a reason to exist.
-            </p>
+        {/* ── THIS WEEK'S EPISODE ──────────────────────────────────────── */}
+        {latest && (
+          <section id="episode" className="bg-bsv-card py-24 border-b border-white/10">
+            <article id={latest.slug} className="max-w-3xl mx-auto px-4 sm:px-6 flex flex-col gap-6 scroll-mt-24">
+              <p className="text-bsv-amber font-heading tracking-[0.3em] text-sm">THIS WEEK · EPISODE {latest.number}</p>
+              <h2 className="font-heading text-6xl sm:text-7xl leading-[0.95] tracking-wide">{latest.title.toUpperCase()}</h2>
+              {latest.image && <img src={latest.image} alt="" className="w-full rounded" />}
+              {latest.story.map((para, i) => (
+                <p key={i} className="text-lg sm:text-xl leading-relaxed"><Rich text={para} /></p>
+              ))}
+              <p className="font-display italic text-2xl sm:text-3xl text-bsv-amber pt-2">Why are men so barbaric? They don&apos;t have to be.</p>
+            </article>
+          </section>
+        )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 border border-white/10">
-              {products.map((product, i) => (
-                <div
-                  key={product.name}
-                  className={`p-8 flex flex-col${
-                    i < products.length - 1 ? ' border-b md:border-b-0 md:border-r border-white/10' : ''
-                  }`}
-                >
-                  <p className="text-bsv-amber font-heading text-xs tracking-widest mb-3">
-                    {product.category.toUpperCase()}
-                  </p>
-                  <h3 className="font-heading text-xl text-bsv-cream tracking-wide mb-3">
-                    {product.name.toUpperCase()}
-                  </h3>
-                  <p className="text-bsv-muted text-sm leading-relaxed mb-6 flex-1">
-                    {product.narrative}
-                  </p>
-                  <div className="flex items-center justify-end">
-                    <a
-                      href={product.affiliate_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-bsv-amber font-heading text-xs tracking-widest border border-bsv-amber px-4 py-2 hover:bg-bsv-amber hover:text-bsv-bg transition-colors"
-                    >
-                      VIEW →
-                    </a>
+        {/* ── THE BUFFER ───────────────────────────────────────────────── */}
+        <section id="buffer" className="py-28 border-b border-white/10 scroll-mt-16">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 flex flex-col gap-6">
+            <p className="text-bsv-amber font-heading tracking-[0.3em] text-sm">THE FIX</p>
+            <h2 className="font-heading text-6xl sm:text-7xl leading-[0.92] tracking-wide">THE SUPER BUFFER</h2>
+            <p className="font-display text-2xl leading-snug">The one thing standing between a man and his inner caveman.</p>
+            <ul className="flex flex-col gap-3 text-lg leading-relaxed list-disc pl-6">
+              <li>Body wash built right in. Just add water.</li>
+              <li>Buffs rough heels and calluses while you shower.</li>
+              <li>No bottles, no routine, no excuses.</li>
+            </ul>
+            <div className="bg-bsv-card p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-5 sm:justify-between mt-2">
+              <p className="text-lg"><span className="text-bsv-amber font-semibold">30% off</span> for BSV readers, through our link.</p>
+              <BuyButton href={buyUrl} label="GET THE BUFFER" />
+            </div>
+          </div>
+        </section>
+
+        {/* ── MORE EPISODES ────────────────────────────────────────────── */}
+        {older.length > 0 && (
+          <section className="bg-bsv-card py-24 border-b border-white/10">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 flex flex-col gap-6">
+              <h2 className="font-heading text-5xl sm:text-6xl tracking-wide">MORE OF BROK&apos;S SHAME</h2>
+              {older.map((ep) => (
+                <details key={ep.slug} id={ep.slug} className="group bg-bsv-bg border border-white/10 scroll-mt-24">
+                  <summary className="cursor-pointer list-none p-6 flex flex-col gap-2">
+                    <span className="text-bsv-amber font-heading tracking-[0.25em] text-xs">EPISODE {ep.number}</span>
+                    <span className="font-heading text-3xl sm:text-4xl tracking-wide">{ep.title.toUpperCase()}</span>
+                    <span className="text-bsv-cream/80">{ep.teaser}</span>
+                    <span className="text-bsv-amber text-sm pt-1 group-open:hidden">Read the episode →</span>
+                  </summary>
+                  <div className="px-6 pb-8 flex flex-col gap-4">
+                    {ep.story.map((para, i) => (
+                      <p key={i} className="text-lg leading-relaxed"><Rich text={para} /></p>
+                    ))}
+                    <div className="pt-2"><BuyButton href={buyUrl} label="GET THE BUFFER — 30% OFF" /></div>
                   </div>
-                </div>
+                </details>
               ))}
             </div>
+          </section>
+        )}
 
-            <div className="mt-8 sm:hidden">
-              <Link
-                href="/shop"
-                className="text-bsv-amber font-heading text-xs tracking-widest hover:opacity-70 transition-opacity"
-              >
-                FULL SHELF →
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ── THE BIG SOLE BRIEFING ─────────────────────────────────────── */}
-        <EmailCapture />
-
+        {/* ── EPISODE SIGNUP ───────────────────────────────────────────── */}
+        <EmailCapture
+          title="BROK'S NEXT DISGRACE, IN YOUR INBOX."
+          blurb="New episodes as they happen. Nothing else."
+          cta="COUNT ME IN"
+        />
       </main>
-      <Footer />
+
+      <Footer minimal />
     </>
   )
 }

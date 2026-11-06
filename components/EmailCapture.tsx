@@ -2,7 +2,13 @@
 
 import { useState } from 'react'
 
-export default function EmailCapture() {
+// Copy is overridable so the one-page home can use episode-signup wording
+// (BSV reset 2026-11-05); defaults keep every other page unchanged.
+export default function EmailCapture({
+  title = 'THE BIG SOLE BRIEFING',
+  blurb = 'The Proprietor sends a dispatch when something earns it. Product finds. Notes from the shelf. Occasional reminders that you are, technically, one continuous person from head to toe. Join the rational resistance.',
+  cta   = 'JOIN THE BRIEFING',
+}: { title?: string; blurb?: string; cta?: string } = {}) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -38,10 +44,10 @@ export default function EmailCapture() {
     <section id="email-capture" className="py-24 bg-bsv-bg border-t border-white/10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="font-heading text-5xl sm:text-6xl text-bsv-cream tracking-wide mb-6">
-          THE BIG SOLE BRIEFING
+          {title}
         </h2>
         <p className="text-bsv-muted text-base mb-10 max-w-md mx-auto">
-          The Proprietor sends a dispatch when something earns it. Product finds. Notes from the shelf. Occasional reminders that you are, technically, one continuous person from head to toe. Join the rational resistance.
+          {blurb}
         </p>
 
         {status === 'success' ? (
@@ -69,7 +75,7 @@ export default function EmailCapture() {
               disabled={status === 'loading'}
               className="bg-bsv-amber text-bsv-bg font-heading text-lg tracking-widest px-10 py-4 transition-opacity hover:opacity-90 whitespace-nowrap disabled:opacity-50"
             >
-              {status === 'loading' ? 'JOINING…' : 'JOIN THE BRIEFING'}
+              {status === 'loading' ? 'JOINING…' : cta}
             </button>
           </form>
         )}

@@ -55,7 +55,8 @@ const socialLinks = [
   },
 ]
 
-export default function Footer() {
+// `minimal` hides the section links — used by the one-page home (BSV reset 2026-11-05).
+export default function Footer({ minimal = false }: { minimal?: boolean } = {}) {
   return (
     <footer className="bg-bsv-card border-t border-white/10 py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -71,7 +72,7 @@ export default function Footer() {
 
           {/* Nav */}
           <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center md:justify-start">
-            {navLinks.map((link) => (
+            {(minimal ? [] : navLinks).map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

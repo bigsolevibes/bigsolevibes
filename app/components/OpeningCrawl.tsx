@@ -76,11 +76,11 @@ export default function OpeningCrawl() {
       {/* 60% dark overlay */}
       <div className="absolute inset-0" style={{ background: 'rgba(13, 27, 42, 0.6)' }} />
 
-      {/* SKIP button — fixed z-[60] clears the nav at z-50; hides after crawl or on click */}
+      {/* SKIP button — bottom-right so it never covers the header's buy button (2026-11-05); z-[60] clears the nav; hides after crawl or on click */}
       {showSkip && (
         <button
           onClick={skip}
-          className="fixed top-4 right-6 z-[60] font-heading text-xs tracking-[0.3em] text-bsv-cream/60 hover:text-bsv-cream border border-white/20 hover:border-white/50 px-4 py-2 transition-colors bg-bsv-bg/60 backdrop-blur-sm"
+          className="fixed bottom-6 right-6 z-[60] font-heading text-xs tracking-[0.3em] text-bsv-cream/60 hover:text-bsv-cream border border-white/20 hover:border-white/50 px-4 py-2 transition-colors bg-bsv-bg/60 backdrop-blur-sm"
           aria-label="Skip to main content"
         >
           SKIP
