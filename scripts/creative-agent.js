@@ -25,6 +25,9 @@ const { connect: sheetConnect, readAllRows } = require('./sheets-client')
 // Ankle," generated 2026-07-13) showed exactly that failure mode. Wired in
 // here so any future doctrine change reaches this file automatically.
 const { PERSON_OPTIONAL, NO_DEFAULT_SETTING, NO_APPLICATION_GESTURE } = require('./lib/visual-doctrine')
+// BSV reset 2026-11-05 — Brok doctrine (one product, one story shape). When BROK.ACTIVE,
+// this agent writes Brok episodes and ignores chapter/persona/product/edition context.
+const BROK = require('./lib/brok-doctrine')
 const { slugifyProductName } = require('./lib/product-slug')
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
@@ -369,7 +372,10 @@ ${COMEDIC_REGISTER}`
     log(`WARNING: no valid --voice supplied, defaulting to ${defaultName}`)
   }
 
-  const personaLabel = personaContext?.persona ?? 'unassigned'
+  const brokMode = BROK.ACTIVE || process.argv.includes('--brok')
+  if (brokMode) voiceDef = BROK.NARRATOR_VOICE
+
+  const personaLabel = brokMode ? 'brok' : (personaContext?.persona ?? 'unassigned')
   log(`━━━ creative-agent: ${slot} / ${theme} / ${voiceDef.name} / persona=${personaLabel} ━━━`)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -631,13 +637,63 @@ ${personaBlock ? `${personaBlock}\n\n` : ''}${editionVignetteBlock ? `${editionV
 
 Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above are not suggestions. The image brief should make a creative director say yes. The captions should make a man stop scrolling and send it to someone who gets it.`
 
+  // ── Brok episode prompt (BSV reset) ─────────────────────────────────────────
+  // Replaces the old directive/memory/chapter/persona stack entirely — those
+  // documents describe the retired story system and would fight the doctrine.
+  // Keeps the hard-won image constraints (HARD_CONSTRAINTS_LEAD, LENGTH_CAP,
+  // STORY_COHESION, NO_APPLICATION_GESTURE) and the exact output format that
+  // gemini-bridge.js parses.
+  const brokProduct = BROK.loadProduct()
+  const recentEpisodes = brokMode ? BROK.loadRecentEpisodes(8) : []
+  const brokSystem = `${BROK.buildDoctrine()}
+
+---
+
+You are the BSV Creative Agent. One job: write ONE new Brok episode as a content brief.
+
+## Output format — EXACTLY this structure, nothing before or after
+
+SLOT: [slot]
+THEME: Brok episode
+EPISODE: [episode title — short, funny, like "Brunch of the Barbarians"]
+PROBLEM: [the foot problem this episode is about, 2-5 words]
+VOICE: NARRATOR
+VOICE_USED: NARRATOR
+POST_TIME: [post time]
+VOICE_GUIDANCE: NARRATOR — ${BROK.NARRATOR_VOICE.description}
+---
+IMAGE BRIEF: [Gemini Imagen 4. Square 1:1. No text, no logos. SINGLE FRAME ONLY. ${HARD_CONSTRAINTS_LEAD} Technique: illustrated, painterly or flat-cutout (Monty Python / Terry Gilliam cutout collage suits Brok best — the same family as bigsolevibes.com's cave artwork); full figures. Depict THE RECKONING beat — Brok and the people reacting, mid-moment. ${STORY_COHESION} No close-ups of feet. ${NO_APPLICATION_GESTURE} Product normally not in frame. ${LENGTH_CAP}]
+ON-IMAGE COPY:
+  Line 1 (Cream, Playfair Display): [4–8 words, no punctuation — the episode's absurd moment]
+  Line 2 (Bourbon, Bebas Neue italic): [3–6 words, no punctuation — e.g. DONT BE A CAVEMAN]
+INSTAGRAM: [Follow the doctrine's caption rules. CTA: ${brokProduct.short} — ${brokProduct.discount} — link in bio. Hashtags at the end.]
+BLUESKY: [Follow the doctrine's caption rules. End with ${brokProduct.discount} at ${brokProduct.siteUrl}]
+YOUTUBE: [Community post, 3–4 sentences, narrator voice, ends with a reason to follow for the next episode.]
+TIKTOK: [Hook line for on-screen typewriter, then a 1–2 line caption. Max 2 hashtags.]
+---`
+
+  const brokUser = `Write the next Brok episode.
+
+SLOT: ${slot}
+POST TIME: ${postTime}
+
+${recentEpisodes.length
+  ? `Recent episodes (do NOT repeat these problems or setups — find a new one):\n${recentEpisodes.map(e => `- ${e.episode} (${e.problem})`).join('\n')}`
+  : 'This is one of the first episodes. Starter ideas already drafted by Big C: "Brunch of the Barbarians" (sandals at brunch), "The Pedicure Lady Has Seen Things", "The Shoes-Off House" (meeting her parents). You may write one of these or invent your own.'}
+
+All four beats must be present in the INSTAGRAM caption, compressed. Make a man laugh, then make him want the buffer.`
+
+  const finalSystem = brokMode ? brokSystem : systemPrompt
+  const finalUser   = brokMode ? brokUser   : userPrompt
+  if (brokMode) log(`Brok mode — ${recentEpisodes.length} recent episodes loaded`)
+
   log('Calling Claude API...')
   const client = new Anthropic({ apiKey })
   const msg = await client.messages.create({
     model:      'claude-sonnet-4-6', // reverted early — claude-fable-5 trial was crashing Saturday slot generation
     max_tokens: 2048,
-    system:     systemPrompt,
-    messages:   [{ role: 'user', content: userPrompt }],
+    system:     finalSystem,
+    messages:   [{ role: 'user', content: finalUser }],
   })
 
   const brief = msg.content[0].text.trim()
@@ -660,6 +716,13 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
   fs.writeFileSync(briefPath, brief)
   log(`Saved → ${briefPath}`)
 
+  if (brokMode) {
+    const episode = (brief.match(/^EPISODE:\s*(.+)$/m) || [])[1]?.trim() || '(untitled)'
+    const problem = (brief.match(/^PROBLEM:\s*(.+)$/m) || [])[1]?.trim() || ''
+    try { BROK.recordEpisode({ date: new Date().toISOString().slice(0, 10), slot, episode, problem }) } catch {}
+    log(`Brok episode: "${episode}" (${problem})`)
+  }
+
   // ── Pre-post quality gate ──────────────────────────────────────────────────
   // Fast Haiku check: does this brief violate any active creative directive?
   // Never blocks — flags to Telegram so Big D can deny before it posts.
@@ -670,7 +733,7 @@ Write the brief. Apply the ${voiceDef.name} voice hard — the guardrails above 
       const bmDirectives = activeDirectives?.brand_manager?.directives ?? []
       const bdCorrections = activeDirectives?.big_d?.corrections ?? []
       const allRules = [...bmDirectives, ...bdCorrections]
-      if (!allRules.length) return  // nothing to check against
+      if (brokMode || !allRules.length) return  // nothing to check against (old-system directives don't apply to Brok episodes)
 
       const qaClient = new Anthropic({ apiKey })
       const qaMsg = await qaClient.messages.create({

@@ -642,6 +642,39 @@ Return JSON only — no markdown fences:
   const themes   = THEME_CALENDAR[targetDay]
   const personas = PERSONA_CALENDAR[targetDay]
 
+  // ── BSV reset 2026-11-05: Brok episodes ────────────────────────────────────
+  // One episode per day, evening slot. No chapters, personas, product rotation,
+  // editions, cultural overrides or Sole Report briefs — creative-agent owns the
+  // episode content via lib/brok-doctrine.js. Set BROK.ACTIVE = false to return
+  // to the old schedule below (nothing was removed).
+  const BROK = require('./lib/brok-doctrine')
+  if (BROK.ACTIVE) {
+    const BROK_PERIODS = ['pm']
+    for (const period of BROK_PERIODS) {
+      const slug = `${targetDay}-${period}`
+      log(`[${slug}] Brok episode — handing to creative-agent`)
+      const r = spawnSync(
+        process.execPath,
+        [path.join(__dirname, 'creative-agent.js'), '--slot', slug, '--theme', 'Brok episode', '--brok'],
+        { stdio: 'inherit', env: process.env }
+      )
+      if (r.status !== 0) log(`ERROR: creative-agent exited ${r.status} for ${slug}`)
+    }
+    try {
+      appendMediaAuditEntry([
+        `## ${new Date().toISOString().slice(0, 10)} — ${targetDay}`,
+        `**Mode:** Brok episodes (BSV reset)`,
+        `**Slots assigned:** ${BROK_PERIODS.map(p => `${targetDay}-${p}`).join(', ')}`,
+      ].join('\n'))
+    } catch (err) { log(`WARNING: media audit log append failed — ${err.message}`) }
+
+    log(`Spawning gemini-bridge --day ${targetDay}...`)
+    const b = spawnSync(process.execPath, [path.join(__dirname, 'gemini-bridge.js'), '--day', targetDay, '--slots', BROK_PERIODS.map(p => `${targetDay}-${p}`).join(',')], { stdio: 'inherit', env: process.env })
+    if (b.status !== 0) log(`ERROR: gemini-bridge exited ${b.status}`)
+    log('━━━ media-director complete (Brok mode) ━━━\n')
+    return
+  }
+
   log('Loading daily directive...')
   const dailyDirective = loadDailyDirective()
 

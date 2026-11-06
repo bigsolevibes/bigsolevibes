@@ -167,7 +167,13 @@ ASSIGNMENT (mandatory, follows):
     process.exit(1)
   }
 
-  const targetSlots = [`${targetDay}-am`, `${targetDay}-pm`]
+  // --slots fri-pm[,fri-am] limits which briefs are bridged (added 2026-11-05 for
+  // Brok mode, which writes one evening episode a day — without this, last week's
+  // stale -am brief for the same weekday would be re-uploaded).
+  const slotsArg    = process.argv.indexOf('--slots')
+  const targetSlots = slotsArg !== -1
+    ? (process.argv[slotsArg + 1] || '').split(',').map(x => x.trim()).filter(x => x.startsWith(`${targetDay}-`))
+    : [`${targetDay}-am`, `${targetDay}-pm`]
 
   for (const slug of targetSlots) {
     const briefPath = path.join(BRIEFS_DIR, `${slug}-brief.txt`)
@@ -196,13 +202,18 @@ ASSIGNMENT (mandatory, follows):
     // The -flow slot (video/story format) needs its own caption file so
     // watch-drive can distribute it. Same caption as the still — watch-drive
     // won't distribute until BOTH the media and this caption file are present.
-    const flowCaptionLocal = path.join(TEMP_DIR, `${slug}-flow.md`)
-    fs.writeFileSync(flowCaptionLocal, captionContent)
-    try {
-      uploadFile(flowCaptionLocal, `${REMOTE}/Ready to Post/${slug}-flow.md`)
-      log(`    ✓ uploaded → Ready to Post/${slug}-flow.md`)
-    } catch (err) {
-      log(`    ERROR: flow caption upload failed: ${err.stderr?.toString().trim() || err.message}`)
+    // Only when the brief actually has a VIDEO BRIEF (added 2026-11-05: Brok
+    // episodes are still-only; a flow caption with no video ever coming just
+    // sat in Ready to Post as "waiting for media" forever).
+    if (fields.video_brief) {
+      const flowCaptionLocal = path.join(TEMP_DIR, `${slug}-flow.md`)
+      fs.writeFileSync(flowCaptionLocal, captionContent)
+      try {
+        uploadFile(flowCaptionLocal, `${REMOTE}/Ready to Post/${slug}-flow.md`)
+        log(`    ✓ uploaded → Ready to Post/${slug}-flow.md`)
+      } catch (err) {
+        log(`    ERROR: flow caption upload failed: ${err.stderr?.toString().trim() || err.message}`)
+      }
     }
 
     // ── Image prompt → Drive Ready to Post ───────────────────────────────────
